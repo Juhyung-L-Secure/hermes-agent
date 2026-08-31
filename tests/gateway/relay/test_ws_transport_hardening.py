@@ -371,3 +371,83 @@ async def test_send_raising_socket_returns_error_dict():
 
     fake.reader_release.set()
     await t._reader
+
+
+@pytest.mark.asyncio
+async def test_redial_hold_parks_the_supervisor_until_released(monkeypatch):
+    """scale-to-zero, brokered suspend (Azure): the supervisor must NOT re-dial
+    while the NAS stop is in flight.
+
+    go_dormant() closes the socket, which arms this supervisor on the 1s dormant
+    cadence. A re-dial that lands gives the connector a fresh handshake, draining
+    the buffered backlog and clearing the dormant flip, so the freeze would
+    arrive on a live destination and inbound would be dropped as no_local_session
+    for the whole keepalive window. Fly's flaps suspend wins that race on its
+    own; an HTTP round trip does not.
+    """
+    dials = []
+
+    async def _never_dials(self):
+        dials.append(1)
+
+    monkeypatch.setattr(
+        WebSocketRelayTransport, "_dial_and_start", _never_dials, raising=True
+    )
+
+    t = WebSocketRelayTransport(
+        "ws://unused", "discord", "bot1", reconnect=True, reconnect_backoff_s=0.01
+    )
+    t._dormant_redial_s = 0.01
+    t.hold_redial()
+
+    supervisor = asyncio.create_task(t._reconnect_loop())
+    try:
+        # Well past the cadence: without the hold this would have dialled many
+        # times over.
+        await asyncio.sleep(0.15)
+        assert dials == [], "supervisor re-dialled while a brokered suspend was in flight"
+
+        # A refused suspend releases it, and the re-dial resumes immediately.
+        t.release_redial()
+        for _ in range(100):
+            if dials:
+                break
+            await asyncio.sleep(0.01)
+        assert dials == [1]
+    finally:
+        t._closing = True
+        supervisor.cancel()
+
+
+@pytest.mark.asyncio
+async def test_redial_hold_expires_so_a_lost_suspend_cannot_strand_us(monkeypatch):
+    """Bounded by _redial_hold_max_s: a suspend that never lands (NAS refused
+    and the release was lost, network gone) must reconnect rather than leave the
+    relay down forever."""
+    dials = []
+
+    async def _count_dial(self):
+        dials.append(1)
+
+    monkeypatch.setattr(
+        WebSocketRelayTransport, "_dial_and_start", _count_dial, raising=True
+    )
+
+    t = WebSocketRelayTransport(
+        "ws://unused", "discord", "bot1", reconnect=True, reconnect_backoff_s=0.01
+    )
+    t._dormant_redial_s = 0.01
+    t._redial_hold_max_s = 0.05
+    t.hold_redial()
+
+    supervisor = asyncio.create_task(t._reconnect_loop())
+    try:
+        for _ in range(100):
+            if dials:
+                break
+            await asyncio.sleep(0.01)
+        assert dials == [1]
+        assert t._redial_held is False
+    finally:
+        t._closing = True
+        supervisor.cancel()

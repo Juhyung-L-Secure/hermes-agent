@@ -9228,8 +9228,21 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                         "without platform suspend"
                     )
                     return
+                # Park the reconnect supervisor for the round trip. go_dormant()
+                # closed the socket, which armed it to re-dial ~1s from now, and a
+                # re-dial drains the connector's backlog and clears the dormant
+                # flip — so the freeze would land on a live destination and lose
+                # every inbound inside the keepalive window. A local flaps suspend
+                # beats that timer by orders of magnitude; an HTTP round trip does
+                # not. Set BEFORE the first await so the supervisor cannot slip
+                # through in between.
+                self._scale_to_zero_hold_redial(True)
                 accepted = await asyncio.to_thread(request_brokered_suspend, url)
                 lever = "brokered suspend"
+                if not accepted:
+                    # Nothing is going to freeze us, so stop holding the relay
+                    # down: reconnect now rather than sitting out the hold cap.
+                    self._scale_to_zero_hold_redial(False)
             if not accepted:
                 logger.warning(
                     "scale-to-zero: %s not accepted — machine stays awake "
@@ -9238,6 +9251,30 @@ class GatewayRunner(GatewayAuthorizationMixin, GatewayKanbanWatchersMixin, Gatew
                 )
         except Exception:  # noqa: BLE001 - suspend is best-effort, never crash
             logger.debug("scale-to-zero: self-suspend failed", exc_info=True)
+            # An exception here means we do not know whether the stop landed, and
+            # a hold left set would keep the relay down for its whole cap. The
+            # transport's own ceiling covers a lost release, but clear it here so
+            # the common case reconnects immediately.
+            self._scale_to_zero_hold_redial(False)
+
+    def _scale_to_zero_hold_redial(self, held: bool) -> None:
+        """Hold or release the relay's reconnect supervisor (brokered suspend).
+
+        Swallows everything, including the adapter lookup: the hold only narrows
+        a race, while the suspend it precedes is the whole point, so nothing here
+        may stop that suspend from being attempted.
+        """
+        try:
+            adapter = self._relay_adapter_for_dormancy()
+            if adapter is None:
+                return
+            method = getattr(
+                adapter, "hold_redial" if held else "release_redial", None
+            )
+            if callable(method):
+                method()
+        except Exception:  # noqa: BLE001 - best-effort, never blocks the suspend
+            logger.debug("scale-to-zero: redial hold toggle failed", exc_info=True)
 
     def _status_action_label(self) -> str:
         return "restart" if self._restart_requested else "shutdown"

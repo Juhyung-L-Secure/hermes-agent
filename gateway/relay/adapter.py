@@ -1740,6 +1740,30 @@ class RelayAdapter(BasePlatformAdapter):
             logger.debug("relay go_dormant failed", exc_info=True)
             return False
 
+    def hold_redial(self) -> None:
+        """Park the transport's reconnect supervisor across a brokered suspend.
+
+        Only meaningful between go_dormant() and a NAS-brokered stop landing: a
+        re-dial in that window clears the dormant flip the suspend depends on.
+        Same defensive delegation as go_dormant, so a stub transport no-ops.
+        """
+        self._toggle_transport_redial("hold_redial")
+
+    def release_redial(self) -> None:
+        """Undo hold_redial() when the brokered suspend did not land."""
+        self._toggle_transport_redial("release_redial")
+
+    def _toggle_transport_redial(self, method_name: str) -> None:
+        if self._transport is None:
+            return
+        method = getattr(self._transport, method_name, None)
+        if not callable(method):
+            return
+        try:
+            method()
+        except Exception:  # noqa: BLE001 - best-effort, never blocks the idle path
+            logger.debug("relay %s failed", method_name, exc_info=True)
+
     async def send_for_platform(
         self,
         logical_platform: Any,

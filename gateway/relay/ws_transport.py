@@ -507,6 +507,13 @@ class WebSocketRelayTransport:
         # promptly (the connector's wake poke is what triggers the platform
         # autostart in the first place — §3.4(5)).
         self._dormant_redial_s = 1.0
+        # Set while a NAS-brokered suspend is in flight (Azure), where the freeze
+        # is seconds away rather than microseconds. See _await_redial_hold.
+        self._redial_held = False
+        self._redial_release = asyncio.Event()
+        # Ceiling on that hold. A suspend that never lands must not strand us
+        # offline, so the supervisor gives up waiting and reconnects normally.
+        self._redial_hold_max_s = 60.0
 
         self._ws: Any = None
         self._reader: Optional[asyncio.Task[None]] = None
@@ -1037,6 +1044,9 @@ class WebSocketRelayTransport:
                 raise
             if self._closing:
                 return
+            await self._await_redial_hold()
+            if self._closing:
+                return
             try:
                 await self._dial_and_start()
                 logger.info("relay ws reconnected")
@@ -1046,6 +1056,55 @@ class WebSocketRelayTransport:
             except Exception as exc:  # noqa: BLE001 - keep retrying on dial failure
                 logger.warning("relay ws reconnect failed: %s", exc)
                 backoff = min(backoff * 2, self._reconnect_max_backoff_s)
+
+    def hold_redial(self) -> None:
+        """Park the reconnect supervisor until release_redial() or the hold cap.
+
+        For a NAS-brokered suspend (Azure), where the stop is an HTTP round trip
+        rather than the microseconds of a local flaps call. See
+        ``_await_redial_hold`` for why the re-dial has to wait.
+        """
+        self._redial_release.clear()
+        self._redial_held = True
+
+    def release_redial(self) -> None:
+        """Let the supervisor re-dial again, for a brokered suspend that failed."""
+        self._redial_held = False
+        self._redial_release.set()
+
+    async def _await_redial_hold(self) -> None:
+        """Block a pending re-dial while a brokered suspend is in flight.
+
+        go_dormant() closes the socket, and the reader's fall-through arms this
+        supervisor to re-dial on the dormant cadence. A re-dial that lands gives
+        the connector a fresh handshake, which drains the buffered backlog and
+        clears the dormant flip, so the destination is live again by the time the
+        freeze arrives and inbound inside the connector's keepalive window is
+        dropped as no_local_session. That is the exact bug the brokered sleep
+        exists to remove.
+
+        Fly never needed this: the flaps suspend is a local unix-socket POST and
+        the kernel freeze lands far inside the dormant cadence. A brokered stop
+        is an HTTP round trip to NAS plus a provider stop call, so the re-dial
+        would win instead.
+
+        Bounded by ``_redial_hold_max_s`` so a suspend that never lands (NAS
+        refused, network gone) reconnects rather than sitting out the wait.
+        """
+        if not self._redial_held:
+            return
+        try:
+            await asyncio.wait_for(
+                self._redial_release.wait(), timeout=self._redial_hold_max_s
+            )
+        except asyncio.TimeoutError:
+            logger.info(
+                "relay: brokered suspend never landed within %.0fs, reconnecting",
+                self._redial_hold_max_s,
+            )
+        finally:
+            self._redial_held = False
+            self._redial_release.clear()
 
     async def _handle_frame(self, line: str) -> None:
         try:

@@ -21,10 +21,17 @@ from gateway.run import GatewayRunner
 class _FakeRelayAdapter:
     def __init__(self):
         self.go_dormant_calls = 0
+        self.redial = []
 
     async def go_dormant(self):
         self.go_dormant_calls += 1
         return True
+
+    def hold_redial(self):
+        self.redial.append("hold")
+
+    def release_redial(self):
+        self.redial.append("release")
 
 
 def _runner_with(monkeypatch, *, idle, armed_adapter=True, can_self_suspend=True):
@@ -162,6 +169,63 @@ async def test_self_suspend_falls_back_to_the_broker(monkeypatch):
 
     assert flaps == []
     assert brokered == [url]
+
+
+def _broker_runner(monkeypatch, *, accepted):
+    """A runner on the brokered lever (no in-guest suspend), with the relay
+    adapter reachable so the redial hold is observable."""
+    r, adapter = _runner_with(monkeypatch, idle=True, can_self_suspend=False)
+    monkeypatch.setenv(
+        "GATEWAY_RELAY_SLEEP_URL", "https://portal.example.com/api/agents/i/sleep?t=s"
+    )
+    monkeypatch.setattr(
+        "gateway.scale_to_zero.request_brokered_suspend",
+        lambda *a, **k: accepted,
+    )
+    return r, adapter
+
+
+@pytest.mark.asyncio
+async def test_brokered_suspend_holds_the_redial_across_the_round_trip(monkeypatch):
+    """The race this whole path exists to close.
+
+    go_dormant() closed the socket, arming a re-dial ~1s out. A re-dial lands a
+    fresh handshake, which drains the connector's backlog and clears the dormant
+    flip — so the freeze would arrive on a live destination and every inbound
+    inside the keepalive window dies as no_local_session. Fly's flaps suspend
+    beats that timer by orders of magnitude; an HTTP round trip to NAS does not,
+    so the supervisor has to be parked for it.
+    """
+    r, adapter = _broker_runner(monkeypatch, accepted=True)
+
+    await r._scale_to_zero_self_suspend()
+
+    # Held, and NOT released: the freeze is expected to land on us.
+    assert adapter.redial == ["hold"]
+
+
+@pytest.mark.asyncio
+async def test_a_refused_brokered_suspend_releases_the_redial(monkeypatch):
+    """Fail-awake: nothing is going to freeze us, so reconnect now rather than
+    sitting out the transport's hold cap with the relay down."""
+    r, adapter = _broker_runner(monkeypatch, accepted=False)
+
+    await r._scale_to_zero_self_suspend()
+
+    assert adapter.redial == ["hold", "release"]
+
+
+@pytest.mark.asyncio
+async def test_the_in_guest_lever_never_holds_the_redial(monkeypatch):
+    """Fly must not be parked. Its suspend preserves RAM, so a hold left set
+    would survive the resume and delay the very re-dial the wake poke wants.
+    """
+    r, adapter = _runner_with(monkeypatch, idle=True, can_self_suspend=True)
+    monkeypatch.setattr("gateway.scale_to_zero.suspend_self", lambda *a, **k: True)
+
+    await r._scale_to_zero_self_suspend()
+
+    assert adapter.redial == []
 
 
 @pytest.mark.asyncio
