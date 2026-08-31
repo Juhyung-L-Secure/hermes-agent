@@ -186,3 +186,101 @@ def test_self_suspend_available_needs_identity_and_socket():
         assert self_suspend_available(_FLY_ENV) is False
     # Missing identity -> unavailable regardless of socket.
     assert self_suspend_available({}) is False
+
+
+# ── brokered suspend (the Azure lever) ───────────────────────────────────────
+#
+# ACA's stop verb lives on the authenticated data plane and the sandbox holds no
+# credential for it, so there is no in-guest equivalent of the flaps socket. NAS
+# stamps a signed sleep URL instead and stops the machine on our POST. Without
+# it the watcher had to abstain, leaving the platform's own timer to freeze the
+# machine whenever it liked — including before go_dormant() flipped the relay,
+# which silently drops every inbound until the connector's keepalive notices.
+
+
+from gateway.scale_to_zero import (  # noqa: E402 - grouped with their section
+    SLEEP_URL_ENV,
+    brokered_sleep_url,
+    request_brokered_suspend,
+    suspend_available,
+)
+
+_SLEEP_URL = "https://portal.example.com/api/agents/inst-1/sleep?t=sig"
+
+
+def test_brokered_sleep_url_reads_the_stamp():
+    assert brokered_sleep_url({SLEEP_URL_ENV: _SLEEP_URL}) == _SLEEP_URL
+    assert brokered_sleep_url({}) is None
+    # Blank is "not stamped", not a URL to POST at.
+    assert brokered_sleep_url({SLEEP_URL_ENV: "   "}) is None
+
+
+def test_suspend_available_accepts_either_lever(monkeypatch):
+    monkeypatch.setattr(
+        "gateway.scale_to_zero.self_suspend_available", lambda *a, **k: False
+    )
+    # The whole point: no flaps socket, but a broker exists, so the watcher may
+    # quiesce. Before this, off-Fly meant "never quiesce" and the platform timer
+    # owned the freeze.
+    assert suspend_available({SLEEP_URL_ENV: _SLEEP_URL}) is True
+    assert suspend_available({}) is False
+
+    monkeypatch.setattr(
+        "gateway.scale_to_zero.self_suspend_available", lambda *a, **k: True
+    )
+    assert suspend_available({}) is True
+
+
+class _FakeResponse:
+    def __init__(self, status):
+        self.status = status
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def test_request_brokered_suspend_posts_the_signed_url():
+    seen = {}
+
+    def opener(request, timeout=None):
+        seen["url"] = request.full_url
+        seen["method"] = request.get_method()
+        return _FakeResponse(200)
+
+    assert request_brokered_suspend(_SLEEP_URL, opener=opener) is True
+    assert seen["url"] == _SLEEP_URL
+    assert seen["method"] == "POST"
+
+
+def test_request_brokered_suspend_fails_awake_on_rejection():
+    """Fail-awake, exactly like suspend_self: a refusal leaves the machine
+    running (costs money, strands nothing). Believing a suspend failed when it
+    landed would leave a frozen peer looking live to the connector, which is the
+    failure this path exists to remove."""
+    import urllib.error
+
+    def rejecting(request, timeout=None):
+        raise urllib.error.HTTPError(_SLEEP_URL, 409, "Conflict", {}, None)
+
+    assert request_brokered_suspend(_SLEEP_URL, opener=rejecting) is False
+
+
+def test_request_brokered_suspend_never_raises_on_transport_failure():
+    import urllib.error
+
+    def broken(request, timeout=None):
+        raise urllib.error.URLError("connection refused")
+
+    assert request_brokered_suspend(_SLEEP_URL, opener=broken) is False
+
+
+def test_request_brokered_suspend_treats_non_2xx_as_failure():
+    assert (
+        request_brokered_suspend(
+            _SLEEP_URL, opener=lambda *a, **k: _FakeResponse(500)
+        )
+        is False
+    )

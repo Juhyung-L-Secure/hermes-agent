@@ -61,6 +61,21 @@ FLY_MACHINE_ID_ENV = "FLY_MACHINE_ID"
 # the app must own the idle decision (https://fly.io/docs/reference/suspend-resume/).
 FLY_API_SOCKET = "/.fly/api"
 
+# NAS-brokered suspend, for backends with no in-guest lever at all. Stamped by
+# NAS (buildContainerEnvVars) only where ComputeProvider.suspendsItself is false,
+# and carries its own signed credential in the query string exactly like
+# GATEWAY_RELAY_WAKE_URL — the gateway holds no NAS session of its own.
+#
+# Azure ACA is the case this exists for: its stop verb lives on the authenticated
+# data plane and the sandbox cannot mint the service principal. Without a lever
+# the watcher had to abstain entirely and let the platform's idle timer own the
+# freeze, which lands it whenever it likes — including before go_dormant() has
+# flipped the relay destination. The connector then publishes live into a frozen
+# peer and the message dies as no_local_session, invisibly, until its keepalive
+# notices the socket is gone (~90s). One brokered POST removes that whole class
+# of loss by putting the freeze back after the flip, where Fly already has it.
+SLEEP_URL_ENV = "GATEWAY_RELAY_SLEEP_URL"
+
 
 # config.yaml default (D2). Behavioural setting -> config, not env.
 # 2 minutes: with the gateway owning the suspend (idle predicate covers agent
@@ -168,9 +183,8 @@ def self_suspend_available(environ: Optional[dict] = None) -> bool:
     """Whether this process can suspend its own machine via the flaps socket.
 
     True iff the Fly-injected machine identity is present AND the local Machines
-    API socket exists. Off-Fly (local dev, Azure ACA, tests) this is False and
-    the watcher skips the quiesce entirely: the platform owns the freeze, so
-    the gateway stays connected until it lands.
+    API socket exists. Off-Fly this is False; see ``suspend_available`` for
+    whether some OTHER lever exists before concluding the watcher must abstain.
     """
     env = environ if environ is not None else os.environ
     return bool(
@@ -178,6 +192,86 @@ def self_suspend_available(environ: Optional[dict] = None) -> bool:
         and str(env.get(FLY_MACHINE_ID_ENV, "")).strip()
         and os.path.exists(FLY_API_SOCKET)
     )
+
+
+def brokered_sleep_url(environ: Optional[dict] = None) -> Optional[str]:
+    """The NAS sleep endpoint to POST, or None when this backend has no broker.
+
+    Present only where NAS decided the guest cannot suspend itself, so its
+    presence IS the signal — the gateway never needs to know which backend it is
+    on.
+    """
+    env = environ if environ is not None else os.environ
+    url = str(env.get(SLEEP_URL_ENV, "")).strip()
+    return url or None
+
+
+def suspend_available(environ: Optional[dict] = None) -> bool:
+    """Whether ANY suspend lever exists — in-guest or brokered.
+
+    This is the question the watcher actually has, and getting it wrong is what
+    made Azure lose messages: quiescing with no way to suspend is strictly worse
+    than not quiescing (go_dormant() closes the socket, the supervisor re-dials
+    ~1.4s later, the drain clears the flip, and the destination is unflipped
+    again by the time the platform freeze lands). So the quiesce must be gated on
+    a suspend actually being able to follow it, not on being on Fly.
+    """
+    env = environ if environ is not None else os.environ
+    return self_suspend_available(env) or brokered_sleep_url(env) is not None
+
+
+def request_brokered_suspend(
+    url: str,
+    *,
+    timeout: float = 10.0,
+    opener: Any = None,
+) -> bool:
+    """POST the NAS sleep URL so NAS stops this machine on our behalf.
+
+    The Azure counterpart to ``suspend_self``, and deliberately the same
+    contract: fire-and-forget, never raises, returns True only on a 2xx. A failed
+    suspend leaves the machine running — fail-awake, never fail-frozen — which
+    costs money but loses no work, whereas a freeze we thought had failed would
+    strand a live relay peer.
+
+    The URL carries its own signed credential in the query string (NAS mints it
+    per instance), so there is no header to attach and no token to refresh. Also
+    idempotent NAS-side: a duplicate poke on an already-stopping sandbox is a
+    no-op rather than an error.
+
+    stdlib-only for the same reason as ``suspend_self``: this runs at the very
+    edge of the process's life, and a heavyweight client is one more thing that
+    can hang mid-await while the platform is trying to freeze us.
+    """
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(url, data=b"", method="POST")
+    request.add_header("Content-Length", "0")
+    open_url = opener or urllib.request.urlopen
+    try:
+        with open_url(request, timeout=timeout) as response:
+            status = int(getattr(response, "status", 0) or 0)
+    except urllib.error.HTTPError as exc:
+        # 409 is terminal (NAS says this instance can never sleep — not opted in,
+        # or gone); 429/503 are "ask again shortly". Neither is retried here: the
+        # watcher re-runs on its own interval, and the re-arm cooldown below keeps
+        # a refusal from becoming a hot loop.
+        logger.warning(
+            "scale-to-zero: brokered suspend rejected: %s %s",
+            exc.code,
+            exc.reason,
+        )
+        return False
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        logger.warning("scale-to-zero: brokered suspend request failed: %s", exc)
+        return False
+    ok = 200 <= status < 300
+    if ok:
+        logger.info("scale-to-zero: machine suspend accepted by NAS (%s)", status)
+    else:
+        logger.warning("scale-to-zero: brokered suspend returned %s", status)
+    return ok
 
 
 def suspend_self(
