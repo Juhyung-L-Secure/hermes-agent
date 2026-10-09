@@ -8,8 +8,6 @@ include:
     project_directory: .
   - path: services/firewall.yaml
     project_directory: .
-  - path: services/browser-firewall.yaml
-    project_directory: .
 networks:
   restricted:
     internal: true

@@ -104,6 +104,8 @@ def test_SS_B004_SS_S005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_pat
     run.config, run.compose, run.project = config, ['docker', 'compose'], 'scout-bound-test'
     run.run, run.container, run.endpoint, run.lock = 'b' * 32, 'a' * 64, endpoint, None
     monkeypatch.setattr(run, 'inspect_owned', lambda: {'State': {'Running': True}})
+    assert run.scout_environment() == {'SCOUT_BROWSER_RUN': run.run,
+                                      'SCOUT_BROWSER_CONTAINER': run.container, 'BROWSER_CDP_URL': endpoint}
     calls = []
     def checked(command, timeout=60):
         calls.append((command, timeout))

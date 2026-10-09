@@ -114,7 +114,7 @@ async def serve_client(reader, writer, settings, network):
     upstream = None
     tasks = []
     try:
-        if writer.get_extra_info("peername")[0] not in {network["scout_address"], network["browser_address"]}:
+        if writer.get_extra_info("peername")[0] != network["browser_address"]:
             raise Denied("client_denied")
         header = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), settings["idle_timeout"])
         method, host, port, outgoing = parse_request(header)

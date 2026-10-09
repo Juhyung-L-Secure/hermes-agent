@@ -40,13 +40,18 @@ def validate_topology(model, config):
     """Reject disagreement between Docker addresses and image-owned network settings."""
     network = config["scout_network"]
     services = model["services"]
+    if set(services) != {"scout", "browser", "firewall", "proxy"}:
+        raise ValueError("Scout network configuration mismatch.")
     if model["networks"]["restricted"]["ipam"]["config"] != [{"subnet": network["subnet"]}]:
         raise ValueError("Scout network configuration mismatch.")
-    for service, key in (("proxy", "proxy_address"), ("firewall", "scout_address"), ("browser-firewall", "browser_address")):
+    for service, key in (("proxy", "proxy_address"), ("scout", "scout_address"), ("firewall", "browser_address")):
         if services[service]["networks"]["restricted"]["ipv4_address"] != network[key]:
             raise ValueError("Scout network configuration mismatch.")
-    for service, namespace in (("scout", "firewall"), ("browser", "browser-firewall")):
-        if services[service]["network_mode"] != "service:" + namespace:
+    if services["browser"]["network_mode"] != "service:firewall":
+        raise ValueError("Scout network configuration mismatch.")
+    for service, networks in (("scout", {"restricted", "outbound"}),
+                              ("proxy", {"restricted", "outbound"}), ("firewall", {"restricted"})):
+        if "network_mode" in services[service] or set(services[service]["networks"]) != networks:
             raise ValueError("Scout network configuration mismatch.")
 
 
@@ -71,9 +76,9 @@ class BrowserRun:
         self.lock = None
 
     def start_helpers(self):
-        """Install both namespace policies before creating any browser/application."""
-        checked(self.compose + ["up", "-d", "--wait", "firewall", "browser-firewall"])
-        for service in ("proxy", "firewall", "browser-firewall"):
+        """Install browser policy and start its proxy before creating the browser."""
+        checked(self.compose + ["up", "-d", "--wait", "firewall"])
+        for service in ("proxy", "firewall"):
             actual = checked(self.compose + ["exec", "-T", service, "python3", "-c",
                 "from security.settings import load_settings, settings_digest; print(settings_digest(load_settings()))"])
             if actual != settings.settings_digest(self.config):
@@ -145,11 +150,8 @@ class BrowserRun:
         """Provide native CDP override only after binding this run to its owned browser."""
         if not self.inspect_owned()["State"]["Running"] or self.endpoint is None:
             raise RuntimeError("Browser control unavailable.")
-        network = self.config["scout_network"]
         return {"SCOUT_BROWSER_RUN": self.run, "SCOUT_BROWSER_CONTAINER": self.container,
-                "BROWSER_CDP_URL": self.endpoint, "NO_PROXY": network["browser_address"],
-                "HTTP_PROXY": f"http://{network['proxy_address']}:{network['proxy_port']}",
-                "HTTPS_PROXY": f"http://{network['proxy_address']}:{network['proxy_port']}"}
+                "BROWSER_CDP_URL": self.endpoint}
 
     def smoke(self, url):
         """Run only the deterministic bounded Scout navigation/observation entrypoint."""

@@ -107,7 +107,15 @@ def test_SS_S003_partial_native_log_open_failure_still_sanitizes(tmp_path):
 
 
 def test_SS_S003_proxy_firewall_events_persist_after_replacement(scout_stack):
-    scout_stack.probe(r"""
+    code = """
+        import json
+        from pathlib import Path
+        directory = Path('/var/log/scout')
+        names = ('proxy.log', 'firewall.log') + tuple(p.name for p in directory.glob('browser-firewall.log*'))
+        print(json.dumps({name: (directory / name).read_text() for name in names}))
+    """
+    prior = json.loads(scout_stack.exec_proxy(code))
+    scout_stack.exec_firewall(r"""
         import socket
         for request in (b'GET http://127.0.0.1/secret-url-poison HTTP/1.1\r\nHost: x\r\nCookie: secret-cookie-poison\r\n\r\n',
                         b'CONNECT 127.0.0.1:9222 HTTP/1.1\r\nHost: x\r\n\r\n'):
@@ -124,21 +132,15 @@ def test_SS_S003_proxy_firewall_events_persist_after_replacement(scout_stack):
         else:
             raise AssertionError('Unexpected loopback exception')
     """)
-    code = """
-        import json
-        from pathlib import Path
-        print(json.dumps({name: (Path('/var/log/scout') / name).read_text()
-                          for name in ('proxy.log', 'firewall.log', 'browser-firewall.log')}))
-    """
     before = json.loads(scout_stack.exec_proxy(code))
-    assert 'event=private_destination' in before['proxy.log']
-    assert 'event=destination_port' in before['proxy.log']
-    assert 'event=denied_ipv4' in before['firewall.log']
+    assert 'event=private_destination' in before['proxy.log'][len(prior['proxy.log']):]
+    assert 'event=destination_port' in before['proxy.log'][len(prior['proxy.log']):]
+    assert 'signal_scout.firewall event=denied_ipv4' in before['firewall.log'][len(prior['firewall.log']):]
     assert 'poison' not in str(before)
-    scout_stack.compose('up', '-d', '--force-recreate', '--wait', 'firewall', 'browser-firewall', 'proxy')
+    scout_stack.compose('up', '-d', '--force-recreate', '--wait', 'firewall', 'proxy')
     after = json.loads(scout_stack.exec_proxy(code))
     assert all(after[name].startswith(value) for name, value in before.items())
-    for service in ('proxy', 'firewall', 'browser-firewall'):
+    for service in ('proxy', 'firewall'):
         identity = scout_stack.compose('ps', '-q', service)
         info = json.loads(subprocess.check_output(['docker', 'inspect', identity]))[0]
         assert any(mount['Name'] == 'signal-scout-bootstrap_scout-logs'
@@ -165,7 +167,7 @@ def test_SS_S003_scout_attached_output_is_not_retained_in_docker_logs(scout_stac
 
 
 def test_SS_S003_helper_rotation_uses_supplied_file_limits(scout_stack):
-    for component in ('proxy', 'firewall', 'browser-firewall'):
+    for component in ('proxy', 'firewall'):
         result = json.loads(scout_stack.exec_proxy(f"""
             import json, logging, yaml
             from pathlib import Path
@@ -207,7 +209,7 @@ def test_SS_S003_proxy_write_failure_does_not_disable_public_access_or_private_d
     scout_stack.exec_proxy(prepare)
     try:
         scout_stack.compose('up', '-d', '--force-recreate', '--wait', 'proxy')
-        scout_stack.probe(r"""
+        scout_stack.exec_firewall(r"""
             import socket, ssl
             for host in ('127.0.0.1', 'example.com'):
                 with socket.create_connection(('172.30.242.2', 3128), timeout=10) as connection:

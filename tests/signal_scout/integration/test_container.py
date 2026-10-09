@@ -41,7 +41,11 @@ def test_SS_B002_container_identity_mounts_resources_and_native_status():
         assert host["Memory"] == host["MemorySwap"] == 1024 ** 3
         assert host["NanoCpus"] == 10 ** 9 and host["PidsLimit"] == 512
         assert host["LogConfig"]["Type"] == "none"
-        assert not host["PortBindings"] and host["NetworkMode"].startswith("container:")
+        assert not host["PortBindings"] and not host["NetworkMode"].startswith("container:")
+        assert set(info["NetworkSettings"]["Networks"]) == {
+            "signal-scout-bootstrap_restricted", "signal-scout-bootstrap_outbound",
+        }
+        assert info["NetworkSettings"]["Networks"]["signal-scout-bootstrap_restricted"]["IPAddress"] == "172.30.242.3"
         volumes = [m for m in info["Mounts"] if m["Type"] == "volume"]
         assert {(m["Name"], m["Destination"]) for m in volumes} == {
             ("signal-scout-bootstrap_scout-auth", "/var/lib/scout"),
@@ -74,7 +78,34 @@ def test_SS_B002_container_identity_mounts_resources_and_native_status():
     """)
 
 
-def test_SS_B002_direct_egress_host_lan_ipv6_and_dns_are_blocked():
+def test_SS_B002_hermes_direct_network_and_bootstrap_environment():
+    with socket.socket() as server:
+        server.bind(("172.30.242.1", 0))
+        server.listen()
+        output = probe(f"""
+            import os, runpy, socket, sys
+            import httpx
+            assert not any(key in os.environ for key in ('HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+                                                         'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy'))
+            with socket.create_connection(('172.30.242.1', {server.getsockname()[1]}), timeout=2):
+                pass
+            assert socket.getaddrinfo('example.com', 443, type=socket.SOCK_STREAM)
+            assert httpx.get('https://example.com/', trust_env=False, timeout=15).status_code == 200
+            # Observe real bootstrap setup without reading auth or invoking a model.
+            sys.path.insert(0, '/opt/hermes/plugins/signal-scout')
+            bootstrap = runpy.run_path('/opt/hermes/plugins/signal-scout/bootstrap.py')
+            bootstrap['main'].__globals__['status'] = lambda: {{'proxy_variables': [key for key in os.environ
+                if key.lower() in ('http_proxy', 'https_proxy', 'all_proxy', 'no_proxy')]}}
+            sys.argv = ['signal-scout', 'status']
+            bootstrap['main']()
+        """)
+        server.settimeout(2)
+        connection, _ = server.accept()
+        connection.close()
+    assert json.loads(output) == {'proxy_variables': []}
+
+
+def test_SS_B002_browser_direct_egress_host_lan_ipv6_and_dns_are_blocked(scout_stack):
     # A real listener distinguishes firewall denial from a closed host port.
     with socket.socket() as server:
         server.bind(("172.30.242.1", 0))
@@ -83,9 +114,11 @@ def test_SS_B002_direct_egress_host_lan_ipv6_and_dns_are_blocked():
         with socket.create_connection(server.getsockname(), timeout=1):
             conn, _ = server.accept()
             conn.close()
-        probe(f"""
+        probe(f"import socket; socket.create_connection(('172.30.242.1',{port}),timeout=2).close(); socket.create_connection(('1.1.1.1',443),timeout=5).close()")
+        connection, _ = server.accept()
+        connection.close()
+        scout_stack.exec_firewall(f"""
             import socket
-            import httpx
             targets = [('172.30.242.1', {port}), ('172.17.0.1', 80),
                        ('192.168.1.1', 80), ('169.254.169.254', 80),
                        ('1.1.1.1', 443), ('127.0.0.1', 80), ('::1', 80),
@@ -107,22 +140,17 @@ def test_SS_B002_direct_egress_host_lan_ipv6_and_dns_are_blocked():
                         pass
                     else:
                         raise AssertionError('DNS proxy bypass: ' + resolver)
-            try:
-                httpx.get('https://1.1.1.1', trust_env=False, timeout=0.5)
-            except httpx.TransportError:
-                pass
-            else:
-                raise AssertionError('Proxy environment bypass succeeded')
         """)
         server.settimeout(0.2)
         with pytest.raises(TimeoutError):
             server.accept()
 
 
-def test_SS_B002_proxy_denies_private_hosts_ports_and_protocols():
-    probe("""
-        import importlib, socket, ssl
-        config = importlib.import_module('plugins.signal-scout.security.settings').load_settings()
+def test_SS_B002_proxy_denies_private_hosts_ports_and_protocols(scout_stack):
+    scout_stack.exec_firewall("""
+        import socket
+        from security.settings import load_settings
+        config = load_settings()
         # DNS denial can consume its full allowance; leave 2s for reset delivery/scheduling.
         response_timeout = config['scout_proxy']['dns_timeout'] + 2
         proxy = ('172.30.242.2', 3128)
@@ -149,14 +177,32 @@ def test_SS_B002_proxy_denies_private_hosts_ports_and_protocols():
     """)
 
 
-def test_SS_B002_allowed_endpoints_keep_verified_tls():
+def test_SS_B002_proxy_accepts_browser_only(scout_stack):
+    probe(r"""
+        import socket
+        with socket.create_connection(('172.30.242.2',3128),timeout=2) as client:
+            client.sendall(b'GET http://example.com/ HTTP/1.1\r\nHost: example.com\r\n\r\n')
+            try:
+                assert client.recv(4096) == b''
+            except ConnectionResetError:
+                pass
+    """)
+    scout_stack.exec_firewall(r"""
+        import socket, ssl
+        with socket.create_connection(('172.30.242.2',3128),timeout=15) as client:
+            client.sendall(b'CONNECT example.com:443 HTTP/1.1\r\nHost: example.com:443\r\n\r\n')
+            assert b' 200 ' in client.recv(4096).split(b'\r\n',1)[0]
+            with ssl.create_default_context().wrap_socket(client,server_hostname='example.com') as tls:
+                assert tls.getpeercert()
+    """)
+
+
+def test_SS_B002_hermes_direct_endpoints_keep_verified_tls():
     # No login or model generation here: two verified TLS handshakes.
     probe("""
         import socket, ssl
         for host in ['auth.openai.com', 'chatgpt.com']:
-            with socket.create_connection(('172.30.242.2', 3128), timeout=15) as sock:
-                sock.sendall(f'CONNECT {host}:443 HTTP/1.1\\r\\nHost: {host}:443\\r\\n\\r\\n'.encode())
-                assert b' 200 ' in sock.recv(4096).split(b'\\r\\n', 1)[0]
+            with socket.create_connection((host, 443), timeout=15) as sock:
                 with ssl.create_default_context().wrap_socket(sock, server_hostname=host) as tls:
                     assert tls.getpeercert()
     """)

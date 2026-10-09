@@ -168,14 +168,12 @@ print('terminal; discovery healthy', flush=True)
                 selector.register(process.stdout, selectors.EVENT_READ)
                 assert selector.select(timeout=30), 'Driver fixture did not become ready'
                 port = int(process.stdout.readline())
-            # Permit only kernel-injected reverse RST through default-deny rules;
-            # original action tuple is rejected. All fixture rules are removed.
+            # Reset exact incoming driver tuple in browser namespace; permit
+            # reverse RST through browser default-deny. Hermes has no firewall.
             for rule in [
-                ['INPUT', '-s', '172.30.242.4', '-d', '172.30.242.3', '-p', 'tcp', '--sport', '9223',
-                 '--dport', str(port), '--tcp-flags', 'RST', 'RST', '-j', 'ACCEPT'],
                 ['OUTPUT', '-s', '172.30.242.4', '-d', '172.30.242.3', '-p', 'tcp', '--sport', '9223',
                  '--dport', str(port), '--tcp-flags', 'RST', 'RST', '-j', 'ACCEPT'],
-                ['OUTPUT', '-s', '172.30.242.3', '-d', '172.30.242.4', '-p', 'tcp',
+                ['INPUT', '-s', '172.30.242.3', '-d', '172.30.242.4', '-p', 'tcp',
                  '--sport', str(port), '--dport', '9223', '-j', 'REJECT', '--reject-with', 'tcp-reset'],
             ]:
                 scout_stack.compose('exec', '-T', '-u', '0', 'firewall', 'iptables', '-I', *rule)

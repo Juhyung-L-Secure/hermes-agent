@@ -18,10 +18,10 @@ services:
     restart: "no"
     logging:
       driver: none
-    network_mode: service:firewall
+    networks:
+      restricted:
+        ipv4_address: 172.30.242.3
+      outbound: {}
     volumes:
       - scout-auth:/var/lib/scout
       - scout-logs:/var/lib/scout/logs
-    depends_on:
-      firewall:
-        condition: service_healthy

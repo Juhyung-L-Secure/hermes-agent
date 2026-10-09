@@ -108,10 +108,6 @@ def main():
     from security.runtime_logging import configure_logging, event
 
     config = load_settings()
-    network = config["scout_network"]
-    os.environ["HTTP_PROXY"] = os.environ["HTTPS_PROXY"] = f"http://{network['proxy_address']}:{network['proxy_port']}"
-    # Native supervisor honors NO_PROXY; only the owned control IP bypasses HTTP proxy.
-    os.environ["NO_PROXY"] = network["browser_address"]
     configure_logging("scout", config)
     event("scout", "started")
     # SIGALRM's default action terminates even a stalled provider/network call.

@@ -18,11 +18,11 @@ services:
     image: signal-scout-bootstrap-network:local
     user: "0:0"
     cap_add: [NET_ADMIN, SETUID, SETGID, SETPCAP]
-    command: [/usr/local/bin/scout-firewall, firewall]
+    command: [/usr/local/bin/scout-firewall]
     volumes: [scout-logs:/var/log/scout]
     networks:
       restricted:
-        ipv4_address: 172.30.242.3
+        ipv4_address: 172.30.242.4
     depends_on:
       proxy:
         condition: service_healthy

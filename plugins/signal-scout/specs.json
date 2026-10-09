@@ -42,7 +42,7 @@
       "id": "SS-B002",
       "subfeature": "bootstrap",
       "title": "Isolated Docker bootstrap",
-      "contract": "Bounded non-root Scout container has read-only root, no capabilities, no host mounts or published ports, and dedicated auth/log storage. Chromium runs in separate disposable browser container with no Hermes runtime or credential/persistent mounts, owned by trusted host lifecycle. Separate namespace firewalls allow proxy access/replies, Hermes-to-browser private relay, and narrow browser-local launcher/relay-to-Chromium CDP control only. Direct/bypass IPv4/IPv6, host/LAN and DNS traffic fail. Proxy admits only configured Hermes/browser source addresses and public HTTP:80 or opaque HTTPS CONNECT:443, rejecting private destinations, unsupported schemes, embedded credentials, DNS failures and other ports. TLS remains verified end-to-end without decryption. SS-019 owns redirects/rebinding/background behavior; SS-S002 owns control isolation; SS-S004/S005 own container/lifetime boundary. No mission/research security completion.",
+      "contract": "Exactly four Compose services remain: scout, browser, firewall and proxy. Bounded non-root Scout container has read-only root, no capabilities, no host mounts or published ports, and dedicated auth/log storage. Hermes has its own network namespace with direct outbound and DNS connectivity, no Scout-specific firewall or proxy environment configuration, and no Scout-enforced host/LAN isolation. Chromium runs in separate disposable browser container with no Hermes runtime or credential/persistent mounts, owned by trusted host lifecycle. Browser shares only firewall's network namespace; proxy has its own. Browser firewall permits proxy/replies, Hermes-to-browser private relay, and narrow browser-local launcher/relay-to-Chromium CDP control only. Browser direct/bypass IPv4/IPv6, host/LAN and DNS traffic fail. Proxy admits only configured browser source address and public HTTP:80 or opaque HTTPS CONNECT:443, rejecting Hermes/other clients, private destinations, unsupported schemes, embedded credentials, DNS failures and other ports. TLS remains verified end-to-end without decryption. SS-019 owns redirects/rebinding/background behavior; SS-S002 owns control isolation; SS-S004/S005 own container/lifetime boundary. No mission/research security completion.",
       "requiredCoverage": [
         "e2e"
       ],
@@ -55,7 +55,12 @@
         {
           "layer": "e2e",
           "file": "tests/signal_scout/integration/test_container.py",
-          "test": "test_SS_B002_direct_egress_host_lan_ipv6_and_dns_are_blocked"
+          "test": "test_SS_B002_hermes_direct_network_and_bootstrap_environment"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_container.py",
+          "test": "test_SS_B002_browser_direct_egress_host_lan_ipv6_and_dns_are_blocked"
         },
         {
           "layer": "e2e",
@@ -65,7 +70,12 @@
         {
           "layer": "e2e",
           "file": "tests/signal_scout/integration/test_container.py",
-          "test": "test_SS_B002_allowed_endpoints_keep_verified_tls"
+          "test": "test_SS_B002_hermes_direct_endpoints_keep_verified_tls"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_container.py",
+          "test": "test_SS_B002_proxy_accepts_browser_only"
         }
       ],
       "otherCoverage": [],

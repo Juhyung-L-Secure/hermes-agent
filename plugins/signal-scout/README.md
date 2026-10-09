@@ -32,6 +32,9 @@ status call, a matching native tool result, and a completed explanation. No
 model or billing substitution is permitted.
 
 Startup and security limits: [Docker README](../../docker/signal-scout/README.md).
+Hermes connects directly in its own namespace, without Scout-specific firewall
+or proxy settings. Browser alone shares `firewall`'s namespace and uses the
+browser-only proxy. Four services remain: `scout`, `browser`, `firewall`, `proxy`.
 The manifest version and returned version stay linked. The model and reasoning
 in `bootstrap.py` and the image config must agree.
 

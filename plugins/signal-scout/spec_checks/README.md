@@ -19,7 +19,7 @@ From the repository root, after installing the existing dev dependencies:
 .venv/bin/python plugins/signal-scout/spec_checks/check.py
 .venv/bin/python plugins/signal-scout/spec_checks/check.py --require SS-B001 --require SS-B002
 .venv/bin/python plugins/signal-scout/spec_checks/check.py --require SS-B003
-scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0
+HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0
 ```
 
 The first command reports every gap; planned gaps alone do not fail it. Every
@@ -31,13 +31,13 @@ checkout or controlled fixture with the same Scout layout.
 
 The normal Scout test command includes a repository validator test. Its
 `REQUIRED_IDS` tuple explicitly selects SS-B001, SS-B002, SS-C001–SS-C006,
-SS-019, SS-B004, and SS-S001–SS-S003;
+SS-019, SS-B004, and SS-S001–SS-S005;
 add an ID there when its complete contract becomes a required automated gate.
 Run that file alone for validator development:
 
 ```bash
 scripts/run_tests.sh tests/signal_scout/spec_checks -q --file-retries 0
-.venv/bin/python plugins/signal-scout/spec_checks/check.py --json --require SS-B001 --require SS-B002 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006 --require SS-019 --require SS-B004 --require SS-S001 --require SS-S002 --require SS-S003
+.venv/bin/python plugins/signal-scout/spec_checks/check.py --json --require SS-B001 --require SS-B002 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006 --require SS-019 --require SS-B004 --require SS-S001 --require SS-S002 --require SS-S003 --require SS-S004 --require SS-S005
 ```
 
 The full Scout run also executes the existing non-generating Docker tests.

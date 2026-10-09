@@ -93,9 +93,15 @@ def test_SS_S005_wrong_container_and_run_ownership_reject_cleanup(monkeypatch):
 
 def test_SS_S004_SS_B004_topology_mismatch_is_rejected():
     run = lifecycle.BrowserRun()
-    for service in ('proxy', 'firewall', 'browser-firewall'):
+    assert set(run.model['services']) == {'scout', 'browser', 'firewall', 'proxy'}
+    for service in ('proxy', 'scout', 'firewall'):
         model = copy.deepcopy(run.model)
         model['services'][service]['networks']['restricted']['ipv4_address'] = '172.30.242.5'
+        with pytest.raises(ValueError, match='Scout network configuration mismatch'):
+            lifecycle.validate_topology(model, run.config)
+    for service in ('scout', 'browser', 'firewall', 'proxy'):
+        model = copy.deepcopy(run.model)
+        model['services'][service]['network_mode'] = 'service:proxy'
         with pytest.raises(ValueError, match='Scout network configuration mismatch'):
             lifecycle.validate_topology(model, run.config)
 
@@ -132,11 +138,16 @@ state = dict(line.split(':',1) for line in Path('/proc/self/status').read_text()
 assert state['NoNewPrivs'].strip() == '1'
 assert all(int(state[key].strip(),16) == 0 for key in ('CapEff','CapBnd','CapPrm','CapAmb'))
 """)
-            for service in ('proxy', 'firewall', 'browser-firewall'):
+            helper_namespaces = {}
+            for service in ('proxy', 'firewall'):
                 helper = json.loads(docker('inspect', scout_stack.compose('ps', '-q', service)))[0]
                 assert helper['HostConfig']['Memory'] == helper['HostConfig']['MemorySwap'] == 256 * 1024**2
                 assert helper['HostConfig']['NanoCpus'] == 500_000_000
+                helper_namespaces[service] = json.loads(scout_stack.compose('exec', '-T', service, 'python3', '-c', namespaces))
                 scout_stack.compose('exec', '-T', service, 'python3', '-c', "from pathlib import Path; s=dict(x.split(':',1) for x in Path('/proc/1/status').read_text().splitlines()); assert s['Uid'].split()[0]=='10000'; assert all(int(s[k].strip(),16)==0 for k in ('CapEff','CapBnd','CapPrm','CapAmb'))")
+            assert right['net'] == helper_namespaces['firewall']['net']
+            assert len({left['net'], right['net'], helper_namespaces['proxy']['net']}) == 3
+            assert all(right[key] != helper_namespaces['firewall'][key] for key in ('pid', 'mnt'))
     finally:
         docker('stop', '-t', '1', scout)
 
@@ -155,7 +166,6 @@ with socket.socket() as listener:
         connection.sendall(b'fixture'); connection.close()
 """
     scout = scout_stack.compose('run', '--rm', '--no-deps', '-d', '--entrypoint', 'python', 'scout', '-c', code)
-    rules = []
     try:
         for _ in range(50):
             if docker('exec', scout, 'python', '-c', "from pathlib import Path; print(Path('/tmp/fixture-ready').exists())") == 'True':
@@ -163,15 +173,10 @@ with socket.socket() as listener:
             time.sleep(0.1)
         else:
             pytest.fail('Hermes fixture did not start')
-        # Only same-address fixture traffic gets a test positive-control rule.
-        # Browser namespace/source remains denied by both runtime firewalls.
-        for chain in ('INPUT', 'OUTPUT'):
-            for port in ('--dport', '--sport'):
-                rule = [chain, '-s', '172.30.242.3', '-d', '172.30.242.3', '-p', 'tcp', port, '18080', '-j', 'ACCEPT']
-                scout_stack.compose('exec', '-T', '-u', '0', 'firewall', 'iptables', '-I', *rule)
-                rules.append(rule)
+        # Hermes has direct networking; reachable listener proves browser denial.
         positive = "import socket; s=socket.create_connection(('172.30.242.3',18080),timeout=2); assert s.recv(32)==b'fixture'; s.close()"
         docker('exec', scout, 'python', '-c', positive)
+        scout_stack.exec_proxy(positive)
         with scout_stack.browser_run() as run:
             docker('exec', run.container, 'python3', '-c', f"""
 import socket
@@ -184,7 +189,8 @@ except OSError:
 else:
     raise AssertionError('Browser reached Hermes listener')
 """)
-            scout_stack.browser_probe(IMPORT + f"""
+            env = [value for key, setting in run.scout_environment().items() for value in ('-e', key + '=' + setting)]
+            docker('exec', *env, scout, 'python', '-c', IMPORT + f"""
 with Browser() as browser:
     try:
         browser.command('open', 'file://{fixture}')
@@ -192,11 +198,10 @@ with Browser() as browser:
         pass
     else:
         assert 'harmless-isolation-fixture' not in browser.command('eval','document.body.innerText')['result']
-""", run=run)
+""")
             docker('exec', scout, 'python', '-c', positive)
+            scout_stack.exec_proxy(positive)
     finally:
-        for rule in reversed(rules):
-            scout_stack.compose('exec', '-T', '-u', '0', 'firewall', 'iptables', '-D', *rule)
         docker('exec', scout, 'python', '-c', f"from pathlib import Path; Path({fixture!r}).unlink(missing_ok=True)")
         docker('stop', '-t', '1', scout)
 
@@ -347,7 +352,7 @@ with Browser() as browser:
 
 
 def test_SS_S005_unavailable_relay_cleans_new_child_only(scout_stack):
-    scout_stack.compose('exec', '-T', '-d', '-u', '10000', 'browser-firewall', 'python3', '-c', """
+    scout_stack.compose('exec', '-T', '-d', '-u', '10000', 'firewall', 'python3', '-c', """
 import os,socket,time
 from pathlib import Path
 with socket.socket() as fixture:
@@ -358,7 +363,7 @@ with socket.socket() as fixture:
 """)
     try:
         for _ in range(50):
-            if scout_stack.compose('exec', '-T', 'browser-firewall', 'python3', '-c', "from pathlib import Path; print(Path('/tmp/relay-fixture.pid').exists())") == 'True':
+            if scout_stack.compose('exec', '-T', 'firewall', 'python3', '-c', "from pathlib import Path; print(Path('/tmp/relay-fixture.pid').exists())") == 'True':
                 break
             time.sleep(0.1)
         else:
@@ -370,7 +375,7 @@ with socket.socket() as fixture:
         assert run.container is None
         scout_stack.probe("import socket; s=socket.create_connection(('172.30.242.4',9223),timeout=2); s.close()")
     finally:
-        scout_stack.compose('exec', '-T', '-u', '10000', 'browser-firewall', 'python3', '-c', "import os,signal; from pathlib import Path; p=Path('/tmp/relay-fixture.pid'); os.kill(int(p.read_text()),signal.SIGTERM); p.unlink()")
+        scout_stack.compose('exec', '-T', '-u', '10000', 'firewall', 'python3', '-c', "import os,signal; from pathlib import Path; p=Path('/tmp/relay-fixture.pid'); os.kill(int(p.read_text()),signal.SIGTERM); p.unlink()")
 
 
 def test_SS_S004_SS_B004_changed_compose_limits_reach_real_containers(scout_stack, tmp_path):
@@ -378,14 +383,14 @@ def test_SS_S004_SS_B004_changed_compose_limits_reach_real_containers(scout_stac
     override.write_text(yaml.safe_dump({'services': {
         'browser': {'mem_limit': 1_800_000_000, 'memswap_limit': 1_800_000_000, 'pids_limit': 480},
         'scout': {'mem_limit': '900m', 'memswap_limit': '900m', 'cpus': 0.75},
-        'browser-firewall': {'mem_limit': '200m', 'memswap_limit': '200m', 'cpus': 0.25},
+        'firewall': {'mem_limit': '200m', 'memswap_limit': '200m', 'cpus': 0.25},
     }}))
     try:
         with scout_stack.browser_run(compose_files=(lifecycle.COMPOSE, override)) as run:
             info = run.inspect_owned()['HostConfig']
             assert info['Memory'] == info['MemorySwap'] == 1_800_000_000
             assert info['PidsLimit'] == 480 and info['NanoCpus'] == 0
-            helper = json.loads(docker('inspect', scout_stack.compose('ps', '-q', 'browser-firewall')))[0]['HostConfig']
+            helper = json.loads(docker('inspect', scout_stack.compose('ps', '-q', 'firewall')))[0]['HostConfig']
             assert helper['Memory'] == helper['MemorySwap'] == 200 * 1024**2
             assert helper['NanoCpus'] == 250_000_000
             scout = lifecycle.checked(run.compose + ['run', '--rm', '--no-deps', '-d', '--entrypoint', 'sleep', 'scout', '30'])

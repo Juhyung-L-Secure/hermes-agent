@@ -2,7 +2,10 @@
 
 Protection-only deterministic harness. Model receives only
 `signal_scout({"action":"status"})`; no browser or JavaScript model tool.
-[Approved isolation brief](browser-container-isolation-brief.md) owns this slice.
+[Original isolation brief](browser-container-isolation-brief.md) records the earlier slice.
+Its Hermes-firewall/proxy requirements and older checkpoint evidence are
+superseded by current browser-only network contracts in `specs.json` and the
+[Docker guide](../../../docker/signal-scout/README.md); historical records remain unchanged.
 [Action review plan](browser-action-review-plan.md) also records future proposals;
 reviewer pipeline, download denial, and mission control remain unimplemented.
 
@@ -10,7 +13,7 @@ reviewer pipeline, download denial, and mission control remain unimplemented.
 | --- | --- |
 | `urls.py` | HTTP(S) syntax and no embedded credentials; no DNS/IP policy |
 | `network_proxy.py` | Approved clients, fresh DNS, every-answer classification, numeric connect, actual-peer check |
-| `firewall.py` | Separate Hermes/browser namespace default-deny rules and payload-free NFLOG |
+| `firewall.py` | Browser namespace default-deny rules and payload-free NFLOG |
 | `chromium.py` | One owned child, temporary profile, listener-inode proof, fixed-destination relay |
 | `control.py` | Strict owned endpoint shape and non-redirecting discovery |
 | `browser.py` | Existing native Hermes remote-CDP path and actual sandbox attestation |
@@ -57,9 +60,13 @@ bounded Docker-command allowance, including supported grace values above 60s.
 Config owns addresses/ports: proxy `.2:3128`, Hermes `.3`, browser `.4` on
 `172.30.242.0/29`; host helper checks Compose agrees. Hermes can reach private
 browser relay `.4:9223`; browser launcher/relay can reach only loopback CDP
-`127.0.0.1:9222`. Both applications can reach proxy, whose client allowlist is
-exactly `.3` and `.4`, not subnet. Necessary replies are allowed; remaining
-IPv4/IPv6 and direct DNS are denied. Nothing is host-published.
+`127.0.0.1:9222`. Four services are `scout`, `browser`, `firewall`, and `proxy`.
+Hermes owns its namespace with restricted `.3` and outbound networks, direct
+outbound/DNS connectivity, and no Scout-specific firewall or proxy configuration.
+No Hermes host/LAN isolation is claimed. Browser shares firewall's network
+namespace at `.4`; proxy owns its namespace and admits exactly browser `.4`.
+Browser necessary replies are allowed; remaining browser IPv4/IPv6 and direct
+DNS are denied. Nothing is host-published.
 
 Source-IP and network checks are not cryptographic authentication. Trusted code
 in authorized namespaces can reach control. Containers do not guarantee safety
@@ -93,11 +100,13 @@ must inspect ownership and perform deliberate cleanup before another run.
 
 Logging retains timestamp, level, component, event class only; no URL, raw
 browser/CDP result, screenshot, cookie, credential or unsanitized exception.
-Hermes sanitized events reuse native logging. Proxy, Hermes firewall and
-browser firewall use separate files in existing log volume; history retained.
+Hermes sanitized events reuse native logging. Proxy and browser firewall use
+`proxy.log` and `firewall.log` in existing log volume. Renamed firewall appends
+to `firewall.log`, which can retain older Hermes-firewall events. Historical
+`browser-firewall.log` and backups remain untouched, with no migration or wiping.
 Scout/browser Docker log driver is `none`; helper diagnostics stay bounded.
 Native temporary command files are not persistent logs. Default rotation is
-5 MiB/three backups; validated settings apply to both firewall writers.
+5 MiB/three backups; validated settings apply to the single firewall writer.
 Failed opens/writes/rollovers attempt fixed diagnostics without changing
 enforcement. No delivery acknowledgment, tamper-proof or disaster guarantee.
 

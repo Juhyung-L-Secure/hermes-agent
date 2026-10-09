@@ -33,6 +33,10 @@ class ScoutStack:
     def exec_proxy(self, code):
         return self.compose("exec", "-T", "proxy", "python3", "-c", textwrap.dedent(code))
 
+    def exec_firewall(self, code):
+        """Probe browser's network policy as the unprivileged application identity."""
+        return self.compose("exec", "-T", "-u", "10000:10000", "firewall", "python3", "-c", textwrap.dedent(code))
+
     def browser_run(self, **kwargs):
         """Use production ownership/start/stop implementation in every browser fixture."""
         kwargs.setdefault('compose_files', self.browser_compose_files)
@@ -58,6 +62,6 @@ def scout_stack():
             lifecycle.BrowserRun().start_helpers()
             yield stack
         finally:
-            stop = [name for name in ("firewall", "browser-firewall", "proxy") if name not in running]
+            stop = [name for name in ("firewall", "proxy") if name not in running]
             if stop:
                 stack.compose("stop", "-t", "2", *stop)

@@ -36,8 +36,8 @@ def subscribe():
     return sock
 
 
-def install_rules(network, component):
-    """Permit proxy and fixed CDP control only; log denied packets without payload."""
+def install_rules(network):
+    """Permit browser proxy and owned CDP control; log denials without payload."""
     for binary in ("iptables", "ip6tables"):
         rules = [["-P", chain, "DROP"] for chain in ("INPUT", "FORWARD", "OUTPUT")]
         rules += [["-F", chain] for chain in ("INPUT", "FORWARD", "OUTPUT")]
@@ -51,13 +51,12 @@ def install_rules(network, component):
                        "-p", "tcp", "--dport", str(network["relay_port"])]
             reply = ["-s", network["browser_address"], "-d", network["scout_address"],
                      "-p", "tcp", "--sport", str(network["relay_port"]), "-m", "conntrack", "--ctstate", "ESTABLISHED"]
-            rules += [["-A", "OUTPUT" if component == "firewall" else "INPUT", *forward, "-j", "ACCEPT"],
-                      ["-A", "INPUT" if component == "firewall" else "OUTPUT", *reply, "-j", "ACCEPT"]]
-            if component == "browser-firewall":
-                for chain, interface in (("OUTPUT", "-o"), ("INPUT", "-i")):
-                    local = ["-A", chain, interface, "lo", "-s", "127.0.0.1", "-d", "127.0.0.1", "-p", "tcp"]
-                    rules += [local + ["--dport", str(network["control_port"]), "-j", "ACCEPT"],
-                              local + ["--sport", str(network["control_port"]), "-m", "conntrack", "--ctstate", "ESTABLISHED", "-j", "ACCEPT"]]
+            rules += [["-A", "INPUT", *forward, "-j", "ACCEPT"],
+                      ["-A", "OUTPUT", *reply, "-j", "ACCEPT"]]
+            for chain, interface in (("OUTPUT", "-o"), ("INPUT", "-i")):
+                local = ["-A", chain, interface, "lo", "-s", "127.0.0.1", "-d", "127.0.0.1", "-p", "tcp"]
+                rules += [local + ["--dport", str(network["control_port"]), "-j", "ACCEPT"],
+                          local + ["--sport", str(network["control_port"]), "-m", "conntrack", "--ctstate", "ESTABLISHED", "-j", "ACCEPT"]]
         for chain in ("INPUT", "FORWARD", "OUTPUT"):
             rules += [["-A", chain, "-j", "NFLOG", "--nflog-group", "10", "--nflog-size", "0"],
                       ["-A", chain, "-j", "REJECT"]]
@@ -83,15 +82,14 @@ def main():
     """Start enforcement and best-effort rejection logging in existing helper."""
     os.umask(0o077)
     config = load_settings()
-    if len(sys.argv) != 2 or sys.argv[1] not in {"firewall", "browser-firewall"}:
-        raise ValueError("Invalid firewall component.")
-    component = sys.argv[1]
+    if len(sys.argv) != 1:
+        raise ValueError("Invalid firewall command.")
     sock = subscribe()
-    install_rules(config["scout_network"], component)
+    install_rules(config["scout_network"])
     drop_privileges()
-    configure_logging(component, config)
+    configure_logging("firewall", config)
     Path("/tmp/firewall-ready").touch()
-    event(component, "started")
+    event("firewall", "started")
     while True:
         try:
             packet = sock.recv(65536)
@@ -106,7 +104,7 @@ def main():
             if length < 20 or offset + length > len(packet):
                 break
             if kind == 0x400 and packet[offset + 16] in (socket.AF_INET, socket.AF_INET6):
-                event(component, "denied_ipv4" if packet[offset + 16] == socket.AF_INET else "denied_ipv6", "WARNING")
+                event("firewall", "denied_ipv4" if packet[offset + 16] == socket.AF_INET else "denied_ipv6", "WARNING")
             offset += (length + 3) & ~3
 
 

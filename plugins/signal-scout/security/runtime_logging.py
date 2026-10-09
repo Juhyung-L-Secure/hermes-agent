@@ -11,7 +11,7 @@ EVENTS = frozenset({
     "dns_failed", "private_destination", "peer_mismatch", "destination_port",
     "invalid_request", "client_denied", "denied_ipv4", "denied_ipv6",
 })
-COMPONENTS = {"scout", "proxy", "firewall", "browser-firewall"}
+COMPONENTS = {"scout", "proxy", "firewall"}
 
 
 def diagnostic():

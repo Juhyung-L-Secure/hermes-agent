@@ -1,14 +1,13 @@
 # Signal Scout Docker runtime
 
-Run commands from repository root. Requires Linux Docker Engine, Docker Compose
-with native `include` support, and unused `172.30.242.0/29`. No VPS provisioning.
+Run commands from repository root. Requires Linux Docker Engine, Compose with native `include` support, and unused `172.30.242.0/29`. No VPS provisioning.
 
 | File | Responsibility |
 | --- | --- |
 | `compose.yaml` | Project identity, native includes, shared networks and volumes |
 | `services/scout.yaml` | Hermes/driver container, auth/log mounts, resource limits |
 | `services/browser.yaml` | Disposable Chromium container, sandbox and resource limits |
-| `services/{proxy,firewall,browser-firewall}.yaml` | Restricted helper namespaces and limits |
+| `services/{proxy,firewall}.yaml` | Browser policy, public-web proxy and helper limits |
 | `Dockerfile` / `Dockerfile.dockerignore` | Pinned images, driver/browser archives, source inclusion |
 | `config.yaml` | Shared image-owned application settings and validated topology |
 | `browser_run.py` | Trusted host ownership lock, browser creation, smoke, exact teardown |
@@ -48,7 +47,7 @@ Required link gate (does not execute tests or assess assertions):
 ## Ownership and lifetime
 
 Host helper holds a nonblocking single-run lock, rejects existing browser
-containers, starts healthy proxy/firewalls, and creates one run-labelled browser.
+containers, starts healthy proxy/firewall, and creates one run-labelled browser.
 It captures exact Docker ID, checks project/service/run labels, verifies the
 launcher's newly owned Chromium listener, and passes its checked full WebSocket
 endpoint to Scout. Browser-side readiness checks socket inode ownership and
@@ -96,11 +95,15 @@ deletion. Existing/leftover browser prevents a new run until explicitly resolved
 ## Enforced boundary
 
 `scout (.3) → browser relay (.4:9223) → Chromium loopback (127.0.0.1:9222)`.
-Both application namespaces may reach only public-web proxy `.2:3128` and
-necessary replies; browser also permits narrow local relay/launcher CDP traffic.
-All other IPv4/IPv6 traffic defaults to deny. Browser cannot initiate into Hermes,
-host/LAN, metadata, direct internet, or DNS. Proxy accepts only the two application
-addresses, resolves afresh, rejects every mixed/private answer, pins numeric
+Exactly four services: `scout`, `browser`, `firewall`, `proxy`. Hermes has its own
+namespace, attached to restricted `.3` and outbound networks, with direct outbound
+and DNS connectivity. No Scout-specific Hermes firewall or proxy settings remain;
+Hermes host/LAN isolation is not enforced. Browser shares firewall's network
+namespace at `.4`; proxy has its own namespace at `.2` plus outbound access.
+Browser may reach only public-web proxy `.2:3128` and necessary replies, with
+narrow local relay/launcher CDP traffic. All other browser IPv4/IPv6 traffic
+defaults to deny. Browser cannot initiate into Hermes, host/LAN, metadata, direct
+internet, or DNS. Proxy accepts only browser `.4`, resolves afresh, rejects every mixed/private answer, pins numeric
 connect, and checks actual peer. Only public HTTP:80 and opaque HTTPS:443 pass.
 TLS stays end-to-end verified; no MITM or substitute certificate.
 
@@ -118,8 +121,8 @@ no-new-privileges. Browser keeps namespace/seccomp-BPF sandbox and bounded 64 Mi
 temporary storage. Browser: 2,000,000,000 bytes memory+swap, no CPU quota, 512 PIDs.
 Hermes: 1 GiB memory+swap, 1 CPU, 512 PIDs. Helpers: 256 MiB memory+swap,
 0.5 CPU, 128 PIDs each. Limits are per container, not a total stack ceiling.
-Firewall helpers initially need NET_ADMIN/SETUID/SETGID/SETPCAP, then drop all
-capabilities and run UID 10000; their Docker healthchecks retain startup identity.
+Firewall initially needs NET_ADMIN/SETUID/SETGID/SETPCAP, then drops all
+capabilities and runs UID 10000; its Docker healthcheck retains startup identity.
 
 Pins remain `agent-browser 0.26.0`, Chrome for Testing `153.0.8010.36`,
 verified archives and existing base digests. Browser seccomp derives from
@@ -155,13 +158,15 @@ allowance to configured shutdown grace, so supported grace values are not cut sh
 
 ```bash
 docker compose -f docker/signal-scout/compose.yaml build
-docker compose -f docker/signal-scout/compose.yaml up -d --force-recreate --wait proxy firewall browser-firewall
+docker compose -f docker/signal-scout/compose.yaml up -d --force-recreate --wait proxy firewall
 ```
 
-Persistent log volume contains `agent.log`, `errors.log`, `proxy.log`,
-`firewall.log`, and separate `browser-firewall.log`. Each rotates independently:
-5 MiB/current file and three backups by default. No shared rotating filename
-between firewall writers; historical files retained. Events allow only timestamp,
+Active persistent logs are `agent.log`, `errors.log`, `proxy.log`, and
+`firewall.log`. Renamed browser firewall appends to existing `firewall.log`, which
+can contain historical Hermes-firewall events. Historical `browser-firewall.log`
+and backups stay untouched; no migration or wiping. Each active file rotates
+independently: 5 MiB/current file and three backups by default. One firewall
+writer remains. Events allow only timestamp,
 level, component and fixed event class. Native messages/tracebacks collapse to
 metadata. Logging failure is best effort and never weakens enforcement.
 Scout/browser Docker logging is `none`; helper diagnostics remain bounded.
@@ -181,7 +186,10 @@ Login uses native OpenAI device OAuth and dedicated `scout-auth` volume; never
 mount host credentials. Chat remains bounded status-only `gpt-5.6-luna` /
 `openai-codex` / low reasoning, no provider fallback. Do not run login/chat for
 non-generating verification. `down` retains volumes unless explicitly requested
-otherwise. Historical receipts in `stuff/` remain unchanged.
+otherwise. Historical receipts in `stuff/` remain unchanged. The older isolation
+brief/checkpoint and browser-action review plan retain their original evidence;
+their Hermes-firewall/proxy requirements are superseded by this browser-only
+network boundary and current feature-owned specs.
 
 Open work: independent crash cleanup, supervisor failure policy, reviewer,
 download denial, tab policy, mission/model-driven research, and broader SS-001,
@@ -189,6 +197,4 @@ SS-015/SS-016 remain incomplete. [Security ownership](../../plugins/signal-scout
 and [spec gate](../../plugins/signal-scout/spec_checks/README.md) distinguish
 passing deterministic coverage from future work.
 
-References: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/),
-[service constraints](https://docs.docker.com/reference/compose-file/services/),
-[pinned native CDP](https://github.com/vercel-labs/agent-browser/blob/v0.26.0/cli/src/native/browser.rs).
+References: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/), [service constraints](https://docs.docker.com/reference/compose-file/services/), [pinned native CDP](https://github.com/vercel-labs/agent-browser/blob/v0.26.0/cli/src/native/browser.rs).

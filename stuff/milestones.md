@@ -79,6 +79,12 @@ validated file settings and edit/rebuild/recreate workflow. Implementation and
 verification live in [security ownership guide](../plugins/signal-scout/security/README.md)
 and [Docker guide](../docker/signal-scout/README.md).
 
+Current network scope supersedes historical Hermes-firewall/proxy requirements:
+Hermes connects directly in its own namespace with no Scout-enforced host/LAN
+isolation. Browser shares renamed `firewall` namespace; proxy accepts browser
+only. Four separate services remain: `scout`, `browser`, `firewall`, `proxy`.
+Historical briefs and verification receipts retain their original evidence.
+
 This slice keeps LLM status-only. SS-001, SS-015–SS-018, SS-020–SS-021 and
 remaining mission/research/evidence/reporting/budget work stay incomplete.
 SS-B003's existing manual receipt remains unchanged; no new model call occurs.

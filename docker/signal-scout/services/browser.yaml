@@ -18,7 +18,7 @@ services:
     restart: "no"
     logging:
       driver: none
-    network_mode: service:browser-firewall
+    network_mode: service:firewall
     depends_on:
-      browser-firewall:
+      firewall:
         condition: service_healthy
