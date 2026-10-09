@@ -1,0 +1,27 @@
+services:
+  scout:
+    image: signal-scout-bootstrap-runtime:local
+    build:
+      context: ../..
+      dockerfile: docker/signal-scout/Dockerfile
+      target: runtime
+    user: "10000:10000"
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 512
+    mem_limit: 1g
+    memswap_limit: 1g
+    cpus: 1.0
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777"]
+    restart: "no"
+    logging:
+      driver: none
+    network_mode: service:firewall
+    volumes:
+      - scout-auth:/var/lib/scout
+      - scout-logs:/var/lib/scout/logs
+    depends_on:
+      firewall:
+        condition: service_healthy

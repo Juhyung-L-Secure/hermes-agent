@@ -1,0 +1,52 @@
+model:
+  provider: openai-codex
+  default: gpt-5.6-luna
+agent:
+  max_turns: 3
+  reasoning_effort: low
+  run_budget_seconds: 90
+  api_max_retries: 1
+  intent_ack_continuation: false
+  empty_response_guard:
+    enabled: false
+plugins:
+  enabled: [signal-scout]
+compression:
+  enabled: false
+memory:
+  memory_enabled: false
+  user_profile_enabled: false
+checkpoints:
+  enabled: false
+curator:
+  enabled: false
+tools:
+  tool_search:
+    enabled: false
+logging:
+  level: INFO
+  max_size_mb: 5
+  backup_count: 3
+browser:
+  cloud_provider: local
+  engine: chrome
+  use_real_profile: false
+  auto_local_for_private_urls: false
+  command_timeout: 30
+scout_proxy:
+  dns_timeout: 5
+  connect_timeout: 10
+  idle_timeout: 60
+scout_lifecycle:
+  startup_timeout: 20
+  control_connect_timeout: 2
+  shutdown_timeout: 5
+  smoke_timeout: 120
+scout_network:
+  subnet: 172.30.242.0/29
+  proxy_address: 172.30.242.2
+  scout_address: 172.30.242.3
+  browser_address: 172.30.242.4
+  proxy_port: 3128
+  control_port: 9222
+  relay_port: 9223

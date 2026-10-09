@@ -1,0 +1,68 @@
+{
+  "feature": "signal-scout/missions",
+  "title": "Signal Scout missions",
+  "schemaVersion": 2,
+  "specs": [
+    {
+      "id": "SS-002",
+      "subfeature": "mission",
+      "title": "Mission validation",
+      "contract": "A versioned research mission declares a safe mission ID, research questions, discovery queries or seed URLs, permitted source types, browser identity policy, deterministic safety limits, checkpoint policy, and a safe output name. Signal Scout reports every invalid or unknown field in one response and rejects the mission before browsing. Output is always contained under the plugin-owned mission directory; callers cannot supply an absolute or traversing path.",
+      "requiredCoverage": [
+        "unit"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-003",
+      "subfeature": "mission",
+      "title": "Autonomous mission lifecycle",
+      "contract": "A mission follows the durable state machine created, active, stopping, and exactly one of stopped, completed, or failed. Start and resume bind one mission to the current Hermes session. While active, the existing Hermes goal loop can discover sources and submit structured records without routine operator input until completion, a deterministic safety ceiling, an operator stop request, or a blocking failure. Invalid state transitions fail loudly.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-028",
+      "subfeature": "checkpoints",
+      "title": "Intermittent research summaries",
+      "contract": "Signal Scout transactionally writes a checkpoint after the configured accepted-evidence count and on explicit checkpoint, stop, and session-end boundaries. Each complete checkpoint contains completed and pending work IDs, accepted source and evidence IDs, current findings, blocked sources, deterministic tool-call count, current plan, and durable resume state. Provider usage and remaining budget are explicitly unavailable until a measurable source exists.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-029",
+      "subfeature": "checkpoints",
+      "title": "Durable mission resume",
+      "contract": "After interruption or process restart, Signal Scout resumes from the latest complete checkpoint without losing accepted records. Canonical-source and work-item idempotency keys prevent duplication; completed work stays complete and an interrupted in-progress item becomes retryable. Resume preserves the original immutable mission and deterministic safety ceiling, and reports every item requiring retry.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-031",
+      "subfeature": "mission",
+      "title": "Safe operator stop",
+      "contract": "An operator can set a durable stop request through the Signal Scout CLI at any time. The current atomic tool call may finish, but the next pre-tool policy boundary blocks new research work while allowing checkpoint, status, and finalize actions. Accepted evidence and resume state are saved and the terminal report records stop reason operator-requested.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    }
+  ]
+}

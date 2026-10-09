@@ -1,0 +1,666 @@
+{
+  "schema_version": 1,
+  "kind": "protection-slice-automated-verification",
+  "recorded_at_utc": "2026-09-12 18:32:23 UTC",
+  "status": "DONE",
+  "scope": "Public-web protection, native sandboxed local Chromium, sanitized persistent logs, image-owned settings. Not full Milestone 1 or mission/research security completion.",
+  "baseline_head": "3145986c20267cda9a93285d4afedf77ecd80876",
+  "approved_amendment": {
+    "endpoint": "127.0.0.1:9222/TCP",
+    "rule": "Container loopback source and destination 127.0.0.1, destination port 9222, plus established replies only.",
+    "limits": "No broad loopback accept, host-published port, additional capabilities, or private-web exception. Port/IP filtering does not identify controller process; trusted same-namespace code can reach CDP. Ordinary webpage traffic remains proxy-only."
+  },
+  "commands": [
+    {
+      "command": "docker compose -f docker/signal-scout/compose.yaml build",
+      "exit_code": 0,
+      "result": "Final runtime/network image build succeeded after all production changes."
+    },
+    {
+      "command": "docker compose -f docker/signal-scout/compose.yaml config --quiet",
+      "exit_code": 0,
+      "result": "Valid Compose configuration."
+    },
+    {
+      "command": "scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0",
+      "exit_code": 0,
+      "files": 7,
+      "passed": 131,
+      "failed": 0,
+      "skipped": 0,
+      "elapsed_seconds": 235.4,
+      "workers": 24,
+      "file_retries": 0,
+      "deselected": 0
+    },
+    {
+      "command": ".venv/bin/python plugins/signal-scout/spec_checks/check.py --json",
+      "exit_code": 0,
+      "specs": 45,
+      "collected_tests": 131,
+      "valid_links": 43,
+      "gap_contracts": 32,
+      "errors": []
+    },
+    {
+      "command": ".venv/bin/python plugins/signal-scout/spec_checks/check.py --json --require SS-B001 --require SS-B002 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006 --require SS-019 --require SS-B004 --require SS-S001 --require SS-S002 --require SS-S003",
+      "exit_code": 0,
+      "required_ids": [
+        "SS-B001",
+        "SS-B002",
+        "SS-C001",
+        "SS-C002",
+        "SS-C003",
+        "SS-C004",
+        "SS-C005",
+        "SS-C006",
+        "SS-019",
+        "SS-B004",
+        "SS-S001",
+        "SS-S002",
+        "SS-S003"
+      ],
+      "specs": 45,
+      "collected_tests": 131,
+      "valid_links": 43,
+      "gap_contracts": 32,
+      "errors": []
+    },
+    {
+      "command": "git diff --check",
+      "exit_code": 0,
+      "result": "No whitespace errors."
+    }
+  ],
+  "final_test_files": [
+    {
+      "path": "tests/signal_scout/security/test_policy.py",
+      "passed": 57,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 5.69,
+      "deselected": 0
+    },
+    {
+      "path": "tests/signal_scout/integration/test_plugin.py",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 8.12,
+      "deselected": 0
+    },
+    {
+      "path": "tests/signal_scout/spec_checks/test_spec_checks.py",
+      "passed": 35,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 15.38,
+      "deselected": 0
+    },
+    {
+      "path": "tests/signal_scout/integration/test_container.py",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 34.19,
+      "deselected": 0
+    },
+    {
+      "path": "tests/signal_scout/security/test_browser_boundary.py",
+      "passed": 5,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 138.83,
+      "deselected": 0
+    },
+    {
+      "path": "tests/signal_scout/integration/test_settings.py",
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 151.32,
+      "deselected": 0
+    },
+    {
+      "path": "tests/signal_scout/security/test_logging.py",
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 235.39,
+      "deselected": 0
+    }
+  ],
+  "evidence_storage": "Canonical runner streamed final results to tool output; no raw suite transcript was persisted. This receipt records final observed results, not raw URLs, arguments, bodies, secrets, or model/tool outputs.",
+  "images": {
+    "runtime": "sha256:202ab394157f55eb8ae17298af76691b471abc8fe55dd8c34040b10b6219809f",
+    "network": "sha256:c6e9d08c62834c8834e9a150a70e68c573a00cb81f21d7f0e940e3d1484bcd99"
+  },
+  "coverage": {
+    "required_ids": [
+      "SS-B001",
+      "SS-B002",
+      "SS-C001",
+      "SS-C002",
+      "SS-C003",
+      "SS-C004",
+      "SS-C005",
+      "SS-C006",
+      "SS-019",
+      "SS-B004",
+      "SS-S001",
+      "SS-S002",
+      "SS-S003"
+    ],
+    "newly_completed_ids": [
+      "SS-019",
+      "SS-B004",
+      "SS-S001",
+      "SS-S002",
+      "SS-S003"
+    ],
+    "contract_files": [
+      "plugins/signal-scout/specs.json",
+      "plugins/signal-scout/security/specs.json",
+      "plugins/signal-scout/spec_checks/specs.json"
+    ],
+    "links": "Every completed contract links actual collected test nodes in its owning specs.json; explicit gate validates these links.",
+    "remaining_gap_ids": [
+      "SS-001",
+      "SS-002",
+      "SS-003",
+      "SS-004",
+      "SS-005",
+      "SS-006",
+      "SS-007",
+      "SS-008",
+      "SS-009",
+      "SS-010",
+      "SS-011",
+      "SS-012",
+      "SS-013",
+      "SS-014",
+      "SS-015",
+      "SS-016",
+      "SS-017",
+      "SS-018",
+      "SS-020",
+      "SS-021",
+      "SS-022",
+      "SS-023",
+      "SS-024",
+      "SS-025",
+      "SS-026",
+      "SS-027",
+      "SS-028",
+      "SS-029",
+      "SS-030",
+      "SS-031",
+      "SS-032",
+      "SS-B003"
+    ],
+    "manual_receipt": {
+      "path": "stuff/bootstrap-live-verification.json",
+      "sha256": "83020b71b5aeeed54c77a2d6c019ec6ae62fa630b7320175de80ccbcd366e20d",
+      "preserved": true,
+      "new_live_verification": false,
+      "note": "SS-B003 retains existing manual-only evidence and is not required by automated gate."
+    },
+    "round_1": "Existing SS-S002/SS-S003 test links unchanged; same completed contracts strengthened, no new contracts or widened protections."
+  },
+  "verified_boundaries": [
+    "Actual Hermes native driver starts fresh Chromium through Scout-only adapter at fixed owned CDP endpoint; actual chrome://sandbox attestation verifies namespace, PID, network, Seccomp-BPF and TSYNC sandbox. Unavailable sandbox denies startup.",
+    "Allowed HTTP IPv4/IPv6 fixtures and certificate-verified public HTTPS load through real browser. Untrusted TLS fixture fails without disabling verification.",
+    "Active private IPv4/IPv6 listeners receive no attack connections for main URLs, redirects, TTL-zero same-browser DNS rebinding, or background requests; DNS/port/classification failures deny.",
+    "Ordinary page HTTP/fetch/image/iframe attempts each produce matched terminal Network.loadingFailed; exact live CDP WebSocket produces error and close. Namespace TCP PassiveOpens stays unchanged during attacks, with +1 live trusted CDP requests before/after. Page and native controller remain usable.",
+    "Direct network and DNS bypass fail; helper firewall logs real rejections without packet payload.",
+    "Native Python and proxy/firewall metadata logs sanitize injected values and errors, rotate to configured limits, survive helper replacement with log volume retained, and fail best-effort while network enforcement remains active.",
+    "Scout Docker driver retains no raw operator output; attached operator output still works. Sanitized native file logging persists. Helper Docker diagnostics remain bounded.",
+    "Existing status-only tool exposure and bootstrap protections remain intact."
+  ],
+  "cleanup": {
+    "restored_original_helper_state": "Both existing helpers stopped; final docker compose ps -a shows only firewall and proxy, each Exited (137) after scoped stop -t 2.",
+    "preserved_volumes": [
+      "signal-scout-bootstrap_scout-auth",
+      "signal-scout-bootstrap_scout-logs"
+    ],
+    "fixture_network_absent": true,
+    "fixture_proxy_attachment_absent": true,
+    "fixture_dns_override_removed": true,
+    "fixture_temporary_files_absent": true,
+    "proxy_failure_test_symlink_removed": true,
+    "proxy_log_regular_file_restored": true,
+    "auth_contents_inspected": false,
+    "host_security_changes": false,
+    "core_or_dependency_source_edits": false,
+    "live_model_calls": false,
+    "round_1_checks": [
+      {
+        "command": "docker compose -f docker/signal-scout/compose.yaml ps -a",
+        "exit_code": 0,
+        "result": "Only existing firewall/proxy helpers; both stopped."
+      },
+      {
+        "command": "docker inspect signal-scout-bootstrap-proxy-1 --format '{{json .HostConfig.Dns}} {{json .NetworkSettings.Networks}}'",
+        "exit_code": 0,
+        "result": "Dns null; only existing outbound/restricted networks, no fixture attachment."
+      },
+      {
+        "command": "docker network ls --filter name=signal-scout-protection-fixture --format '{{.Name}}'",
+        "exit_code": 0,
+        "result": "No fixture network."
+      },
+      {
+        "command": "docker volume ls --filter name=signal-scout-bootstrap --format '{{.Name}}'",
+        "exit_code": 0,
+        "result": "Saved auth and dedicated log volumes retained."
+      },
+      {
+        "command": "docker cp signal-scout-bootstrap-proxy-1:/var/log/scout/. - | tar -tvf -",
+        "exit_code": 0,
+        "result": "Read-only archive metadata check: proxy.log regular file; no failure-test retained file/symlink. No archive or raw log contents persisted."
+      },
+      {
+        "command": "docker cp signal-scout-bootstrap-proxy-1:/tmp/scout-network-fixture -",
+        "exit_code": 1,
+        "expected_exit_code": 1,
+        "result": "Expected absence: Docker reports fixture directory not found."
+      },
+      {
+        "command": "sha256sum stuff/bootstrap-live-verification.json .gitignore AGENTS.md",
+        "exit_code": 0,
+        "result": "Protected hashes unchanged.",
+        "sha256": {
+          "stuff/bootstrap-live-verification.json": "83020b71b5aeeed54c77a2d6c019ec6ae62fa630b7320175de80ccbcd366e20d",
+          ".gitignore": "4a606ff6c4ea45d5eca10a15bbacf0319ded006467201a582007e7471e783b81",
+          "AGENTS.md": "87db0263e605f83f14a909985b95b2354df7607f988463799ecb4e7a4e0aca40"
+        }
+      }
+    ]
+  },
+  "limitations": [
+    "Network containment and Chromium sandbox are tested protection-slice boundaries, not proof against arbitrary Chromium/proxy/container vulnerabilities or compromise of trusted controller code.",
+    "Approved CDP endpoint is destination-bounded, not process-identity authenticated. Web content is forced through rejecting proxy; trusted same-namespace code remains able to control browser.",
+    "Logs are best-effort, not tamper-proof or disaster recovery. Log volume must be retained. Scout docker logs is unavailable by design; attached output is not persisted.",
+    "32 broader contracts remain visibly incomplete; existing SS-B003 manual receipt is preserved, not renewed."
+  ],
+  "manifest": [
+    {
+      "path": "docker/signal-scout/Dockerfile",
+      "change": "modified",
+      "scope": "container",
+      "summary": "Pin Chromium/native driver archives, install runtime libraries, replace Squid network stage with Scout Python helpers."
+    },
+    {
+      "path": "docker/signal-scout/compose.yaml",
+      "change": "modified",
+      "scope": "container",
+      "summary": "Keep existing services; add log-only volume, sandbox profile, fixed browser configuration, bounded PID capacity, and no Scout raw-output Docker retention."
+    },
+    {
+      "path": "docker/signal-scout/config.yaml",
+      "change": "modified",
+      "scope": "configuration",
+      "summary": "Add validated log rotation/verbosity, local browser, and proxy timeouts."
+    },
+    {
+      "path": "docker/signal-scout/firewall.sh",
+      "change": "modified",
+      "scope": "network",
+      "summary": "Execute Scout namespace firewall and metadata event consumer."
+    },
+    {
+      "path": "docker/signal-scout/proxy.sh",
+      "change": "modified",
+      "scope": "network",
+      "summary": "Execute numeric-pinning public-web proxy."
+    },
+    {
+      "path": "docker/signal-scout/squid.conf",
+      "change": "deleted",
+      "scope": "network",
+      "summary": "Replace OpenAI-only Squid/SNI policy with proxy-owned DNS/classification/numeric-connect enforcement."
+    },
+    {
+      "path": "docker/signal-scout/chromium-seccomp.json",
+      "change": "created",
+      "scope": "sandbox",
+      "summary": "Pinned namespace-capable default-deny profile plus in-user-namespace chroot syscall allowance; no added Scout capabilities."
+    },
+    {
+      "path": "docker/signal-scout/README.md",
+      "change": "modified",
+      "scope": "ownership documentation",
+      "summary": "Document policy, approved CDP exception, trust limits, pinned dependencies, logs/settings, lifecycle, and tests."
+    },
+    {
+      "path": "plugins/signal-scout/bootstrap.py",
+      "change": "modified",
+      "scope": "bootstrap",
+      "summary": "Initialize native sanitized logging; sanitize invalid CLI and unhandled startup errors; preserve status/login/chat routes."
+    },
+    {
+      "path": "plugins/signal-scout/README.md",
+      "change": "modified",
+      "scope": "ownership documentation",
+      "summary": "Locate protection-only implementation and retain unfinished research/model-tool boundary."
+    },
+    {
+      "path": "plugins/signal-scout/specs.json",
+      "change": "modified",
+      "scope": "contracts",
+      "summary": "Reconcile SS-B002 public-web/container policy; add SS-B004 file settings with links; preserve SS-B003 receipt."
+    },
+    {
+      "path": "plugins/signal-scout/security/README.md",
+      "change": "created",
+      "scope": "ownership documentation",
+      "summary": "Map security modules, enforcement flow, native sandbox/control integration, logging, tests, and remaining boundaries. Explain strengthened terminal-event/counter and bounded-rotation proof."
+    },
+    {
+      "path": "plugins/signal-scout/security/urls.py",
+      "change": "created",
+      "scope": "network",
+      "summary": "Validate raw HTTP(S) URL syntax and absence of embedded credentials without DNS/IP policy."
+    },
+    {
+      "path": "plugins/signal-scout/security/network_proxy.py",
+      "change": "created",
+      "scope": "network",
+      "summary": "Check all DNS answers, classify IPv4/IPv6, pin numeric connections, verify actual peers, relay HTTP80/opaque CONNECT443, and sanitize denials."
+    },
+    {
+      "path": "plugins/signal-scout/security/firewall.py",
+      "change": "created",
+      "scope": "network",
+      "summary": "Install default-deny rules and narrow loopback CDP exception, subscribe payload-free NFLOG, drop startup privileges, produce rejection events."
+    },
+    {
+      "path": "plugins/signal-scout/security/chromium.py",
+      "change": "created",
+      "scope": "sandbox",
+      "summary": "Scout-only native launch adapter removes injected no-sandbox, forces proxy networking, supervises fresh Chromium, and supplies owned fixed-port discovery."
+    },
+    {
+      "path": "plugins/signal-scout/security/browser.py",
+      "change": "created",
+      "scope": "browser",
+      "summary": "Deterministic Hermes-native harness attests actual sandbox before navigation; no model exposure or fallback."
+    },
+    {
+      "path": "plugins/signal-scout/security/settings.py",
+      "change": "created",
+      "scope": "configuration",
+      "summary": "Validate image-owned operating values and reject invalid/security-relaxing settings."
+    },
+    {
+      "path": "plugins/signal-scout/security/runtime_logging.py",
+      "change": "created",
+      "scope": "logging",
+      "summary": "Reuse native Hermes events; rotate helper logs; retain metadata only; report write/rotation/open failures best-effort."
+    },
+    {
+      "path": "plugins/signal-scout/security/specs.json",
+      "change": "modified",
+      "scope": "contracts",
+      "summary": "Reconcile SS-019; add sandbox/control/logging SS-S001-S003 with real test links; keep broader contracts incomplete."
+    },
+    {
+      "path": "plugins/signal-scout/spec_checks/README.md",
+      "change": "modified",
+      "scope": "verification documentation",
+      "summary": "Document expanded explicit required-spec gate and exact command."
+    },
+    {
+      "path": "tests/signal_scout/conftest.py",
+      "change": "created",
+      "scope": "test lifecycle",
+      "summary": "Serialize shared Compose services across canonical per-file workers and restore prior helper state."
+    },
+    {
+      "path": "tests/signal_scout/integration/test_container.py",
+      "change": "modified",
+      "scope": "tests",
+      "summary": "Update public-web policy, volumes/PID/logging assertions; retain bootstrap/direct/DNS/TLS/auth-failure coverage."
+    },
+    {
+      "path": "tests/signal_scout/integration/test_settings.py",
+      "change": "created",
+      "scope": "tests",
+      "summary": "Validate defaults, supplied limits, invalid/security-relaxing values, image ownership, and browser timeout propagation."
+    },
+    {
+      "path": "tests/signal_scout/security/fixture_server.py",
+      "change": "created",
+      "scope": "test fixtures",
+      "summary": "Run controlled active HTTP/TLS listeners and TTL-zero DNS/rebinding fixture only inside existing proxy."
+    },
+    {
+      "path": "tests/signal_scout/security/test_browser_boundary.py",
+      "change": "created",
+      "scope": "tests",
+      "summary": "Exercise actual sandbox, unavailable sandbox, public IPv4/IPv6 HTTP and verified HTTPS, active-listener denials, redirects, same-browser rebinding, and background/CDP attacks. Round-1 fix requires completed request rejection and zero new live-CDP namespace TCP opens with positive controls."
+    },
+    {
+      "path": "tests/signal_scout/security/test_policy.py",
+      "change": "created",
+      "scope": "tests",
+      "summary": "Cover raw syntax, IP classes/ports, failed/mixed DNS, numeric pinning/peer checks, and launch-policy overrides."
+    },
+    {
+      "path": "tests/signal_scout/security/test_logging.py",
+      "change": "created",
+      "scope": "tests",
+      "summary": "Cover native/helper rotation, sanitized errors, partial-open/ENOSPC failure, retained-volume replacement, attached stdout, and no raw Docker log retention. Round-1 fix replaces bulk native queue load with seeded near-limit files and three genuine rollovers."
+    },
+    {
+      "path": "tests/signal_scout/spec_checks/test_spec_checks.py",
+      "change": "modified",
+      "scope": "required gate",
+      "summary": "Require existing foundation IDs plus SS-019, SS-B004, and SS-S001-S003."
+    },
+    {
+      "path": "stuff/milestones.md",
+      "change": "modified",
+      "scope": "delivery documentation",
+      "summary": "Reconcile implemented protection-only slice while preserving incomplete mission/research milestones."
+    },
+    {
+      "path": "stuff/protection-verification.json",
+      "change": "created",
+      "scope": "verification evidence",
+      "summary": "Record final automated commands/results, required coverage, cleanup, boundaries, and cumulative change manifest; no live-model receipt replacement. Preserve independent coordinator timeout failure and round-1 regression/full-suite evidence."
+    }
+  ],
+  "verification_history": [
+    {
+      "phase": "initial implementation handoff before independent review",
+      "recorded_at_utc": "2026-09-12 18:12:34 UTC",
+      "commands": [
+        {
+          "command": "docker compose -f docker/signal-scout/compose.yaml build",
+          "exit_code": 0,
+          "result": "Final runtime/network image build succeeded after all production changes."
+        },
+        {
+          "command": "docker compose -f docker/signal-scout/compose.yaml config --quiet",
+          "exit_code": 0,
+          "result": "Valid Compose configuration."
+        },
+        {
+          "command": "scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0",
+          "exit_code": 0,
+          "files": 7,
+          "passed": 131,
+          "failed": 0,
+          "skipped": 0,
+          "elapsed_seconds": 213,
+          "workers": 24,
+          "file_retries": 0
+        },
+        {
+          "command": ".venv/bin/python plugins/signal-scout/spec_checks/check.py --json",
+          "exit_code": 0,
+          "specs": 45,
+          "collected_tests": 131,
+          "valid_links": 43,
+          "gap_contracts": 32,
+          "errors": []
+        },
+        {
+          "command": ".venv/bin/python plugins/signal-scout/spec_checks/check.py --json --require SS-B001 --require SS-B002 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006 --require SS-019 --require SS-B004 --require SS-S001 --require SS-S002 --require SS-S003",
+          "exit_code": 0,
+          "required_ids": [
+            "SS-B001",
+            "SS-B002",
+            "SS-C001",
+            "SS-C002",
+            "SS-C003",
+            "SS-C004",
+            "SS-C005",
+            "SS-C006",
+            "SS-019",
+            "SS-B004",
+            "SS-S001",
+            "SS-S002",
+            "SS-S003"
+          ],
+          "specs": 45,
+          "collected_tests": 131,
+          "valid_links": 43,
+          "gap_contracts": 32,
+          "errors": []
+        },
+        {
+          "command": "git diff --check",
+          "exit_code": 0,
+          "result": "No whitespace errors."
+        }
+      ],
+      "test_files": [
+        {
+          "path": "tests/signal_scout/security/test_policy.py",
+          "passed": 57,
+          "failed": 0,
+          "skipped": 0,
+          "seconds": 3.95
+        },
+        {
+          "path": "tests/signal_scout/integration/test_plugin.py",
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0,
+          "seconds": 5.61
+        },
+        {
+          "path": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "passed": 35,
+          "failed": 0,
+          "skipped": 0,
+          "seconds": 15.87
+        },
+        {
+          "path": "tests/signal_scout/integration/test_container.py",
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0,
+          "seconds": 50.56
+        },
+        {
+          "path": "tests/signal_scout/security/test_browser_boundary.py",
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0,
+          "seconds": 139.16
+        },
+        {
+          "path": "tests/signal_scout/integration/test_settings.py",
+          "passed": 20,
+          "failed": 0,
+          "skipped": 0,
+          "seconds": 142.28
+        },
+        {
+          "path": "tests/signal_scout/security/test_logging.py",
+          "passed": 7,
+          "failed": 0,
+          "skipped": 0,
+          "seconds": 212.97
+        }
+      ],
+      "images": {
+        "runtime": "sha256:da55248abf90f5db79f3eb3a792ea7dcaee150a49065f1a75ec1336c36dfc15e",
+        "network": "sha256:46f9632fb4aa171527228d45f694db76276f32658c8a37cf8a322b0efa07cdfa"
+      },
+      "note": "Superseded by independent review findings and round-1 fixes; earlier passing run alone did not establish stable completion."
+    },
+    {
+      "phase": "coordinator independent rerun before round-1 fixes",
+      "command": "scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0",
+      "exit_code": 1,
+      "files": 7,
+      "passed": 130,
+      "failed": 1,
+      "skipped": 0,
+      "deselected": 0,
+      "elapsed_seconds": 255.9,
+      "failed_test": "tests/signal_scout/security/test_logging.py::test_SS_S003_native_events_sanitize_rotate_and_honor_settings",
+      "failure": "isolated() child exceeded 60-second timeout while emitting 45,000 WARNING records and flushing native logging queue.",
+      "source": "Coordinator-observed run, reported to implementation agent and independent reviewer.",
+      "cleanup": "Coordinator restored stopped helper state and confirmed fixture network absent."
+    },
+    {
+      "phase": "round-1 targeted regression checks",
+      "command": "scripts/run_tests.sh tests/signal_scout/security/test_logging.py tests/signal_scout/security/test_browser_boundary.py --include-integration -q --file-retries 0 -k 'native_events_sanitize_rotate or background_http_websocket'",
+      "exit_code": 0,
+      "files": 2,
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0,
+      "deselected": 10,
+      "elapsed_seconds": 62.3,
+      "test_files": [
+        {
+          "path": "tests/signal_scout/security/test_logging.py",
+          "passed": 1,
+          "deselected": 6,
+          "seconds": 1.1
+        },
+        {
+          "path": "tests/signal_scout/security/test_browser_boundary.py",
+          "passed": 1,
+          "deselected": 4,
+          "seconds": 62.33
+        }
+      ],
+      "note": "Targeted evidence only; not substitute for required full final suite."
+    }
+  ],
+  "review_round": 1,
+  "round_change_manifest": [
+    {
+      "path": "tests/signal_scout/security/test_logging.py",
+      "change": "modified",
+      "scope": "blocking finding 1: native rotation test",
+      "summary": "Replace 45,000 WARNING records with near-limit isolated file seeding and three real native-event rollovers; retain configured 1 MiB/two-backup assertions, eviction, sanitization, and verbosity checks."
+    },
+    {
+      "path": "tests/signal_scout/security/test_browser_boundary.py",
+      "change": "modified",
+      "scope": "blocking finding 2: completed denials and actual CDP connection evidence",
+      "summary": "Observe matching terminal failures for all five HTTP/image/iframe requests and exact-path WebSocket error/close; assert no pending DOM outcomes, live namespace PassiveOpens unchanged during attacks, +1 trusted CDP positive controls before/after, and usable native controller."
+    },
+    {
+      "path": "plugins/signal-scout/security/README.md",
+      "change": "modified",
+      "scope": "aligned proof documentation",
+      "summary": "Describe terminal rejection evidence, kernel counter with positive controls, harness-owned observer, and bounded real native-rotation method."
+    },
+    {
+      "path": "stuff/protection-verification.json",
+      "change": "modified",
+      "scope": "automated evidence and review history",
+      "summary": "Record round-1 commands, results, image IDs, complete cleanup, round-only manifest, prior 131-pass handoff, coordinator 130-pass/1-fail rerun, and targeted 2-pass/10-deselected checks."
+    }
+  ],
+  "round_1_runtime_policy_changes": false
+}

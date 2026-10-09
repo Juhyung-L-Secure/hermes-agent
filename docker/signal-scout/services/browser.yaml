@@ -1,0 +1,24 @@
+services:
+  browser:
+    image: signal-scout-bootstrap-browser:local
+    build:
+      context: ../..
+      dockerfile: docker/signal-scout/Dockerfile
+      target: browser
+    user: "10000:10000"
+    init: true
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true, "seccomp=./chromium-seccomp.json"]
+    pids_limit: 512
+    mem_limit: 2000000000
+    memswap_limit: 2000000000
+    # No cpus/cpu_quota/cpuset: browser has no CPU ceiling.
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777"]
+    restart: "no"
+    logging:
+      driver: none
+    network_mode: service:browser-firewall
+    depends_on:
+      browser-firewall:
+        condition: service_healthy

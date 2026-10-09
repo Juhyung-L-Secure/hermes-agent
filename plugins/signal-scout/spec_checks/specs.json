@@ -1,0 +1,150 @@
+{
+  "feature": "signal-scout/spec_checks",
+  "title": "Signal Scout spec checks",
+  "schemaVersion": 2,
+  "specs": [
+    {
+      "id": "SS-C001",
+      "subfeature": "spec-checks",
+      "title": "Spec document validation",
+      "contract": "Checking Scout specs rejects malformed JSON, duplicate JSON keys, invalid document/spec/coverage fields, invalid layers, and invalid manual-receipt dates with the owning file in the diagnostic.",
+      "requiredCoverage": [
+        "unit"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C001_malformed_specs_fail_with_diagnostic"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-C002",
+      "subfeature": "spec-checks",
+      "title": "Unique feature ownership",
+      "contract": "Checking nested Scout specs rejects an ID declared more than once, including declarations in different feature owners.",
+      "requiredCoverage": [
+        "unit"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C002_duplicate_ids_across_feature_owners_fail"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-C003",
+      "subfeature": "spec-checks",
+      "title": "Discoverable feature-owned test links",
+      "contract": "Checking automatic coverage requires an existing test file under the spec owner's Scout test group and a matching pytest-collected function or class method that declares that spec ID. Parametrized tests can be referenced by their base node ID. Arbitrary source text, helper/nested/disabled functions, missing files, out-of-scope paths, and collection errors produce validation errors. Discovery is confined to Signal Scout specs and tests.",
+      "requiredCoverage": [
+        "unit"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C003_broken_or_nondiscoverable_links_fail"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C003_class_and_parametrized_tests_are_discoverable"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C003_SS_C004_docstring_id_links_and_unrelated_trees_are_ignored"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C003_collection_errors_fail_visibly"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C003_SS_C005_repository_links_and_selected_contracts"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-C004",
+      "subfeature": "spec-checks",
+      "title": "Test-to-spec traceability",
+      "contract": "Each collected Scout test declares at least one known spec ID in its function/class name or docstring. Unknown IDs and missing IDs are reported; test fixtures and unrelated Hermes tests are not scanned as Scout declarations.",
+      "requiredCoverage": [
+        "unit"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C004_test_ids_must_exist"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C003_SS_C004_docstring_id_links_and_unrelated_trees_are_ignored"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-C005",
+      "subfeature": "spec-checks",
+      "title": "Explicit coverage-gap gate",
+      "contract": "Checking Scout specs reports each missing required automatic layer. Planned gaps alone do not fail the default check. Selecting required IDs fails if any selected ID is unknown or lacks any required layer; complete selected links succeed. The Scout test workflow validates repository links and its explicit shipped-contract selection through scripts/run_tests.sh.",
+      "requiredCoverage": [
+        "unit"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C005_selected_ids_enforce_every_required_layer"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C003_SS_C005_repository_links_and_selected_contracts"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-C006",
+      "subfeature": "spec-checks",
+      "title": "Evidence and execution remain distinct",
+      "contract": "The checker reports manual evidence separately and never uses it to satisfy required automatic coverage. Collection never executes test bodies or fixtures. Valid links and manual receipts never imply tests passed or assertions prove the contract; output explicitly separates link validation, test execution, and assertion-quality review.",
+      "requiredCoverage": [
+        "unit"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C006_manual_receipt_cannot_fill_automatic_gap"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/spec_checks/test_spec_checks.py",
+          "test": "test_SS_C006_valid_link_does_not_claim_assertions_passed"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    }
+  ]
+}

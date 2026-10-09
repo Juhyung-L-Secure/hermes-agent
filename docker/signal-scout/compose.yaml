@@ -1,0 +1,22 @@
+name: signal-scout-bootstrap
+include:
+  - path: services/scout.yaml
+    project_directory: .
+  - path: services/browser.yaml
+    project_directory: .
+  - path: services/proxy.yaml
+    project_directory: .
+  - path: services/firewall.yaml
+    project_directory: .
+  - path: services/browser-firewall.yaml
+    project_directory: .
+networks:
+  restricted:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.30.242.0/29
+  outbound: {}
+volumes:
+  scout-auth: {}
+  scout-logs: {}

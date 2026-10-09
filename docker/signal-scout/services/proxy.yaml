@@ -1,0 +1,33 @@
+services:
+  proxy:
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 128
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.5
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777"]
+    restart: "no"
+    logging:
+      driver: local
+      options:
+        max-size: 1m
+        max-file: "1"
+        compress: "false"
+    image: signal-scout-bootstrap-network:local
+    build:
+      context: ../..
+      dockerfile: docker/signal-scout/Dockerfile
+      target: network
+    user: "10000:10000"
+    volumes: [scout-logs:/var/log/scout]
+    networks:
+      restricted:
+        ipv4_address: 172.30.242.2
+      outbound: {}
+    healthcheck:
+      test: [CMD, test, -f, /tmp/proxy-ready]
+      interval: 2s
+      timeout: 1s
+      retries: 10

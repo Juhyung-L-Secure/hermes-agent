@@ -1,0 +1,56 @@
+{
+  "feature": "signal-scout/evidence",
+  "title": "Signal Scout evidence",
+  "schemaVersion": 2,
+  "specs": [
+    {
+      "id": "SS-010",
+      "subfeature": "evidence",
+      "title": "Multimodal source inventory",
+      "contract": "Every inspected webpage, image, video, audio item, document, and social post has one source record containing a stable source ID, canonical URL, source type, capture time, collection method, access result, and related mission questions. Canonical URL uniqueness preserves repeated captures without duplicating the underlying source.",
+      "requiredCoverage": [
+        "unit"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-011",
+      "subfeature": "evidence",
+      "title": "Evidence records",
+      "contract": "Evidence references a bounded, redacted source capture produced by a permitted retrieval tool call in the same active mission. Text excerpts must occur inside that capture. Image evidence may copy only a regular, non-symlink browser artifact previously recorded for that session into plugin-owned storage. Video or audio evidence additionally stores the quarantined media reference, timestamp range, transcript or audible-event description, and relevant sampled frames. Evidence IDs are immutable after acceptance.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-012",
+      "subfeature": "evidence",
+      "title": "Finding traceability",
+      "contract": "Every factual statement in a finding cites one or more existing evidence IDs, enforced when the record is written. Signal Scout rejects unsupported factual findings and separately stores observations, interpretations, hypotheses, and recommendations.",
+      "requiredCoverage": [
+        "unit"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-013",
+      "subfeature": "evidence",
+      "title": "Duplicate consolidation",
+      "contract": "When multiple URLs or captures represent the same underlying content or finding, Signal Scout preserves their source records but consolidates the repeated conclusion and lists all supporting evidence under one finding.",
+      "requiredCoverage": [
+        "unit"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    }
+  ]
+}

@@ -1,0 +1,240 @@
+{
+  "feature": "signal-scout/security",
+  "title": "Signal Scout security",
+  "schemaVersion": 2,
+  "specs": [
+    {
+      "id": "SS-015",
+      "subfeature": "browser-security",
+      "title": "Clean browser identity",
+      "contract": "Every mission uses a dedicated Hermes home and an ephemeral anonymous Signal Scout browser identity with no real profile, arbitrary external CDP attachment, personal history, personal cookies, personal account, or inherited extensions. Remote CDP is permitted only for the freshly created, exactly run-owned isolated browser container under SS-S004/SS-S005, not an independently supplied endpoint. Mission start fails if runtime cannot attest this policy, and report records attested browser identity. Protection-only container ownership does not complete this mission contract.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-016",
+      "subfeature": "browser-security",
+      "title": "Read-only browsing scope",
+      "contract": "Milestone 1 missions default-deny every Hermes tool and permit only Signal Scout control, public web search/extraction, direct public-URL navigation, snapshot, scroll, back, screenshot, image URL enumeration, browser close, and the explicit Signal Scout skill. Click, type, keypress, JavaScript evaluation, terminal, file, upload, messaging, MCP, delegation, cron, purchase, reaction, account mutation, and every other external-write-capable action are blocked in code.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-017",
+      "subfeature": "browser-security",
+      "title": "Untrusted content boundary",
+      "contract": "Signal Scout treats webpage text, captions, transcripts, comments, metadata, downloaded content, and stored excerpts as untrusted research data. Hermes web and browser result framing is preserved, delimiter tokens inside attacker content are neutralized, and evidence returned during resume is independently framed. Source content cannot mutate the immutable mission, tool policy, safety ceiling, security policy, or output destination.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-018",
+      "subfeature": "browser-security",
+      "title": "Media artifact quarantine",
+      "contract": "Media retrieved for analysis is accepted only when its detected type and size satisfy the mission policy, stored in a mission-specific quarantine, and passed only to declared analyzers. Signal Scout never executes a retrieved artifact and reports rejected, mismatched, or oversized content.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-019",
+      "subfeature": "browser-security",
+      "title": "Local network isolation",
+      "contract": "Scout's deterministic public-web browser harness validates raw HTTP(S) syntax and absence of embedded credentials, without duplicate DNS/IP policy. Proxy owns fresh DNS resolution, every-answer IP classification, numeric destination pinning, and actual connected-peer verification. Only public HTTP:80 and HTTPS:443 are permitted; DNS failure, loopback, unspecified, multicast, link-local, private/local, reserved, transition-to-private, and metadata IPv4/IPv6 addresses are denied. Redirects and DNS rebinding cannot bypass checks. Forbidden main URLs/redirects fail navigation; forbidden embedded/background requests fail individually while public content can load. Sanitized best-effort logging never loosens enforcement. Separate Hermes/browser namespace firewalls deny direct and DNS bypass; proxy admits only configured Hermes/browser source addresses. Browser cannot initiate toward Hermes, host/LAN/metadata or direct Internet. TLS stays end-to-end verified. Owned remote control exceptions are not webpage access (SS-S002). Harness exposes no model browser tool and does not complete mission policy.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {"layer":"e2e","file":"tests/signal_scout/security/test_isolation.py","test":"test_SS_S004_SS_019_browser_direct_egress_and_unauthorized_control_denied"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_019_raw_url_rejected_before_navigation"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_019_input_validation_has_no_dns_or_ip_policy"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_019_proxy_denies_forbidden_address_classes"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_019_proxy_public_addresses_and_destination_ports"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_019_dns_failure_and_mixed_answers_connect_nowhere"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_019_numeric_connection_pinned_and_peer_checked"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SS_019_public_http_https_tls_and_forbidden_main_redirects"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SS_019_dns_rebinding_rechecks_new_connections"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SS_S002_background_http_websocket_cannot_control_cdp"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-S001",
+      "subfeature": "browser-security",
+      "title": "Mandatory attested isolated Chromium sandbox",
+      "contract": "Image pins existing Hermes-supported native agent-browser on Hermes side and Chromium on isolated browser side. Trusted launcher starts one newly owned Chromium with mandatory sandbox/proxy flags and fresh anonymous temporary profile/XDG storage, never a real profile, cloud/local fallback or TLS bypass. Launcher proves child owns loopback listener before relay readiness. Existing native Hermes remote-CDP path connects only to checked run-owned endpoint. Before untrusted navigation actual chrome://sandbox must show PID namespaces, network namespaces and seccomp-BPF active; unavailable sandbox fails without no-sandbox fallback. Tests make no model calls; browser and Hermes have separate PID/mount/network namespaces.",
+      "requiredCoverage": ["e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_S001_launch_adapter_forces_policy_and_rejects_overrides"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SS_S001_native_chromium_sandbox_and_anonymous_identity"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SS_S001_unavailable_namespace_sandbox_prevents_start"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-S002",
+      "subfeature": "browser-security",
+      "title": "Narrow owned browser management exceptions",
+      "contract": "Hermes namespace allows only configured private browser relay destination and necessary replies in addition to proxy access. Browser namespace allows only narrow loopback launcher/relay-to-Chromium CDP control and necessary replies in addition to proxy access. Relay admits configured Hermes source IP only and forwards solely to newly owned child's loopback listener; child exit closes relay. No host-published port, broad loopback allowance or private-web exception. Endpoint host/port/browser path and discovery are checked; redirects, wrong ownership and stale paths fail. Network/source-IP checks are not cryptographic authentication and do not protect against compromised trusted controller/browser. Ordinary page HTTP, WebSocket, frame, image and fetch traffic remains proxy-forced, including loopback; proxy rejects raw CDP and relay even with known active WebSocket paths. Authorized native controller remains usable.",
+      "requiredCoverage": ["e2e"],
+      "coverage": [
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SS_S002_background_http_websocket_cannot_control_cdp"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-S003",
+      "subfeature": "browser-security",
+      "title": "Persistent best-effort protection event logs",
+      "contract": "Scout Python events reuse native Hermes logging. Proxy and two separate firewall processes emit operational/rejection events to distinct proxy.log, firewall.log and browser-firewall.log files in existing dedicated log volume, retaining historical files. Defaults are 5 MiB/file and three backups including native errors; validated configuration controls size/backups/verbosity. Events retain timestamp, level, component and allowlisted event class only; no URL, raw browser/CDP arguments/results, screenshot, body, cookie, credential, secret configuration or unsanitized exception is persisted. Open/write/rotation failures attempt fixed diagnostics without stopping browsing or weakening enforcement; no acknowledgment/universal monitor. Logs survive ordinary replacement while volume remains, not tamper-proof/disaster recovery. Browser has no persistent log mount; Scout/browser Docker output is not retained. Mission audit/report remains incomplete.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_native_events_sanitize_rotate_and_honor_settings"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_native_write_failure_has_fixed_diagnostic_and_keeps_events_safe"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_partial_native_log_open_failure_still_sanitizes"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_proxy_firewall_events_persist_after_replacement"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_scout_attached_output_is_not_retained_in_docker_logs"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_helper_rotation_uses_supplied_file_limits"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_proxy_write_failure_does_not_disable_public_access_or_private_denial"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-S004",
+      "subfeature": "browser-security",
+      "title": "Isolated browser container boundary",
+      "contract": "Trusted host creates browser separately from credential-bearing Hermes: no shared PID/mount/network namespace, Hermes runtime, auth/research/log mounts, host folders, Docker socket or writable shared artifact mount. Browser is non-root, readonly, capability-free, no-new-privileges and actually sandboxed with anonymous bounded temporary storage. Compose owns 2,000,000,000-byte memory and equal memory+swap, no CPU quota, PID512 and bounded tmpfs; changed resource configuration reaches actual containers. Private fixed-destination control relay is bound to exact newly created container/run and owned Chromium listener. Wrong ownership, discovery redirect, wrong/stale endpoint, unavailable sandbox or control startup fail safely without adopting/replacing browser. Network/source checks and live positive-control tests enforce boundary; no claim of immunity to browser/kernel/host compromise.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_isolation.py",
+          "test": "test_SS_S004_endpoint_and_discovery_reject_redirects_wrong_hosts_and_paths"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_isolation.py",
+          "test": "test_SS_S004_listener_ownership_checks_socket_inode"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_isolation.py",
+          "test": "test_SS_S004_container_mount_pid_network_and_resource_separation"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_isolation.py",
+          "test": "test_SS_S004_browser_cannot_read_hermes_fixture_or_connect_back"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_isolation.py",
+          "test": "test_SS_S004_SS_019_browser_direct_egress_and_unauthorized_control_denied"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_isolation.py",
+          "test": "test_SS_S004_existing_listener_never_adopted_or_disturbed"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_isolation.py",
+          "test": "test_SS_S004_SS_B004_changed_compose_limits_reach_real_containers"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-S005",
+      "subfeature": "browser-security",
+      "title": "Disposable single-run browser lifecycle",
+      "contract": "One trusted host lifecycle owns one active run and is reused by deterministic smoke/tests. Each run creates new browser container/process and anonymous temporary profile; second claimant or leftover container is rejected without disturbing/adopting first. Multiple tabs may exist inside run. Normal end or surfaced fatal failure removes only exact owned container and temporary state, retaining helpers, auth/log volumes and images. If Docker creates the current attempt but cannot start it, cleanup resolves exact attempted name/project/service/run ownership and verifies full ID before removal; foreign collisions remain untouched. Browser child exit closes relay; stale/unavailable control, observed native action-driver transport loss even with healthy HTTP discovery, and command timeout are terminal, never browser replacement, mission restart, arbitrary attachment or local/cloud fallback. Ordinary navigation denial is not itself transport loss. Startup/local-control/shutdown/smoke bounds are consumed from validated image-owned settings; host stop deadline allows configured shutdown grace plus bounded Docker overhead, including supported grace above 60 seconds. Existing auxiliary supervisor reconnect is not browser replacement; reconnect/degraded-monitoring policy remains deferred. If Hermes/launcher/host disappears, independent teardown is not guaranteed and requires deliberate operator inspection/cleanup; no watchdog, recovery daemon or scavenging is implemented.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {"layer":"e2e","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_create_then_start_failure_removes_only_attempted_owner"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_driver_transport_failure_is_terminal_with_healthy_discovery"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_live_driver_reset_is_terminal_with_healthy_discovery"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_shutdown_deadline_includes_supported_grace"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_configured_long_shutdown_removes_stopped_child"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_isolation.py","test":"test_SS_S005_command_hang_is_terminal_and_owned_container_removed"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_isolation.py","test":"test_SS_S005_unavailable_relay_cleans_new_child_only"},
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_isolation.py",
+          "test": "test_SS_S005_wrong_container_and_run_ownership_reject_cleanup"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_isolation.py",
+          "test": "test_SS_S005_single_claim_fresh_profile_and_ordinary_fatal_teardown"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_isolation.py",
+          "test": "test_SS_S005_child_exit_closes_relay_and_never_replaces_browser"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_isolation.py",
+          "test": "test_SS_S005_stale_endpoint_fails_without_local_fallback"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-020",
+      "subfeature": "browser-security",
+      "title": "Secret protection",
+      "contract": "Signal Scout storage accepts allowlisted fields only and passes persisted strings through Hermes secret redaction. It never stores raw tool arguments or raw tool results in the audit trail. Credentials, session tokens, cookies, authorization headers, and secret configuration values do not enter evidence, checkpoints, logs, or reports; failures retain only source ID and redacted failure class.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-021",
+      "subfeature": "browser-security",
+      "title": "Scout-only authenticated accounts",
+      "contract": "A source requiring authentication can be enabled only through a dedicated Signal Scout account and isolated browser profile approved for that platform. Personal accounts and personal browser profiles are rejected.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": "Scout-only accounts and platform-specific authentication policies have not been provisioned. Public-source browsing can proceed independently."
+    }
+  ]
+}

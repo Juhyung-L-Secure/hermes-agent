@@ -26,6 +26,22 @@ reviewing any change:
   high. Most new capability should arrive as a CLI command + skill, a
   service-gated tool, or a plugin — not as core surface.
 
+## Graphify Navigation Index
+
+For architecture, dependency, or feature-flow questions, query the local
+Graphify index first when `graphify-out/graph.json` exists and its recorded
+commit matches `git rev-parse HEAD`. Prefer exact symbol searches followed by
+`graphify explain` or `graphify path`; broad natural-language queries are noisy.
+Open the graph-selected source files and verify every important claim before
+answering or editing. Source code remains authoritative, especially across
+dynamic registries and plugin dispatch where Graphify may omit directed paths.
+
+Generated graph artifacts stay local. Do not install Graphify hooks, MCP
+integration, or automatic refresh. After an upstream pull, assess whether
+included files changed and ask the user before running any incremental update
+or full rebuild. Reproducible commands and scope rules live in
+`scripts/graphify-codebase.sh` and `.graphifyignore`.
+
 ## Contribution Rubric — What We Want / What We Don't
 
 This is the project's intent layer. Use it two ways:

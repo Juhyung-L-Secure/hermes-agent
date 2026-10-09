@@ -1,0 +1,58 @@
+{
+  "feature": "signal-scout/media",
+  "title": "Signal Scout media",
+  "schemaVersion": 2,
+  "specs": [
+    {
+      "id": "SS-022",
+      "subfeature": "media-analysis",
+      "title": "Efficient video inspection",
+      "contract": "Video analysis uses metadata, scene changes, interval samples, and targeted follow-up frames to inspect visual content without sending every frame to the research model. The analyzer records its sampling strategy and can increase sampling around relevant transitions.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-023",
+      "subfeature": "media-analysis",
+      "title": "Speech and audio inspection",
+      "contract": "For permitted media with audio, Signal Scout produces timestamped speech transcription and records relevant non-speech audio cues needed to understand the content. It labels uncertain words and audio interpretations instead of silently guessing.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-024",
+      "subfeature": "media-analysis",
+      "title": "Synchronized media evidence",
+      "contract": "A media finding can combine transcript spans, audio cues, and sampled frames from the same timestamp range. Opening that evidence identifies the source media and exact time range supporting the finding.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-025",
+      "subfeature": "media-analysis",
+      "title": "Media analysis failure reporting",
+      "contract": "When media is unavailable, unsupported, corrupted, too large, missing audio, or rejected by policy, Signal Scout records the exact analysis limitation and does not claim to have observed the unavailable modality.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    }
+  ]
+}

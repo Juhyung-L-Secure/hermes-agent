@@ -1,0 +1,94 @@
+{
+  "feature": "signal-scout/research",
+  "title": "Signal Scout research",
+  "schemaVersion": 2,
+  "specs": [
+    {
+      "id": "SS-004",
+      "subfeature": "discovery",
+      "title": "Query-led source discovery",
+      "contract": "Signal Scout uses mission queries and seed URLs to discover relevant public webpages, competitor surfaces, tutorials, images, videos, and allowed social-media sources. It records how each discovered source relates to a mission question and does not use a personalized home feed as the sole discovery method.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-005",
+      "subfeature": "competitors",
+      "title": "Competitor surface coverage",
+      "contract": "For each competitor in a mission, Signal Scout inspects every permitted surface named by the mission, including product pages, pricing pages, public application screens, help documentation, and tutorial media, and reports surfaces it could not inspect with the failure reason.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-006",
+      "subfeature": "competitors",
+      "title": "Competitor feature findings",
+      "contract": "Each competitor feature finding names the competitor and feature, explains the user problem and observed workflow, identifies the inspected product surface, distinguishes direct observation from inference, and links to supporting evidence.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-007",
+      "subfeature": "demand",
+      "title": "AI-media demand discovery",
+      "contract": "Signal Scout finds permitted social posts, advertisements, short-form videos, long-form videos, and other media relevant to the mission and records why each item appears AI-generated or promotes an AI-assisted workflow. Uncertain classifications remain explicitly uncertain.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-008",
+      "subfeature": "demand",
+      "title": "Attention signal capture",
+      "contract": "For each demand example, Signal Scout records the source URL, platform, capture time, visible engagement values, publication time when visible, content format, opening hook, recurring creative pattern, audience response themes, and collection context. Missing or inaccessible values remain unknown rather than estimated.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-009",
+      "subfeature": "demand",
+      "title": "Demand inference limits",
+      "contract": "Signal Scout labels attention and demand conclusions as hypotheses, states the observed signals and sample limitations behind them, and never presents one feed, one post, or unavailable platform metrics as proof of broad market demand.",
+      "requiredCoverage": [
+        "unit"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-014",
+      "subfeature": "synthesis",
+      "title": "Product opportunity synthesis",
+      "contract": "Each proposed product opportunity identifies the supported user need, relevant demand evidence, competitor implementations or gaps, proposed Signal Scout client-site capability, expected differentiation, confidence, major risks, and the evidence IDs supporting the proposal.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    }
+  ]
+}

@@ -1,0 +1,110 @@
+{
+  "feature": "signal-scout/integration",
+  "title": "Signal Scout integration",
+  "schemaVersion": 2,
+  "specs": [
+    {
+      "id": "SS-001",
+      "subfeature": "integration",
+      "title": "Hermes extension boundary",
+      "contract": "Signal Scout runtime code is confined to the self-contained plugins/signal-scout directory. It registers one model tool, one operator CLI command, three lifecycle hooks, and one explicit plugin skill through PluginContext. Installing, disabling, or removing Signal Scout requires no Signal Scout-specific change to a Hermes core file.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-B001",
+      "subfeature": "bootstrap",
+      "title": "Native bootstrap status",
+      "contract": "Enabling the native Signal Scout plugin exposes only its status capability to the bootstrap model. Native Hermes discovery and dispatch return the manifest version and explicit status-ready, research-not-implemented, research-security-not-implemented readiness. Unknown actions or fields return an error, and disabling the plugin makes the tool unavailable. This limited contract does not complete SS-001.",
+      "requiredCoverage": [
+        "unit"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_plugin.py",
+          "test": "test_SS_B001_native_status_discovery_dispatch_and_invalid_inputs"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_plugin.py",
+          "test": "test_SS_B001_disabled_plugin_is_unavailable"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-B002",
+      "subfeature": "bootstrap",
+      "title": "Isolated Docker bootstrap",
+      "contract": "Bounded non-root Scout container has read-only root, no capabilities, no host mounts or published ports, and dedicated auth/log storage. Chromium runs in separate disposable browser container with no Hermes runtime or credential/persistent mounts, owned by trusted host lifecycle. Separate namespace firewalls allow proxy access/replies, Hermes-to-browser private relay, and narrow browser-local launcher/relay-to-Chromium CDP control only. Direct/bypass IPv4/IPv6, host/LAN and DNS traffic fail. Proxy admits only configured Hermes/browser source addresses and public HTTP:80 or opaque HTTPS CONNECT:443, rejecting private destinations, unsupported schemes, embedded credentials, DNS failures and other ports. TLS remains verified end-to-end without decryption. SS-019 owns redirects/rebinding/background behavior; SS-S002 owns control isolation; SS-S004/S005 own container/lifetime boundary. No mission/research security completion.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_container.py",
+          "test": "test_SS_B002_container_identity_mounts_resources_and_native_status"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_container.py",
+          "test": "test_SS_B002_direct_egress_host_lan_ipv6_and_dns_are_blocked"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_container.py",
+          "test": "test_SS_B002_proxy_denies_private_hosts_ports_and_protocols"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_container.py",
+          "test": "test_SS_B002_allowed_endpoints_keep_verified_tls"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-B004",
+      "subfeature": "bootstrap",
+      "title": "Image-owned operating settings",
+      "contract": "Shared image-owned docker/signal-scout/config.yaml owns Hermes/browser/proxy/logging settings plus network topology and lifecycle bounds. Defaults: INFO, 5 MiB/file, three backups, browser command30s, proxy DNS/connect/idle5/10/60s, browser startup20s, local-control connect2s, shutdown5s and deterministic smoke120s. These bounds are consumed, not supervisor retries or future mission budgets. Trusted host validates Compose topology and running helper/browser settings match configuration. Native Compose includes keep resources in per-service YAML: browser2,000,000,000-byte RAM/equal memory+swap/no CPU quota/PID512/bounded tmpfs, Hermes1g/1CPU, helpers256m/.5CPU. Supplied settings validate with sanitized failures; unknown switches, invalid types/ranges, real-profile/cloud/arbitrary-CDP overrides or sandbox/TLS/network relaxation fail. Apply by edit/rebuild/recreate; no hot reload/config generator/protection-disable switch.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer":"unit","file":"tests/signal_scout/integration/test_settings.py","test":"test_SS_B004_SS_S005_lifecycle_consumes_supplied_bounds"},
+        {"layer": "unit", "file": "tests/signal_scout/integration/test_settings.py", "test": "test_SS_B004_defaults_and_supplied_file_settings"},
+        {"layer": "unit", "file": "tests/signal_scout/integration/test_settings.py", "test": "test_SS_B004_invalid_or_security_relaxing_configuration_fails"},
+        {"layer": "unit", "file": "tests/signal_scout/integration/test_settings.py", "test": "test_SS_B004_browser_command_uses_supplied_timeout"},
+        {"layer": "e2e", "file": "tests/signal_scout/integration/test_settings.py", "test": "test_SS_B004_image_owned_configuration_matches_runtime"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-B003",
+      "subfeature": "bootstrap",
+      "title": "Subscription model status conversation",
+      "contract": "After separate user-completed OAuth login stored only in the dedicated Scout volume, native Hermes openai-codex runs one bounded real gpt-5.6-luna conversation with low reasoning. The model calls status exactly once, receives the actual native result, and completes an explanation. Missing auth or unavailable model fails without substituting provider, model, or billing route.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [
+        {
+          "type": "manual",
+          "file": "stuff/bootstrap-live-verification.json",
+          "test": "SS-B003 bounded native status conversation",
+          "verifiedAt": "2026-09-10"
+        }
+      ],
+      "blocker": ""
+    }
+  ]
+}

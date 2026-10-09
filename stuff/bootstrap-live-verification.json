@@ -1,0 +1,30 @@
+{
+  "specId": "SS-B003",
+  "verification": "manual_live_smoke",
+  "date": "2026-09-10",
+  "command": "docker compose -f docker/signal-scout/compose.yaml run --rm -T scout chat",
+  "exitCode": 0,
+  "checks": [
+    "Exactly one model-requested signal_scout call with action status",
+    "Matching tool-call ID and native dispatch result",
+    "Hermes reported completed without failure or interruption"
+  ],
+  "result": {
+    "provider": "openai-codex",
+    "model": "gpt-5.6-luna",
+    "reasoning_effort": "low",
+    "api_calls": 2,
+    "tool": "signal_scout",
+    "result": {
+      "plugin": "signal-scout",
+      "version": "0.1.0",
+      "readiness": {
+        "status": "ready",
+        "research": "not_implemented",
+        "research_security": "not_implemented"
+      }
+    },
+    "explanation": "Signal Scout plugin version: **0.1.0**. Readiness: **ready**. Research is **not implemented**, and research security controls are also **not implemented**."
+  },
+  "limitations": "Captured from one completed live run after separate operator login. This is manual evidence, not automated live-test coverage or proof of broader research/security milestones."
+}

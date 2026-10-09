@@ -1,0 +1,33 @@
+{
+  "feature": "signal-scout/reporting",
+  "title": "Signal Scout reporting",
+  "schemaVersion": 2,
+  "specs": [
+    {
+      "id": "SS-030",
+      "subfeature": "reporting",
+      "title": "Terminal surfing report",
+      "contract": "When a mission completes, reaches a safety or usage boundary, receives a stop request, or encounters a blocking failure, Signal Scout deterministically writes report.json and report.md under the plugin-owned mission directory. Reports contain stop reason, measurement status, tool-call count, coverage gaps, findings with evidence IDs, evidence index, confidence and limitations, unresolved questions, recommended next steps, and audit summary. Competitor matrices, demand examples, and ranked opportunities appear only when structured records exist; missing analysis remains empty or unknown.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-032",
+      "subfeature": "reporting",
+      "title": "Research audit trail",
+      "contract": "Signal Scout records mission lifecycle events, permitted browser and web actions, source access results, analyzer invocations, safety and budget decisions, checkpoint writes, and finding-to-evidence links in chronological order. Audit events contain allowlisted metadata, safe URLs or source IDs, duration, status, and redacted failure class rather than raw arguments or results. The trail explains every reported finding without retaining secrets or unrestricted source bodies.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
+      "otherCoverage": [],
+      "blocker": ""
+    }
+  ]
+}
