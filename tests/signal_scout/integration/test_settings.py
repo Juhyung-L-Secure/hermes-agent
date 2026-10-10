@@ -15,6 +15,10 @@ CONFIG = ROOT / 'docker/signal-scout/config.yaml'
 
 def test_SS_B004_defaults_and_supplied_file_settings(tmp_path):
     config = settings.load_settings(CONFIG)
+    assert config['scout_reviewer'] == {'model':'gpt-6-luna', 'reasoning_effort':'none',
+                                        'timeout_seconds':180, 'retries':1}
+    assert config['model'] == {'provider':'openai-codex', 'default':'gpt-5.6-luna'}
+    assert config['agent']['reasoning_effort'] == 'low'
     assert config['logging'] == {'level':'INFO', 'max_size_mb':5, 'backup_count':3}
     assert config['browser']['command_timeout'] == 30
     assert config['scout_proxy'] == {'dns_timeout':5, 'connect_timeout':10, 'idle_timeout':60}
@@ -25,6 +29,8 @@ def test_SS_B004_defaults_and_supplied_file_settings(tmp_path):
     config['scout_proxy'] = {'dns_timeout':2, 'connect_timeout':3, 'idle_timeout':4}
     config['scout_lifecycle'] = {'startup_timeout':7, 'control_connect_timeout':1,
                                  'shutdown_timeout':3, 'smoke_timeout':80}
+    config['scout_reviewer'] = {'model':'gpt-6-luna', 'reasoning_effort':'low',
+                                'timeout_seconds':17, 'retries':0}
     path = tmp_path / 'settings.yaml'
     path.write_text(yaml.safe_dump(config))
     assert settings.load_settings(path) == config
@@ -43,6 +49,8 @@ def test_SS_B004_defaults_and_supplied_file_settings(tmp_path):
     ('scout_lifecycle','restart_browser',True), ('scout_network','proxy_port',80),
     ('scout_network','browser_address','172.30.242.3'), ('scout_network','scout_address','8.8.8.8'),
     ('scout_network','relay_port',9222), ('scout_network','subnet','0.0.0.0/0'),
+    ('scout_reviewer','timeout_seconds',0), ('scout_reviewer','retries',True),
+    ('scout_reviewer','model',''), ('scout_reviewer','fallback_provider','other'),
 ])
 def test_SS_B004_invalid_or_security_relaxing_configuration_fails(tmp_path, section, key, value):
     config = copy.deepcopy(settings.load_settings(CONFIG))
@@ -59,6 +67,8 @@ def test_SS_B004_image_owned_configuration_matches_runtime(scout_stack):
         from pathlib import Path
         config = importlib.import_module('plugins.signal-scout.security.settings').load_settings()
         assert config['logging']['max_size_mb'] == 5 and config['logging']['backup_count'] == 3
+        assert config['scout_reviewer'] == {'model':'gpt-6-luna', 'reasoning_effort':'none',
+                                            'timeout_seconds':180, 'retries':1}
         assert Path('/var/lib/scout/config.yaml').is_symlink()
         assert Path('/var/lib/scout/config.yaml').resolve() == Path('/opt/scout/config.yaml')
     """)

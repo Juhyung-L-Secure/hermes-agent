@@ -7,6 +7,14 @@ project context and links to earlier plans. It distinguishes decisions from
 proposals and implemented protections. It is not a claim that reviewed browsing
 already works. Continue planning here instead of reconstructing the conversation.
 
+Implementation note, 2026-10-09: standalone safety-reviewer client now lives in
+`reviewer.py`, with SS-R001–SS-R006 and ownership in `README.md`. Current confirmed
+values are `gpt-6-luna` / `none` / 180 seconds per attempt / 1 retry from existing
+image-owned `config.yaml`; these supersede older reviewer values recorded below.
+Prepared evidence is consumed in memory; capture/viewport enforcement, browser-action
+gate, mission-stop/browser-close integration and live-model evaluation remain
+unimplemented. Earlier discussion and historical evidence are preserved.
+
 ## 1. Project direction and scope
 
 - Signal Scout researches competitors and demand signals for `freepik_clone`:

@@ -27,6 +27,11 @@ logging:
   level: INFO
   max_size_mb: 5
   backup_count: 3
+scout_reviewer:
+  model: gpt-6-luna
+  reasoning_effort: none
+  timeout_seconds: 180
+  retries: 1
 browser:
   cloud_provider: local
   engine: chrome

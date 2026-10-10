@@ -23,6 +23,18 @@ def load_settings(path=CONFIG):
         proxy = config["scout_proxy"]
         lifecycle = config["scout_lifecycle"]
         network = config["scout_network"]
+        reviewer = config["scout_reviewer"]
+        if set(reviewer) != {"model", "reasoning_effort", "timeout_seconds", "retries"}:
+            raise ValueError
+        model = reviewer["model"]
+        if not isinstance(model, str) or not model or model != model.strip() or model.endswith("-900k"):
+            raise ValueError
+        if reviewer["reasoning_effort"] not in {"none", "low", "medium", "high", "xhigh", "max"}:
+            raise ValueError
+        if type(reviewer["timeout_seconds"]) is not int or reviewer["timeout_seconds"] <= 0:
+            raise ValueError
+        if type(reviewer["retries"]) is not int or reviewer["retries"] < 0:
+            raise ValueError
         if set(lifecycle) != {"startup_timeout", "control_connect_timeout", "shutdown_timeout", "smoke_timeout"}:
             raise ValueError
         if set(network) != {"subnet", "proxy_address", "scout_address", "browser_address",

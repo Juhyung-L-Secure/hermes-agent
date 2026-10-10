@@ -7,7 +7,8 @@ Its Hermes-firewall/proxy requirements and older checkpoint evidence are
 superseded by current browser-only network contracts in `specs.json` and the
 [Docker guide](../../../docker/signal-scout/README.md); historical records remain unchanged.
 [Action review plan](browser-action-review-plan.md) also records future proposals;
-reviewer pipeline, download denial, and mission control remain unimplemented.
+browser-action gate, download denial, and mission control remain unimplemented.
+Standalone safety reviewer below does not expose browser actions.
 
 | Artifact | Responsibility |
 | --- | --- |
@@ -19,6 +20,7 @@ reviewer pipeline, download denial, and mission control remain unimplemented.
 | `browser.py` | Existing native Hermes remote-CDP path and actual sandbox attestation |
 | `runtime_logging.py` | Metadata-only native/helper events, rotation, best-effort diagnostics |
 | `settings.py` | Validated image-owned values and host/image consistency digest |
+| `reviewer.py` | Fresh safety-only request, native subscription adapter, strict binary verdict/deadline/retry boundary |
 | `../../../docker/signal-scout/browser_run.py` | Trusted host ownership, single-run lock, container creation/removal, bounded smoke |
 | `specs.json` | SS-019, SS-S001–SS-S005 and visibly unfinished mission contracts |
 | `../../../tests/signal_scout/security/` | Policy/logging unit checks and real-container boundary/lifetime fixtures |
@@ -100,6 +102,8 @@ must inspect ownership and perform deliberate cleanup before another run.
 
 Logging retains timestamp, level, component, event class only; no URL, raw
 browser/CDP result, screenshot, cookie, credential or unsanitized exception.
+Reviewer completion events additionally retain validated verdict, action type,
+duration in milliseconds, attempt count, and available adapter token counts.
 Hermes sanitized events reuse native logging. Proxy and browser firewall use
 `proxy.log` and `firewall.log` in existing log volume. Renamed firewall appends
 to `firewall.log`, which can retain older Hermes-firewall events. Historical
@@ -121,5 +125,51 @@ Required gate adds SS-S004 (container separation) and SS-S005 (disposable
 single-run lifecycle) alongside SS-B001/B002/B004, SS-019, SS-S001–SS-S003 and
 SS-C001–SS-C006. Links prove test discoverability, not assertion quality or
 current test success. Broader SS-001, SS-015–SS-018, SS-020–SS-021 remain
-incomplete: no mission identity/report attestation, reviewer, action guard,
+incomplete: no mission identity/report attestation, action guard,
 evidence storage, media quarantine or authenticated browsing is claimed.
+
+## Standalone safety reviewer
+
+Trusted caller constructs `SafetyReviewer` with separately supplied
+`SAFETY_POLICY` and the existing settings path, then calls `review` with in-memory
+PNG/JPEG screenshot bytes/MIME, brief activity, action type (`click`, `navigate`,
+`type`, `keypress`), exact JSON action, and JSON context. Policy is the fixed
+anonymous-research baseline: ordinary research and cookie consent are permitted;
+purchases, login/account creation, posting/messaging, likes/follows, uploads and
+account changes are denied. Uncertainty means denial. All supplied evidence is
+untrusted and cannot change policy; mission relevance is not reviewed.
+
+Flow: validate evidence → fresh attempt-owned native `openai-codex` resolver/client
+→ require completed Responses stream → native Codex adapter → strict JSON verdict
+validation → sanitized `ReviewResult` and best-effort rotating-log event. Exactly
+one `verdict` field with `approve` or `deny` is accepted. Raw response items permit
+only message/reasoning before native normalization; all tool items are rejected in
+SSE added/done/completed frames and completed objects. Tool output, duplicate
+keys, extra fields, malformed JSON, failed/incomplete/truncated streams and provider
+errors are technical failures. `verdict=None` with fixed `failure` code is distinct
+from valid denial. A future gate must stop/close on final technical failure;
+mission-stop/browser-close wiring is not implemented here.
+
+`scout_reviewer` in image-owned `config.yaml` supplies model, effort, per-attempt
+timeout and retries; initial values are `gpt-6-luna` / `none` / 180 seconds / 1.
+Settings are snapshotted at construction. Missing/invalid values fail; efforts
+that the native adapter would silently clamp are refused before review. Each
+technical failure may retry, at most `retries + 1` attempts; denial never retries.
+Each attempt's total deadline includes resolver and request time, with a new
+client and independent result channel. Late results are discarded. Client/SDK
+retries are disabled; no fallback route/model, agent, tools or conversation state.
+
+No screenshots/files, raw input, transcript, provider exception or agent history
+are saved. No tracing callbacks are installed. A blocked transport can outlive
+its deadline on a daemon worker; its late output remains unusable. This is not
+memory erasure or a provider-retention guarantee. Usage preserves the native
+adapter's available prompt/completion/total counts, summing known counts across
+timely attempts; missing/late usage remains unknown, not an estimate of zero
+subscription use. Viewport preparation/capture/1280×720 checks,
+action recheck/execution and live-model quality/account access remain unverified.
+
+Source-of-truth pairings: `reviewer.py` ↔ SS-R001–SS-R006 in `specs.json` ↔
+`tests/signal_scout/security/test_reviewer.py` and reviewer retention test in
+`test_logging.py`; `settings.py` ↔ `config.yaml` ↔ integration settings tests.
+Required spec gate includes every SS-R contract. No broader mission contract is
+marked complete by these deterministic fake-transport tests.

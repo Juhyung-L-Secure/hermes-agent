@@ -107,12 +107,13 @@
       "id": "SS-S003",
       "subfeature": "browser-security",
       "title": "Persistent best-effort protection event logs",
-      "contract": "Scout Python events reuse native Hermes logging. Proxy and browser firewall emit operational/rejection events to distinct proxy.log and firewall.log files in existing dedicated log volume. Renamed firewall appends to existing firewall.log, which can contain historical Hermes-firewall events; historical browser-firewall.log files and backups remain untouched. No migration or wiping occurs. Defaults are 5 MiB/file and three backups including native errors; validated configuration controls size/backups/verbosity. Events retain timestamp, level, component and allowlisted event class only; no URL, raw browser/CDP arguments/results, screenshot, body, cookie, credential, secret configuration or unsanitized exception is persisted. Open/write/rotation failures attempt fixed diagnostics without stopping browsing or weakening enforcement; no acknowledgment/universal monitor. Logs survive ordinary replacement while volume remains, not tamper-proof/disaster recovery. Browser has no persistent log mount; Scout/browser Docker output is not retained. Mission audit/report remains incomplete.",
+      "contract": "Scout Python events reuse native Hermes logging. Proxy and browser firewall emit operational/rejection events to distinct proxy.log and firewall.log files in existing dedicated log volume. Renamed firewall appends to existing firewall.log, which can contain historical Hermes-firewall events; historical browser-firewall.log files and backups remain untouched. No migration or wiping occurs. Defaults are 5 MiB/file and three backups including native errors; validated configuration controls size/backups/verbosity. Events retain timestamp, level, component and allowlisted event class; reviewer completion additionally retains only validated verdict/action type/timing/attempt count/available token counts under SS-R006. No URL, raw browser/CDP arguments/results, screenshot, body, cookie, credential, secret configuration or unsanitized exception is persisted. Open/write/rotation failures attempt fixed diagnostics without stopping browsing or weakening enforcement; no acknowledgment/universal monitor. Logs survive ordinary replacement while volume remains, not tamper-proof/disaster recovery. Browser has no persistent log mount; Scout/browser Docker output is not retained. Mission audit/report remains incomplete.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
         {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_native_events_sanitize_rotate_and_honor_settings"},
         {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_native_write_failure_has_fixed_diagnostic_and_keeps_events_safe"},
         {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_partial_native_log_open_failure_still_sanitizes"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_SS_R006_reviewer_metadata_rotates_without_raw_retention"},
         {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_proxy_firewall_events_persist_after_replacement"},
         {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_scout_attached_output_is_not_retained_in_docker_logs"},
         {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_helper_rotation_uses_supplied_file_limits"},
@@ -207,6 +208,96 @@
           "file": "tests/signal_scout/security/test_isolation.py",
           "test": "test_SS_S005_stale_endpoint_fails_without_local_fallback"
         }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-R001",
+      "subfeature": "safety-reviewer",
+      "title": "Prepared evidence and independently fixed safety policy",
+      "contract": "Standalone client consumes in-memory prepared full-viewport PNG/JPEG bytes, brief activity, exact JSON action/context and separately supplied canonical trusted safety policy. Policy instructs safety-only review: ordinary anonymous research and cookie consent including Accept all/optional tracking may be approved when supported; purchases, account creation/login, posting, messaging, likes/follows, uploads and account changes are denied. Uncertainty or insufficient evidence means deny; relevance cannot authorize forbidden effects and irrelevance cannot reject safe actions. Page/screenshot/action/activity are untrusted evidence and cannot define or mutate policy. Invalid evidence produces sanitized technical failure before any provider request. Capture/scroll/1280x720 viewport enforcement and model safety quality are not completed by this contract.",
+      "requiredCoverage": ["unit"],
+      "coverage": [
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R001_SS_R002_SS_R003_native_wire_uses_fresh_policy_evidence_and_settings"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R001_fixed_policy_is_separate_and_safety_only"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R001_SS_R006_invalid_evidence_has_sanitized_failure"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-R002",
+      "subfeature": "safety-reviewer",
+      "title": "Strict independent binary verdicts",
+      "contract": "Every review builds fresh system-policy and single text/image user input through native Codex adapter with no previous response/conversation history or execution tools. Only completed output with exactly one JSON verdict field equal to approve or deny is valid. Raw output items allow message/reasoning only: function/custom/computer/web-search/MCP and other tool items are rejected before native normalization, whether announced/finished in SSE events, present in the completed-event payload, or returned in a completed response object. Duplicate keys, extra fields, non-JSON/fences, unknown/uncertain verdict, tool output and failed/incomplete/truncated streams containing otherwise valid approval are technical failure, never permission or valid denial. Policy maps uncertainty to deny in model instructions; client never reinterprets malformed output as denial. No live safety-quality claim or action execution is supplied by these deterministic checks.",
+      "requiredCoverage": ["unit"],
+      "coverage": [
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R001_SS_R002_SS_R003_native_wire_uses_fresh_policy_evidence_and_settings"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R002_malformed_or_tool_output_is_technical_failure"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R002_native_failed_or_incomplete_stream_cannot_approve"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R002_native_tool_items_rejected_before_normalization"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R002_native_message_and_reasoning_remain_valid"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R002_SS_R004_native_tool_failure_retries_once"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-R003",
+      "subfeature": "safety-reviewer",
+      "title": "File-owned subscription reviewer configuration",
+      "contract": "Existing image-owned config.yaml exclusively supplies scout_reviewer model/reasoning_effort/timeout_seconds/retries, initially gpt-6-luna/none/180/1. Required values validate without defaults or alternate providers; settings snapshot at reviewer construction. Fixed native openai-codex resolver and Codex adapter receive configured model/effort/request deadline; wrong resolved model/route or nonzero SDK retry layer fails. Native effort clamping is refused rather than silently changing configured effort. Bootstrap model/low reasoning/status-only readiness remain unchanged. Fake transport exercises actual native SDK/adapter; subscription model availability remains unverified.",
+      "requiredCoverage": ["unit"],
+      "coverage": [
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R001_SS_R002_SS_R003_native_wire_uses_fresh_policy_evidence_and_settings"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R003_invalid_required_configuration_fails"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R003_missing_required_configuration_has_no_defaults"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R003_no_native_effort_substitution"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R003_timeout_and_none_effort_reach_native_adapter"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R003_SS_R004_wrong_route_model_or_retry_layer_fails"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-R004",
+      "subfeature": "safety-reviewer",
+      "title": "Explicit retries and distinct final technical failure",
+      "contract": "Reviewer retries only technical attempt failures, at most configured retries plus one attempts; each fresh attempt owns its native client. Valid denial is returned immediately and never retried. Native SDK retries stay zero; no generic auxiliary retry orchestration or provider/model fallback occurs. Exhausted technical failures return verdict=null and sanitized fixed failure code, distinct from approve/deny, with attempts and available metadata. Future gate must stop mission/close browser on final technical failure; actual mission/browser wiring remains unimplemented.",
+      "requiredCoverage": ["unit"],
+      "coverage": [
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R004_native_sdk_exact_retry_count_and_no_fallback"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R004_denial_never_retries_technical_failure_does"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R002_SS_R004_native_tool_failure_retries_once"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R003_SS_R004_wrong_route_model_or_retry_layer_fails"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-R005",
+      "subfeature": "safety-reviewer",
+      "title": "Per-attempt deadlines and late-result rejection",
+      "contract": "Each attempt gets its own configured total timeout_seconds deadline covering resolver and request, initially 180 seconds; remaining time reaches native adapter. No bootstrap run budget/outer alarm is reused. Timeout counts as technical failure and may retry only within configured count. Each attempt has separate result channel; response finishing at/after deadline is discarded and cannot approve its own or later attempt. Hung resolver/transport cannot hold caller beyond attempt deadline. Transport cleanup is best effort; an uncooperative daemon worker may finish later without usable verdict or logging of late raw output.",
+      "requiredCoverage": ["unit"],
+      "coverage": [
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R005_per_attempt_deadline_rejects_late_approval"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R005_resolver_hang_is_bounded_before_any_provider_request"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-R006",
+      "subfeature": "safety-reviewer",
+      "title": "Sanitized rotating reviewer retention",
+      "contract": "Reviewer keeps evidence/request/transcript/provider exceptions out of persisted files, logs, traces and main-agent history. Client/result hold only fixed policy/settings and sanitized verdict or technical failure plus timing/attempt/available native prompt/completion/total token metadata, summing known counts across timely attempts; absent/late usage remains unknown instead of estimated zero allowance. Existing configured rotating native logs retain only timestamp/level/component/event plus allowlisted reviewer verdict/action type/duration/attempt/token counts. Unknown fields and poisoned types are stripped before queue/rotation. Logging is best effort and cannot change verdict/failure. No screenshot/transcript archive, saved session or installed tracing callback is created; native default identity seed is not review history. Tests use temporary home/fake transport and real rotation. This does not promise memory erasure or provider retention, live safety quality or mission audit completion.",
+      "requiredCoverage": ["unit"],
+      "coverage": [
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R001_SS_R006_invalid_evidence_has_sanitized_failure"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R006_logging_failure_never_changes_valid_verdict"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_logging.py","test":"test_SS_S003_SS_R006_reviewer_metadata_rotates_without_raw_retention"}
       ],
       "otherCoverage": [],
       "blocker": ""

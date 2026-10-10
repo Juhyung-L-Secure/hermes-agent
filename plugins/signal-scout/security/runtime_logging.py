@@ -1,6 +1,7 @@
 """Bounded, metadata-only operational events; logging failures never weaken policy."""
 
 import logging
+import json
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 import sys
@@ -10,6 +11,7 @@ EVENTS = frozenset({
     "sandbox_verified", "sandbox_failed", "connection_allowed", "connection_failed",
     "dns_failed", "private_destination", "peer_mismatch", "destination_port",
     "invalid_request", "client_denied", "denied_ipv4", "denied_ipv6",
+    "review_completed",
 })
 COMPONENTS = {"scout", "proxy", "firewall"}
 
@@ -30,6 +32,9 @@ class MetadataOnly(logging.Filter):
         code = getattr(record, "scout_event", "native_event")
         record.name = "signal_scout." + (component if isinstance(component, str) and component in COMPONENTS else "scout")
         record.msg = "event=" + (code if isinstance(code, str) and code in EVENTS else "native_event")
+        if code == "review_completed":
+            record.scout_review = _review_metadata(getattr(record, "scout_review", {}))
+            record.msg += " " + json.dumps(record.scout_review, sort_keys=True)
         record.args = ()
         record.session_tag = ""
         record.exc_info = record.exc_text = record.stack_info = None
@@ -96,3 +101,35 @@ def event(component, code, level="INFO"):
         raise ValueError("Invalid operational event.")
     logging.getLogger("signal_scout." + component).log(getattr(logging, level), "event=" + code,
                                                       extra={"scout_component": component, "scout_event": code})
+
+
+def _review_metadata(value):
+    if not isinstance(value, dict):
+        return {}
+    result = {}
+    for key, allowed in {
+        "action_type": {"click", "navigate", "type", "keypress"},
+        "verdict": {"approve", "deny", "technical_failure"},
+    }.items():
+        candidate = value.get(key)
+        if isinstance(candidate, str) and candidate in allowed:
+            result[key] = candidate
+    for key in ("duration_ms", "attempts", "prompt_tokens", "completion_tokens", "total_tokens"):
+        candidate = value.get(key)
+        if type(candidate) is int and candidate >= 0:
+            result[key] = candidate
+    return result
+
+
+def review_event(action_type, verdict, failure, duration_ms, attempts, usage):
+    """Persist only validated verdict/action/timing/attempt/token metadata.
+
+    Provider errors and raw evidence never become log fields. The filter repeats
+    validation before native queue/rotation; logging delivery remains best effort.
+    """
+    metadata = _review_metadata({**usage, "action_type": action_type,
+        "verdict": "technical_failure" if failure else verdict,
+        "duration_ms": duration_ms, "attempts": attempts})
+    logging.getLogger("signal_scout.scout").log(logging.WARNING if failure else logging.INFO,
+        "event=review_completed", extra={"scout_component": "scout",
+                                        "scout_event": "review_completed", "scout_review": metadata})

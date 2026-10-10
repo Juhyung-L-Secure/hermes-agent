@@ -13,7 +13,7 @@ ready; research and research security are not implemented.
 | `../../tests/signal_scout/integration/` | Real discovery/dispatch and container checks |
 | `specs.json` | Native integration SS-001 and bootstrap SS-B001–SS-B004 |
 | `missions/specs.json` | Mission execution, stop, checkpoint/resume |
-| `security/` | Protection-only browser/proxy/firewall/logging/settings; broader security specs |
+| `security/` | Browser/proxy/firewall/logging/settings and standalone safety reviewer; broader security specs |
 | `evidence/specs.json` | Source inventory, evidence, findings, deduplication |
 | `media/specs.json` | Video/audio analysis and limitations |
 | `budget/specs.json` | Usage measurement and enforcement |
@@ -65,3 +65,8 @@ Independent teardown after coordinator/host loss remains deferred.
 Research missions, model-driven browsing, evidence, reports, messaging, scheduling, and
 budget engines remain future work. Native Hermes extension boundaries remain
 available for later explicit messaging integration; no abstraction is added.
+Standalone safety-reviewer contracts SS-R001–SS-R006 now cover prepared in-memory
+evidence, fixed safety policy, fresh native subscription requests, strict verdicts,
+configured deadlines/retries and sanitized rotating metadata. Browser-action gate
+and live reviewer quality/account availability remain future work; status readiness
+is unchanged. [Reviewer ownership](security/README.md#standalone-safety-reviewer).

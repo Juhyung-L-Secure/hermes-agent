@@ -16,7 +16,8 @@ module_spec.loader.exec_module(checker)
 # Only shipped, fully linked contracts gate this workflow. Backlog stays visible.
 REQUIRED_IDS = ("SS-B001", "SS-B002", "SS-C001", "SS-C002", "SS-C003",
                 "SS-C004", "SS-C005", "SS-C006", "SS-019", "SS-B004",
-                "SS-S001", "SS-S002", "SS-S003", "SS-S004", "SS-S005")
+                "SS-S001", "SS-S002", "SS-S003", "SS-S004", "SS-S005",
+                "SS-R001", "SS-R002", "SS-R003", "SS-R004", "SS-R005", "SS-R006")
 
 
 @pytest.fixture
