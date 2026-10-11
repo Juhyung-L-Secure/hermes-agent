@@ -4,6 +4,7 @@ from pathlib import Path
 import ipaddress
 import hashlib
 import json
+import math
 import yaml
 
 CONFIG = Path("/opt/scout/config.yaml")
@@ -20,6 +21,7 @@ def load_settings(path=CONFIG):
         config = yaml.safe_load(Path(path).read_text())
         logging = config["logging"]
         browser = config["browser"]
+        viewport = browser["viewport"]
         proxy = config["scout_proxy"]
         lifecycle = config["scout_lifecycle"]
         network = config["scout_network"]
@@ -54,7 +56,16 @@ def load_settings(path=CONFIG):
         if set(proxy) != {"dns_timeout", "connect_timeout", "idle_timeout"}:
             raise ValueError
         if browser != {"cloud_provider": "local", "engine": "chrome", "use_real_profile": False,
-                       "auto_local_for_private_urls": False, "command_timeout": browser["command_timeout"]}:
+                       "auto_local_for_private_urls": False, "command_timeout": browser["command_timeout"],
+                       "viewport": viewport}:
+            raise ValueError
+        if set(viewport) != {"width", "height", "device_scale_factor"}:
+            raise ValueError
+        for key in ("width", "height"):
+            if type(viewport[key]) is not int or not 1 <= viewport[key] <= 2**31 - 1:
+                raise ValueError
+        scale = viewport["device_scale_factor"]
+        if type(scale) not in (int, float) or not math.isfinite(scale) or scale <= 0:
             raise ValueError
         if browser["use_real_profile"] is not False or browser["auto_local_for_private_urls"] is not False:
             raise ValueError
@@ -70,5 +81,5 @@ def load_settings(path=CONFIG):
         if logging["level"] not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
             raise ValueError
         return config
-    except (OSError, ValueError, TypeError, KeyError, yaml.YAMLError):
+    except (OSError, ValueError, TypeError, KeyError, OverflowError, yaml.YAMLError):
         raise ValueError("Invalid Scout operating settings.") from None

@@ -12,6 +12,8 @@ import sys
 import tempfile
 import time
 
+from websockets.asyncio.client import connect
+
 from .control import discover, validate_endpoint
 from .settings import load_settings, settings_digest
 
@@ -19,7 +21,7 @@ CHROME = "/opt/scout/chrome-linux64/chrome"
 READY = Path("/tmp/browser-ready.json")
 
 
-def launch_args(profile, network):
+def launch_args(profile, network, viewport):
     """Build a sandboxed launch with anonymous storage and mandatory proxy policy."""
     profile = Path(profile)
     if (profile.parent != Path("/tmp") or not profile.name.startswith("scout-chrome-")
@@ -29,7 +31,9 @@ def launch_args(profile, network):
             "--no-default-browser-check", "--disable-background-networking",
             "--disable-component-update", "--disable-default-apps", "--disable-sync",
             "--disable-popup-blocking", "--metrics-recording-only", "--password-store=basic",
-            "--use-mock-keychain", "--disable-dev-shm-usage", "--disable-extensions", "--window-size=1280,720",
+            "--use-mock-keychain", "--disable-dev-shm-usage", "--disable-extensions",
+            f"--window-size={viewport['width']},{viewport['height']}",
+            f"--force-device-scale-factor={viewport['device_scale_factor']}",
             "--remote-debugging-address=127.0.0.1", f"--remote-debugging-port={network['control_port']}",
             f"--proxy-server=http://{network['proxy_address']}:{network['proxy_port']}",
             "--proxy-bypass-list=<-loopback>", "--disable-quic",
@@ -67,8 +71,83 @@ def readiness(config):
     return record
 
 
+async def verify_download_policy(command, session, bounds):
+    """Require Chrome's validated mandatory machine/platform download policy.
+
+    The pinned chrome://policy model comes from PolicyService and policy-handler
+    validation. Disk JSON alone does not establish that Chrome applied policy.
+    Restore the initial blank page after this bounded in-memory observation.
+    """
+    await command("Page.navigate", {"url": "chrome://policy"}, session)
+    deadline = time.monotonic() + bounds["startup_timeout"]
+    while True:
+        observed = await command("Runtime.evaluate", {"expression": """(() => {
+            const groups = document.querySelector('policy-app')?.policyGroups_;
+            if (!groups?.length) return null;
+            return groups.find(group => group.id === 'chrome')?.policies
+                .find(policy => policy.name === 'DownloadRestrictions') ?? {};
+        })()""", "returnByValue": True}, session)
+        policy = observed["result"].get("value")
+        if policy is not None:
+            if (policy.get("value") != 3 or policy.get("level") != "mandatory"
+                    or policy.get("scope") != "machine" or policy.get("source") != "platform"
+                    or any(policy.get(key) for key in ("error", "ignored", "warning", "conflicts", "superseded"))):
+                raise RuntimeError("Native browser download policy unavailable.")
+            break
+        if time.monotonic() >= deadline:
+            raise RuntimeError("Native browser download policy verification failed.")
+        await asyncio.sleep(0.05)
+    await command("Page.navigate", {"url": "about:blank"}, session)
+
+
+async def initialize_safeguards(connection, config):
+    """Verify native policy and actual main-window contents before startup CDP closes."""
+    sequence = 0
+
+    async def command(method, params=None, session=None):
+        nonlocal sequence
+        sequence += 1
+        message = {"id": sequence, "method": method, "params": params or {}}
+        if session is not None:
+            message["sessionId"] = session
+        async with asyncio.timeout(config["scout_lifecycle"]["control_connect_timeout"]):
+            await connection.send(json.dumps(message))
+            while True:
+                response = json.loads(await connection.recv())
+                if response.get("id") == sequence:
+                    if "error" in response:
+                        raise RuntimeError("Browser safeguard setup failed.")
+                    return response["result"]
+
+    if (await command("Target.getBrowserContexts"))["browserContextIds"]:
+        raise RuntimeError("Unexpected browser context.")
+    pages = [target for target in (await command("Target.getTargets"))["targetInfos"]
+             if target["type"] == "page"]
+    if len(pages) != 1 or pages[0]["url"] != "about:blank":
+        raise RuntimeError("Unexpected initial browser target.")
+    target = pages[0]["targetId"]
+    session = (await command("Target.attachToTarget", {"targetId": target, "flatten": True}))["sessionId"]
+    await verify_download_policy(command, session, config["scout_lifecycle"])
+    window = await command("Browser.getWindowForTarget", {"targetId": target})
+    viewport = config["browser"]["viewport"]
+    await command("Browser.setContentsSize", {"windowId": window["windowId"],
+                  "width": viewport["width"], "height": viewport["height"]})
+    # Window resizing is asynchronous; readiness requires the resulting contents.
+    deadline = time.monotonic() + config["scout_lifecycle"]["startup_timeout"]
+    while True:
+        observed = await command("Runtime.evaluate", {"expression":
+            "(location.href==='about:blank' ? {width:innerWidth,height:innerHeight,device_scale_factor:devicePixelRatio} : null)",
+            "returnByValue": True}, session)
+        if observed["result"].get("value") == viewport:
+            break
+        if time.monotonic() >= deadline:
+            raise RuntimeError("Browser window sizing failed.")
+        await asyncio.sleep(0.05)
+    await command("Target.detachFromTarget", {"sessionId": session})
+
+
 async def run_child(config, run):
-    """Expose relay after ownership proof; child exit closes all control sockets."""
+    """Publish only verified owned Chromium; child exit closes its relay."""
     network, bounds = config["scout_network"], config["scout_lifecycle"]
     child, server = None, None
     published = False
@@ -82,7 +161,7 @@ async def run_child(config, run):
                 vacant.bind(("127.0.0.1", network["control_port"]))
             environment = {"PATH": "/usr/bin:/bin", "HOME": profile, "LANG": "C.UTF-8",
                            "XDG_CONFIG_HOME": profile + "/config", "XDG_CACHE_HOME": profile + "/cache"}
-            child = subprocess.Popen(launch_args(profile, network), env=environment,
+            child = subprocess.Popen(launch_args(profile, network, config["browser"]["viewport"]), env=environment,
                                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGTERM, signal.SIGINT):
@@ -93,6 +172,9 @@ async def run_child(config, run):
                     raise RuntimeError("Chromium startup failed.")
                 await asyncio.sleep(0.05)
             endpoint = discover("127.0.0.1", network["control_port"], bounds["control_connect_timeout"])
+            async with connect(endpoint, proxy=None, open_timeout=bounds["control_connect_timeout"],
+                               close_timeout=bounds["control_connect_timeout"], ping_interval=None) as startup:
+                await initialize_safeguards(startup, config)
 
             async def forward(reader, writer):
                 while data := await reader.read(65536):

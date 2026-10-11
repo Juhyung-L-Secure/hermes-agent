@@ -38,6 +38,10 @@ browser:
   use_real_profile: false
   auto_local_for_private_urls: false
   command_timeout: 30
+  viewport:
+    width: 1280
+    height: 720
+    device_scale_factor: 1
 scout_proxy:
   dns_timeout: 5
   connect_timeout: 10

@@ -1,6 +1,7 @@
 """Disposable listeners/DNS inside existing proxy; no production policy override."""
 
 from collections import Counter
+import base64
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from pathlib import Path
@@ -31,11 +32,38 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Location', destination)
             self.end_headers()
             return
+        content_type = 'text/html'
         body = b'<html><body>public fixture survives<script>window.fixtureReady=true</script></body></html>'
+        if self.path.startswith('/attachment/'):
+            body = b'download fixture must never be saved'
+            content_type = 'application/octet-stream'
+        elif self.path == '/media/image.png':
+            body = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')
+            content_type = 'image/png'
+        elif self.path == '/media/audio.wav':
+            samples = b'\0' * 800
+            body = (b'RIFF' + struct.pack('<I', 36 + len(samples)) + b'WAVEfmt '
+                    + struct.pack('<IHHIIHH', 16, 1, 1, 8000, 16000, 2, 16)
+                    + b'data' + struct.pack('<I', len(samples)) + samples)
+            content_type = 'audio/wav'
+        elif self.path.startswith('/safeguards'):
+            body = b'''<html><body style="height:2000px">download and media fixture
+              <img id="image" src="/media/image.png">
+              <audio id="audio" src="/media/audio.wav" preload="auto"></audio>
+              <script>window.fixtureReady=true</script></body></html>'''
         self.send_response(200)
         self.send_header('Content-Length', str(len(body)))
-        self.send_header('Content-Type', 'text/html')
+        self.send_header('Content-Type', content_type)
+        if self.path.startswith('/attachment/'):
+            self.send_header('Content-Disposition', 'attachment; filename="' + self.path.rsplit('/', 1)[1] + '"')
+        if self.path.startswith('/attachment/fixture-control-'):
+            self.send_header('X-Content-Type-Options', 'nosniff')
         self.end_headers()
+        if self.path.startswith('/attachment/fixture-control-'):
+            # Native-policy positive control: headers start a real download,
+            # then native UI cancellation occurs before any payload is sent.
+            time.sleep(15)
+            return
         self.wfile.write(body)
 
 

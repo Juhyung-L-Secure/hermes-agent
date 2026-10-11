@@ -78,9 +78,10 @@ def test_SS_019_dns_failure_and_mixed_answers_connect_nowhere(monkeypatch):
 def test_SS_S001_launch_adapter_forces_policy_and_rejects_overrides():
     chromium = importlib.import_module('plugins.signal-scout.security.chromium')
     settings = importlib.import_module('plugins.signal-scout.security.settings')
-    network = settings.load_settings(Path(__file__).resolve().parents[3] / 'docker/signal-scout/config.yaml')['scout_network']
+    config = settings.load_settings(Path(__file__).resolve().parents[3] / 'docker/signal-scout/config.yaml')
+    network = config['scout_network']
     with tempfile.TemporaryDirectory(prefix='scout-chrome-', dir='/tmp') as profile:
-        command = chromium.launch_args(profile, network)
+        command = chromium.launch_args(profile, network, config['browser']['viewport'])
         assert '--no-sandbox' not in command
         assert '--remote-debugging-port=9222' in command
         assert command.count('--proxy-server=http://172.30.242.2:3128') == 1
@@ -89,7 +90,7 @@ def test_SS_S001_launch_adapter_forces_policy_and_rejects_overrides():
         assert not any(value.startswith(('--ignore-certificate', '--load-extension', '--disable-seccomp',
                                         '--disable-namespace')) for value in command)
         with pytest.raises(ValueError, match='Invalid browser profile'):
-            chromium.launch_args('/var/lib/scout', network)
+            chromium.launch_args('/var/lib/scout', network, config['browser']['viewport'])
 
 
 def test_SS_019_numeric_connection_pinned_and_peer_checked(monkeypatch):

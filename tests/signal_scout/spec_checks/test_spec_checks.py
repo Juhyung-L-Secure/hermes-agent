@@ -17,6 +17,7 @@ module_spec.loader.exec_module(checker)
 REQUIRED_IDS = ("SS-B001", "SS-B002", "SS-C001", "SS-C002", "SS-C003",
                 "SS-C004", "SS-C005", "SS-C006", "SS-019", "SS-B004",
                 "SS-S001", "SS-S002", "SS-S003", "SS-S004", "SS-S005",
+                "SS-S006", "SS-S007", "SS-S008", "SS-S009", "SS-S010",
                 "SS-R001", "SS-R002", "SS-R003", "SS-R004", "SS-R005", "SS-R006")
 
 

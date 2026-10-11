@@ -185,7 +185,7 @@
         {"layer":"unit","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_driver_transport_failure_is_terminal_with_healthy_discovery"},
         {"layer":"e2e","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_live_driver_reset_is_terminal_with_healthy_discovery"},
         {"layer":"unit","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_shutdown_deadline_includes_supported_grace"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_configured_long_shutdown_removes_stopped_child"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_configured_long_shutdown_removes_stopped_launcher"},
         {"layer":"e2e","file":"tests/signal_scout/security/test_isolation.py","test":"test_SS_S005_command_hang_is_terminal_and_owned_container_removed"},
         {"layer":"e2e","file":"tests/signal_scout/security/test_isolation.py","test":"test_SS_S005_unavailable_relay_cleans_new_child_only"},
         {
@@ -208,6 +208,72 @@
           "file": "tests/signal_scout/security/test_isolation.py",
           "test": "test_SS_S005_stale_endpoint_fails_without_local_fallback"
         }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-S006",
+      "subfeature": "browser-security",
+      "title": "Persistent native browser download denial",
+      "contract": "Pinned Chrome for Testing loads root-owned/read-only /etc/opt/chrome_for_testing/policies/managed/scout.json with mandatory DownloadRestrictions: 3. Before readiness launcher verifies Chrome's validated native policy model reports value 3, mandatory/machine/platform and no error, ignored, warning, conflict or superseded policy. Native policy persists after bounded startup CDP closes, without a download override or policy-only run-lived connection. Real attachment, redirected attachment and generated-blob attempts in initial/new tabs and separate popups emit attempted-download and canceled-progress events and save no file after startup disconnect. Controlled transient policy-free images prove real attachment/redirect downloads enter native progress, then native UI cancels before payload. Ordinary HTML, image, audio and video loading remains available. Native policy blocks ordinary webpage downloads, not Save Page or print-to-PDF. No allow toggle, custom download filter or download destination is introduced. Sole fresh anonymous default context remains supported; arbitrary trusted CDP remains trusted and no browser-action gate is claimed.",
+      "requiredCoverage": ["e2e"],
+      "coverage": [
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S006_SS_S010_native_download_attempts_cancel_after_startup_disconnect_and_media_loads"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S006_policy_free_positive_control_enters_native_download_and_cancels_before_payload"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-S007",
+      "subfeature": "browser-security",
+      "title": "Required canonical window and scale configuration",
+      "contract": "Existing image-owned browser.viewport is the sole source for width, height and device_scale_factor; supplied configuration is 1280 by 720 CSS pixels and scale 1. Width and height must be positive CDP signed integers; scale must be finite, positive and numeric, never boolean. Missing values, invalid values and unknown viewport keys fail explicitly without alternate defaults. Changing baked configuration and its consistency digest reaches actual Chromium main-window contents and browser-wide device scale, not only launch arguments.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer":"unit","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S007_required_window_configuration_fails_explicitly"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_window_configuration.py","test":"test_SS_S007_SS_S008_SS_S009_changed_configuration_reaches_real_window_and_scale"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-S008",
+      "subfeature": "browser-security",
+      "title": "Verified main-window contents and browser-wide scale",
+      "contract": "Launcher sets initial normal main-window contents with Browser.setContentsSize and browser-wide --force-device-scale-factor. Before readiness actual innerWidth, innerHeight and devicePixelRatio must match validated configuration; --window-size alone is not proof. Real viewport-only PNG captures match configured CSS dimensions multiplied by device scale. No per-tab emulation, debugger pause, screenshot cropping/full-page sizing or continuous geometry guard is implemented; unsupported actual sizing fails startup instead of falling back.",
+      "requiredCoverage": ["e2e"],
+      "coverage": [
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S008_SS_S009_main_window_tabs_share_contents_and_popup_stays_separate"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_window_configuration.py","test":"test_SS_S007_SS_S008_SS_S009_changed_configuration_reaches_real_window_and_scale"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-S009",
+      "subfeature": "browser-security",
+      "title": "Shared normal-tab sizing with untouched popup windows",
+      "contract": "Ordinary native new tabs share configured main-window identity, actual content dimensions, viewport-only capture size and browser-wide scale. Separate popup windows retain their own requested/native content size while sharing default context, mandatory download denial, network protections and browser-wide scale. Launcher does not initialize, activate or resize later targets. Native selected-tab behavior and tab-closure recovery remain deferred. No fixed viewport for every window or pre-page-execution viewport-ordering guarantee is claimed.",
+      "requiredCoverage": ["e2e"],
+      "coverage": [
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S008_SS_S009_main_window_tabs_share_contents_and_popup_stays_separate"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_window_configuration.py","test":"test_SS_S007_SS_S008_SS_S009_changed_configuration_reaches_real_window_and_scale"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-S010",
+      "subfeature": "browser-security",
+      "title": "Startup safeguard failures and owned cleanup",
+      "contract": "Missing, malformed, invalid or unapplied native download policy and main-window setup failure prevent readiness and clean the exact owned browser through existing lifecycle. Validated control_connect_timeout bounds startup CDP opening, commands and closing; startup_timeout bounds native policy observation and actual window-size verification. Launcher restores sole initial about:blank page and closes startup CDP before readiness; native policy remains effective, with no policy-only run-lived connection, keepalive or policy-disconnect watcher. A canceled download is successful enforcement and leaves healthy browser usable, not a machinery failure. Ordinary driver transport-loss, child-exit and fatal-cleanup contracts remain unchanged; no reconnect, replacement or watchdog is added. Owned cleanup retains helper state, auth/log volumes and existing ownership checks.",
+      "requiredCoverage": ["e2e"],
+      "coverage": [
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S010_setup_protocol_failure_prevents_readiness_and_cleans_owner"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S010_missing_invalid_or_unapplied_native_policy_prevents_readiness_and_cleans_owner"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S006_SS_S010_native_download_attempts_cancel_after_startup_disconnect_and_media_loads"}
       ],
       "otherCoverage": [],
       "blocker": ""

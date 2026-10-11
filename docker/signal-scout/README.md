@@ -10,6 +10,7 @@ Run commands from repository root. Requires Linux Docker Engine, Compose with na
 | `services/{proxy,firewall}.yaml` | Browser policy, public-web proxy and helper limits |
 | `Dockerfile` / `Dockerfile.dockerignore` | Pinned images, driver/browser archives, source inclusion |
 | `config.yaml` | Shared image-owned application settings and validated topology |
+| `chrome-policy.json` | Root-owned native mandatory Chrome for Testing download policy |
 | `browser_run.py` | Trusted host ownership lock, browser creation, smoke, exact teardown |
 | `firewall.sh` / `proxy.sh` | Helper entrypoints |
 | `chromium-seccomp.json` | Browser container namespace sandbox syscall profile |
@@ -41,22 +42,16 @@ no test selection, timeout increase, or generic runner change is needed.
 Required link gate (does not execute tests or assess assertions):
 
 ```bash
-.venv/bin/python plugins/signal-scout/spec_checks/check.py --require SS-B001 --require SS-B002 --require SS-B004 --require SS-019 --require SS-S001 --require SS-S002 --require SS-S003 --require SS-S004 --require SS-S005 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006 --require SS-R001 --require SS-R002 --require SS-R003 --require SS-R004 --require SS-R005 --require SS-R006
+.venv/bin/python plugins/signal-scout/spec_checks/check.py --require SS-B001 --require SS-B002 --require SS-B004 --require SS-019 --require SS-S001 --require SS-S002 --require SS-S003 --require SS-S004 --require SS-S005 --require SS-S006 --require SS-S007 --require SS-S008 --require SS-S009 --require SS-S010 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006 --require SS-R001 --require SS-R002 --require SS-R003 --require SS-R004 --require SS-R005 --require SS-R006
 ```
 
 ## Ownership and lifetime
 
-Host helper holds a nonblocking single-run lock, rejects existing browser
-containers, starts healthy proxy/firewall, and creates one run-labelled browser.
-It captures exact Docker ID, checks project/service/run labels, verifies the
-launcher's newly owned Chromium listener, and passes its checked full WebSocket
-endpoint to Scout. Browser-side readiness checks socket inode ownership and
-endpoint path; Scout independently checks discovery and actual sandbox before
-untrusted navigation. Discovery redirects, wrong host/port/path, stale endpoint,
-and mismatched baked configuration fail closed.
-If Compose creates the attempted container but fails before returning its ID,
-cleanup resolves only that exact name plus current project/service/run labels,
-then verifies full ID before removal. Foreign collisions and old runs remain untouched.
+Host helper locks one run, rejects existing containers, starts healthy helpers and creates one run-labelled browser.
+Exact Docker ID/project/service/run labels and newly owned Chromium listener are checked before passing endpoint to Scout.
+Launcher checks socket inode/path, native policy and actual main-window sizing before readiness; Scout checks discovery and actual sandbox before browsing.
+Redirects, wrong/stale endpoints and mismatched baked settings fail closed.
+Create/start failure cleanup resolves exact attempted name/project/service/run, verifies full ID and removes only current owner; foreign collisions/old runs remain untouched.
 
 Native Hermes `_run_browser_command` connects its pinned `agent-browser` through
 `BROWSER_CDP_URL`. No `--session` with `--cdp`, npx/autoinstall, local/cloud
@@ -68,11 +63,10 @@ policy remains deferred.
 Observed native action-driver CDP transport loss is terminal even while HTTP
 discovery stays healthy; ordinary navigation denial retains its existing behavior.
 
-One active run may have multiple tabs. Fresh container/process/anonymous profile
-every run; no browser replacement or restart. Normal completion and surfaced
-failure stop/remove only exact owned browser and its temporary state. Helpers
-may remain; images and volumes remain. No shared browser/Hermes writable artifact
-mount. Browser container holds neither Hermes runtime nor credentials.
+One run uses one fresh anonymous default context for tabs/popups; no incognito/additional contexts.
+Fresh container/process/profile every run; no replacement/restart. Normal/fatal end
+removes only owned browser/temporary state. Helpers/images/volumes remain; browser
+has no Hermes runtime/credentials or shared writable artifact mount.
 
 **Cleanup is not guaranteed if Hermes, the launcher, Docker, or the host disappears.
 A browser may remain running and require manual cleanup. No watchdog, orphan
@@ -109,6 +103,11 @@ TLS stays end-to-end verified; no MITM or substitute certificate.
 
 Relay binds only browser private address, accepts only Scout source address, and
 forwards only to its owned child. Child exit closes relay and connections.
+Chrome loads root-owned `0444` JSON at `/etc/opt/chrome_for_testing/policies/managed/scout.json` with `DownloadRestrictions: 3`.
+Startup verifies Chrome's validated `chrome://policy` record (mandatory/machine/platform, value 3, no errors/ignored policy), then restores sole blank page and closes CDP before readiness.
+Missing, invalid or unapplied policy and sizing failure end owned browser; blocked downloads leave browser healthy. Native policy persists without policy CDP/keepalive/watcher. Ordinary webpage downloads are blocked; Save Page and print-to-PDF are outside this policy's scope.
+Verified main-window size is shared by normal tabs; separate popups keep own size, scale is browser-wide.
+No per-tab emulation/debugger pause/later-target resize or activation. [Contracts](../../plugins/signal-scout/security/README.md) own details.
 No published ports. This is network access control, not cryptographic identity.
 Ordinary page HTTP, WebSocket, frame, fetch and image traffic uses forced proxy,
 including loopback, so it cannot reach relay/raw CDP even with live endpoint path.
@@ -124,10 +123,9 @@ Hermes: 1 GiB memory+swap, 1 CPU, 512 PIDs. Helpers: 256 MiB memory+swap,
 Firewall initially needs NET_ADMIN/SETUID/SETGID/SETPCAP, then drops all
 capabilities and runs UID 10000; its Docker healthcheck retains startup identity.
 
-Pins remain `agent-browser 0.26.0`, Chrome for Testing `153.0.8010.36`,
-verified archives and existing base digests. Browser seccomp derives from
-Playwright v1.58.2 commit `ce480a952553175eae75342aad2c5e86cdf2cbba`, with
-in-user-namespace `chroot` allowed. SQLite retains upstream WAL-reset fix.
+Pins remain `agent-browser 0.26.0`, Chrome for Testing `153.0.8010.36`, verified archives and existing base digests.
+Browser adds only locked-hash-verified `websockets==15.0.1` wheel, not Hermes runtime/credentials.
+Browser seccomp derives from Playwright v1.58.2 commit `ce480a952553175eae75342aad2c5e86cdf2cbba`, with in-user-namespace `chroot` allowed. SQLite retains upstream WAL-reset fix.
 Build downloads are distinct from restricted runtime networking.
 
 ## Settings and logs
@@ -145,12 +143,14 @@ Application ports and all Python network rules derive from `scout_network`.
 | `logging.level/max_size_mb/backup_count` | INFO / 5 MiB / 3 |
 | `scout_reviewer.model/reasoning_effort/timeout_seconds/retries` | gpt-6-luna / none / 180 seconds per attempt / 1 |
 | `browser.command_timeout` | 30 seconds |
+| `browser.viewport.width/height/device_scale_factor` | 1280×720 main-window CSS contents / browser-wide scale 1 |
 | `scout_lifecycle.startup_timeout/control_connect_timeout` | 20 / 2 seconds |
 | `scout_lifecycle.shutdown_timeout/smoke_timeout` | 5 / 120 seconds |
 | `scout_proxy.dns_timeout/connect_timeout/idle_timeout` | 5 / 10 / 60 seconds |
 | `scout_network` | Subnet, exact .2/.3/.4 addresses, proxy3128/control9222/relay9223 |
 
 Command timeouts are integer 1–120s; proxy/lifecycle timeouts 1–300s; log size 1–1024 MiB, backup count 1–20, level DEBUG/INFO/WARNING/ERROR.
+Viewport requires positive CDP signed-integer width/height and finite positive numeric scale, never booleans. Missing/invalid values or unsupported actual sizing fail without fallback. Captures stay in memory; no evidence gate/archive.
 Lifecycle bounds cover owned startup/control/shutdown/smoke, not future mission budgets or auxiliary-supervisor retries.
 Reviewer timeout is a separate positive integer per-attempt deadline; retries are nonnegative integers. Required reviewer model/effort cannot silently clamp/fallback; prepared-evidence client remains unexposed and independent of bootstrap's 90/120s bounds.
 Docker stop's host deadline adds the existing bounded 60-second Docker-command
@@ -192,9 +192,9 @@ their Hermes-firewall/proxy requirements are superseded by this browser-only
 network boundary and current feature-owned specs.
 
 Open work: independent crash cleanup, supervisor failure policy, browser-action gate,
-download denial, tab policy, mission/model-driven research, and broader SS-001,
+selected-tab policy, mission/model-driven research, and broader SS-001,
 SS-015/SS-016 remain incomplete. [Security ownership](../../plugins/signal-scout/security/README.md)
 and [spec gate](../../plugins/signal-scout/spec_checks/README.md) distinguish passing deterministic coverage from future work. Standalone SS-R001–SS-R006 uses native `openai-codex` resolver/adapter with fake
 transport tests; live model safety/account validation remains unverified.
 
-References: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/), [service constraints](https://docs.docker.com/reference/compose-file/services/), [pinned native CDP](https://github.com/vercel-labs/agent-browser/blob/v0.26.0/cli/src/native/browser.rs).
+References: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/), [service constraints](https://docs.docker.com/reference/compose-file/services/), [pinned native CDP](https://github.com/vercel-labs/agent-browser/blob/v0.26.0/cli/src/native/browser.rs), [pinned native policy path](https://github.com/chromium/chromium/blob/153.0.8010.36/docs/enterprise/policies.md), [DownloadRestrictions scope](https://github.com/chromium/chromium/blob/153.0.8010.36/components/policy/resources/templates/policy_definitions/Miscellaneous/DownloadRestrictions.yaml).

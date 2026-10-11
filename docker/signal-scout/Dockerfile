@@ -56,9 +56,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl -fsSL https://storage.googleapis.com/chrome-for-testing-public/153.0.8010.36/linux64/chrome-linux64.zip -o /tmp/chrome.zip && \
     echo '167a098c4fdec156b58a9f678c90a84f9072d789f9c6e7b35496a6987b8b7ef8  /tmp/chrome.zip' | sha256sum -c - && \
     unzip -q /tmp/chrome.zip -d /opt/scout && rm /tmp/chrome.zip && \
-    useradd --uid 10000 --no-create-home scout
+    curl -fsSL https://files.pythonhosted.org/packages/fa/a8/5b41e0da817d64113292ab1f8247140aac61cbf6cfd085d6a0fa77f4984f/websockets-15.0.1-py3-none-any.whl -o /tmp/websockets.whl && \
+    echo 'f7a866fbc1e97b5c617ee4116daaa09b722101d4a3c170c787450ba409f9736f  /tmp/websockets.whl' | sha256sum -c - && \
+    unzip -q /tmp/websockets.whl 'websockets/*' -d /opt/scout && rm /tmp/websockets.whl && \
+    useradd --uid 10000 --no-create-home scout && \
+    install -d -o root -g root -m 0755 /etc/opt/chrome_for_testing/policies/managed
 COPY plugins/signal-scout/security/chromium.py plugins/signal-scout/security/control.py plugins/signal-scout/security/settings.py /opt/scout/security/
 COPY docker/signal-scout/config.yaml /opt/scout/config.yaml
+COPY --chown=0:0 --chmod=0444 docker/signal-scout/chrome-policy.json /etc/opt/chrome_for_testing/policies/managed/scout.json
 ENV PYTHONPATH=/opt/scout PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 USER 10000:10000
 WORKDIR /tmp

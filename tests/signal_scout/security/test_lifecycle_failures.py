@@ -209,7 +209,7 @@ def test_SS_S005_shutdown_deadline_includes_supported_grace(monkeypatch, grace):
     assert run.container is None
 
 
-def test_SS_S005_configured_long_shutdown_removes_stopped_child(scout_stack, tmp_path):
+def test_SS_S005_configured_long_shutdown_removes_stopped_launcher(scout_stack, tmp_path):
     with scout_stack.browser_run() as run:
         identity = run.container
         config = run.config.copy()
@@ -217,7 +217,8 @@ def test_SS_S005_configured_long_shutdown_removes_stopped_child(scout_stack, tmp
         path = tmp_path / 'long-shutdown.yaml'
         path.write_text(yaml.safe_dump(config))
         run.config = lifecycle.settings.load_settings(path)
-        docker('exec', identity, 'python3', '-c', "import json,os,signal; from pathlib import Path; r=json.loads(Path('/tmp/browser-ready.json').read_text()); os.kill(r['pid'],signal.SIGSTOP)")
+        # Pause the owned launcher so Docker must honor configured stop grace.
+        docker('exec', identity, 'python3', '-c', "import json,os,signal; from pathlib import Path; r=json.loads(Path('/tmp/browser-ready.json').read_text()); parent=int(next(row.split()[1] for row in Path(f\"/proc/{r['pid']}/status\").read_text().splitlines() if row.startswith('PPid:'))); os.kill(parent,signal.SIGSTOP)")
         started = time.monotonic()
         try:
             run.close()

@@ -7,7 +7,8 @@ Its Hermes-firewall/proxy requirements and older checkpoint evidence are
 superseded by current browser-only network contracts in `specs.json` and the
 [Docker guide](../../../docker/signal-scout/README.md); historical records remain unchanged.
 [Action review plan](browser-action-review-plan.md) also records future proposals;
-browser-action gate, download denial, and mission control remain unimplemented.
+browser-action gate and mission control remain unimplemented. Shared download
+denial and configured main-window sizing are implemented below.
 Standalone safety reviewer below does not expose browser actions.
 
 | Artifact | Responsibility |
@@ -15,14 +16,15 @@ Standalone safety reviewer below does not expose browser actions.
 | `urls.py` | HTTP(S) syntax and no embedded credentials; no DNS/IP policy |
 | `network_proxy.py` | Approved clients, fresh DNS, every-answer classification, numeric connect, actual-peer check |
 | `firewall.py` | Browser namespace default-deny rules and payload-free NFLOG |
-| `chromium.py` | One owned child, temporary profile, listener-inode proof, fixed-destination relay |
+| `chromium.py` | Owned child/profile/listener, native policy attestation, main-window sizing, relay |
+| `../../../docker/signal-scout/chrome-policy.json` | Image-owned mandatory `DownloadRestrictions: 3` |
 | `control.py` | Strict owned endpoint shape and non-redirecting discovery |
 | `browser.py` | Existing native Hermes remote-CDP path and actual sandbox attestation |
 | `runtime_logging.py` | Metadata-only native/helper events, rotation, best-effort diagnostics |
 | `settings.py` | Validated image-owned values and host/image consistency digest |
 | `reviewer.py` | Fresh safety-only request, native subscription adapter, strict binary verdict/deadline/retry boundary |
 | `../../../docker/signal-scout/browser_run.py` | Trusted host ownership, single-run lock, container creation/removal, bounded smoke |
-| `specs.json` | SS-019, SS-S001–SS-S005 and visibly unfinished mission contracts |
+| `specs.json` | SS-019, SS-S001–SS-S010 and visibly unfinished mission contracts |
 | `../../../tests/signal_scout/security/` | Policy/logging unit checks and real-container boundary/lifetime fixtures |
 
 ## Boundary and control
@@ -54,6 +56,25 @@ Auxiliary supervisor reconnect is not browser replacement; its deferred
 reconnect/degraded-monitoring policy is unchanged. Before public navigation,
 actual `chrome://sandbox` must report PID/network namespaces and seccomp-BPF.
 Sandbox failure stops startup without disabling it.
+Chrome for Testing loads root-owned `0444` JSON at
+`/etc/opt/chrome_for_testing/policies/managed/scout.json`: `DownloadRestrictions: 3`.
+Launcher reads the pinned `chrome://policy` native model, supplied by PolicyService
+and policy-handler validation, requiring value 3, mandatory/machine/platform and
+no errors or ignored policy. Missing/invalid/unapplied policy fails startup.
+Startup CDP closes before readiness; native policy persists for the fresh default
+context's tabs/popups. No incognito/additional contexts, allow switch or custom filter.
+HTML/image/audio/video loads remain available. Save Page and print-to-PDF are
+outside native policy scope. Blocked downloads leave healthy browser usable.
+
+Required `browser.viewport` sets main-window contents and browser-wide device
+scale; actual `innerWidth`, `innerHeight`, and `devicePixelRatio` are verified
+before readiness. Normal tabs share that window. Separate popup windows keep
+their own size, with global scale and shared download/network protections.
+No per-tab emulation, debugger pause, later-target activation/resize, continuous
+geometry guard or all-window viewport guarantee. Native selected-tab/closure
+behavior remains deferred; authorized CDP is trusted, not an action gate.
+`control_connect_timeout` bounds startup connection/commands/close;
+`startup_timeout` bounds native policy observation and actual main-window sizing.
 Observed action-driver CDP transport loss is terminal independently of healthy
 HTTP discovery. Ordinary navigation denials remain distinct; supervisor policy
 does not change. Host stop deadline includes configured grace plus existing
@@ -121,9 +142,8 @@ fixtures, serialized Docker ownership, and restore prior helper state. Generic
 runner can use `HERMES_TEST_WORKERS=1` to avoid charging shared-stack lock waits
 against each file's deadline. Tests neither generate model calls nor log in.
 
-Required gate adds SS-S004 (container separation) and SS-S005 (disposable
-single-run lifecycle) alongside SS-B001/B002/B004, SS-019, SS-S001–SS-S003 and
-SS-C001–SS-C006. Links prove test discoverability, not assertion quality or
+Required gate selects SS-S001–SS-S010 alongside SS-B001/B002/B004, SS-019,
+SS-C001–SS-C006 and SS-R001–SS-R006. Links prove discoverability, not assertion quality or
 current test success. Broader SS-001, SS-015–SS-018, SS-020–SS-021 remain
 incomplete: no mission identity/report attestation, action guard,
 evidence storage, media quarantine or authenticated browsing is claimed.
@@ -165,11 +185,16 @@ its deadline on a daemon worker; its late output remains unusable. This is not
 memory erasure or a provider-retention guarantee. Usage preserves the native
 adapter's available prompt/completion/total counts, summing known counts across
 timely attempts; missing/late usage remains unknown, not an estimate of zero
-subscription use. Viewport preparation/capture/1280×720 checks,
-action recheck/execution and live-model quality/account access remain unverified.
+subscription use. Main-window sizing/capture is independently tested; reviewer
+evidence preparation, action recheck/execution and live-model quality/account
+access remain unverified.
 
 Source-of-truth pairings: `reviewer.py` ↔ SS-R001–SS-R006 in `specs.json` ↔
 `tests/signal_scout/security/test_reviewer.py` and reviewer retention test in
 `test_logging.py`; `settings.py` ↔ `config.yaml` ↔ integration settings tests.
 Required spec gate includes every SS-R contract. No broader mission contract is
 marked complete by these deterministic fake-transport tests.
+`chrome-policy.json`/`chromium.py`/`settings.py` ↔ SS-S006–SS-S010 ↔
+`test_browser_safeguards.py` and `test_window_configuration.py`; native blocked records,
+events and captures remain in memory. Policy-free positive controls cancel stalled
+fixture downloads through Chrome's native UI before payload, retaining no artifacts.

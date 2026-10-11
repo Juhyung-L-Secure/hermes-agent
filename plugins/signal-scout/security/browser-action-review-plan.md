@@ -15,6 +15,26 @@ Prepared evidence is consumed in memory; capture/viewport enforcement, browser-a
 gate, mission-stop/browser-close integration and live-model evaluation remain
 unimplemented. Earlier discussion and historical evidence are preserved.
 
+Implementation note, 2026-10-10: confirmed safeguard slice supersedes the all-tab
+viewport proposal below. Launcher denies downloads in one fresh anonymous default
+context with a run-owned CDP connection, sizes/verifies main-window contents and
+sets browser-wide scale. Normal tabs share that window; separate popup windows
+keep their own size. SS-S006–SS-S010 own tests and contracts. No incognito/additional
+contexts, per-tab emulation, debugger pause, selection policy or action gate was
+added. Current security README and Docker guide own implemented behavior;
+historical proposals and evidence remain preserved.
+
+Superseding implementation note, 2026-10-10: Chrome-native mandatory
+`DownloadRestrictions: 3` replaces the temporary `Browser.setDownloadBehavior`
+override and run-lived policy connection described above and in section 9.
+Root-owned read-only policy lives at Chrome for Testing's native managed path.
+Startup checks the applied `chrome://policy` record, restores the sole blank page,
+verifies actual window size/scale, and closes startup CDP before readiness.
+No policy keepalive/disconnect watcher remains. Native policy blocks ordinary
+webpage downloads, including tabs/popups; Save Page and print-to-PDF remain outside
+its scope. Current SS-S006/SS-S010, security README and Docker guide own behavior.
+Historical requirements/proposals below remain preserved, not active instructions.
+
 ## 1. Project direction and scope
 
 - Signal Scout researches competitors and demand signals for `freepik_clone`:
