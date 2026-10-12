@@ -21,11 +21,20 @@ def test_SS_B004_defaults_and_supplied_file_settings(tmp_path):
     assert config['agent']['reasoning_effort'] == 'low'
     assert config['logging'] == {'level':'INFO', 'max_size_mb':5, 'backup_count':3}
     assert config['browser']['command_timeout'] == 30
+    assert config['browser']['scroll_pixels'] == 500
+    assert all(config['browser']['action_permissions'][action] == 'review_required'
+               for action in ('click','navigate','type','keypress'))
+    assert all(config['browser']['action_permissions'][action] == 'allowed_without_review'
+               for action in ('back','scroll','snapshot','screenshot','get_images','list_tabs','switch_tab','close'))
     assert config['scout_proxy'] == {'dns_timeout':5, 'connect_timeout':10, 'idle_timeout':60}
     assert config['scout_lifecycle'] == {'startup_timeout':20, 'control_connect_timeout':2,
                                          'shutdown_timeout':5, 'smoke_timeout':120}
     config['logging'] = {'level':'DEBUG', 'max_size_mb':1, 'backup_count':2}
     config['browser']['command_timeout'] = 12
+    config['browser']['scroll_pixels'] = 321
+    config['browser']['action_permissions']['click'] = 'blocked'
+    config['browser']['action_permissions']['snapshot'] = 'review_required'
+    del config['browser']['action_permissions']['navigate']
     config['scout_proxy'] = {'dns_timeout':2, 'connect_timeout':3, 'idle_timeout':4}
     config['scout_lifecycle'] = {'startup_timeout':7, 'control_connect_timeout':1,
                                  'shutdown_timeout':3, 'smoke_timeout':80}
@@ -69,6 +78,9 @@ def test_SS_B004_image_owned_configuration_matches_runtime(scout_stack):
         assert config['logging']['max_size_mb'] == 5 and config['logging']['backup_count'] == 3
         assert config['scout_reviewer'] == {'model':'gpt-6-luna', 'reasoning_effort':'none',
                                             'timeout_seconds':180, 'retries':1}
+        assert config['browser']['scroll_pixels'] == 500
+        assert config['browser']['action_permissions']['click'] == 'review_required'
+        assert config['browser']['action_permissions']['snapshot'] == 'allowed_without_review'
         assert Path('/var/lib/scout/config.yaml').is_symlink()
         assert Path('/var/lib/scout/config.yaml').resolve() == Path('/opt/scout/config.yaml')
     """)
@@ -145,3 +157,26 @@ def test_SS_B004_SS_S005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_pat
             pytest.fail('Startup bound ignored')
     assert attempts == [2]  # Local control 1s + bounded Docker-exec overhead 1s.
     assert run.container is None and run.lock is None
+
+
+@pytest.mark.parametrize('change', ['permissions_missing','permissions_invalid','unknown_action',
+    'missing_mode','invalid_mode','scroll_missing','scroll_zero','scroll_bool','scroll_fraction'])
+def test_SS_G007_SS_B004_required_action_policy_and_scroll_configuration_fail_explicitly(tmp_path, change):
+    config = settings.load_settings(CONFIG)
+    browser = config['browser']
+    if change == 'permissions_missing':
+        del browser['action_permissions']
+    elif change == 'permissions_invalid':
+        browser['action_permissions'] = []
+    elif change == 'unknown_action':
+        browser['action_permissions']['arbitrary-javascript-poison'] = 'allowed_without_review'
+    elif change in {'missing_mode','invalid_mode'}:
+        browser['action_permissions']['click'] = None if change == 'missing_mode' else 'approve-poison'
+    elif change == 'scroll_missing':
+        del browser['scroll_pixels']
+    else:
+        browser['scroll_pixels'] = {'scroll_zero':0,'scroll_bool':True,'scroll_fraction':500.5}[change]
+    path = tmp_path / 'operating.yaml'
+    path.write_text(yaml.safe_dump(config))
+    with pytest.raises(ValueError, match=r'^Invalid Scout operating settings\.$'):
+        settings.load_settings(path)

@@ -51,6 +51,70 @@ class Handler(BaseHTTPRequestHandler):
               <img id="image" src="/media/image.png">
               <audio id="audio" src="/media/audio.wav" preload="auto"></audio>
               <script>window.fixtureReady=true</script></body></html>'''
+        elif self.path.startswith('/evidence-child'):
+            body = b'''<html><body><button id="child" data-clicked="false" onclick="window.clicked=true;this.dataset.clicked='true'">Frame button</button>
+              <input id="childinput" aria-label="Frame input"><script>window.clicked=false;window.keys=[];
+                document.querySelector('#childinput').addEventListener('keydown',e=>{
+                  window.keys.push(e.key);e.target.dataset.keys=JSON.stringify(window.keys);
+                });
+              </script></body></html>'''
+        elif self.path.startswith('/gate'):
+            body = b'''<html><head><title>Gate fixture</title></head><body>
+              <h1>Guarded research controls</h1>
+              <button id="click" onclick="window.clicks++;document.querySelector('#state').textContent='Clicked '+window.clicks">Controlled click</button>
+              <output id="state">Untouched</output>
+              <form id="form"><input id="query" aria-label="Gate query" value="initial">
+                <input id="other" aria-label="Other query" value="other"><button>Submit query</button></form>
+              <button id="popup" onclick="window.open('http://public.test/gate-popup','gate-popup','popup,width=540,height=360')">Open popup</button>
+              <a id="download" href="/attachment/gate-fixture.bin">Download fixture</a>
+              <img id="image" src="/media/image.png" alt="Fixture image">
+              <audio id="audio" src="/media/audio.wav" preload="auto" loop></audio>
+              <button id="play" onclick="document.querySelector('#audio').play()">Play audio</button>
+              <iframe id="same" src="/evidence-child" style="width:500px;height:120px"></iframe>
+              <iframe id="cross" src="http://v6.test/evidence-child" style="width:500px;height:120px"></iframe>
+              <div style="height:1800px"></div><button>Below gate fold</button>
+              <script>
+                window.clicks=0;window.submits=0;window.keys=[];window.fixtureReady=false;
+                document.addEventListener('keydown',e=>window.keys.push(e.key));
+                document.querySelector('#form').addEventListener('submit',e=>{e.preventDefault();window.submits++});
+                addEventListener('load',()=>window.fixtureReady=true);
+              </script></body></html>'''
+        elif self.path.startswith('/evidence-focus'):
+            body = b'''<html><body><div id="focus-host"></div>
+              <input id="combo" role="combobox" aria-label="Research choice" value="unchanged"
+                aria-controls="choices" aria-expanded="true" aria-activedescendant="choice-a">
+              <div id="choices" role="listbox"><div id="choice-a" role="option">Research</div>
+                <div id="choice-b" role="option">Purchase</div>
+                <div id="choice-c" role="option" aria-labelledby="external-label"
+                  aria-describedby="external-description"></div></div>
+              <span id="external-label">Research</span><span id="external-description">Research details</span>
+              <script>
+                const root=document.querySelector('#focus-host').attachShadow({mode:'closed'});
+                root.innerHTML='<input aria-label="Closed first" value="same"><input aria-label="Closed second" value="same">';
+                window.shadowInputs=Array.from(root.querySelectorAll('input'));
+                window.keys=0;document.addEventListener('keydown',()=>window.keys++);
+                window.fixtureReady=true;
+              </script></body></html>'''
+        elif self.path.startswith('/evidence'):
+            body = b'''<html><head><title>Evidence fixture</title></head><body>
+              <h1>Research controls</h1><a id="link" href="/safe">Open research</a>
+              <form id="form" action="/search" method="get">
+                <input id="query" name="q" aria-label="Query" value="initial">
+                <input id="password" name="secret" type="password" aria-label="Fixture password" value="fixture-secret">
+                <button id="submit">Search</button>
+              </form>
+              <iframe id="same" src="/evidence-child" style="width:500px;height:120px"></iframe>
+              <iframe id="cross" src="http://v6.test/evidence-child" style="width:500px;height:120px"></iframe>
+              <div style="height:1800px"></div>
+              <button id="low">Below fold</button>
+              <button id="large" style="width:1600px;height:1300px">Oversized</button>
+              <script>
+                window.counts={click:0,input:0,key:0,submit:0,focus:0};
+                for(const [event,key] of Object.entries({click:'click',input:'input',keydown:'key',submit:'submit',focusin:'focus'}))
+                  document.addEventListener(event,e=>{window.counts[key]++;if(event==='submit')e.preventDefault()});
+                window.fixtureReady=false;
+                addEventListener('load',()=>window.fixtureReady=true);
+              </script></body></html>'''
         self.send_response(200)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Content-Type', content_type)

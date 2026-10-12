@@ -32,6 +32,7 @@ COPY gateway/ gateway/
 COPY cron/ cron/
 COPY providers/ providers/
 COPY plugins/ plugins/
+COPY --chown=0:0 --chmod=0444 plugins/signal-scout/security/reviewer-policy.md /opt/hermes/plugins/signal-scout/security/reviewer-policy.md
 COPY docker/signal-scout/config.yaml /opt/scout/config.yaml
 RUN uv sync --frozen --no-dev && \
     chmod 0555 /usr/local/bin/agent-browser && \

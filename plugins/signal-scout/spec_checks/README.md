@@ -19,7 +19,7 @@ From the repository root, after installing the existing dev dependencies:
 .venv/bin/python plugins/signal-scout/spec_checks/check.py
 .venv/bin/python plugins/signal-scout/spec_checks/check.py --require SS-B001 --require SS-B002
 .venv/bin/python plugins/signal-scout/spec_checks/check.py --require SS-B003
-HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0
+HERMES_TEST_FILE_TIMEOUT=600 HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0
 ```
 
 The first command reports every gap; planned gaps alone do not fail it. Every
@@ -31,13 +31,16 @@ checkout or controlled fixture with the same Scout layout.
 
 The normal Scout test command includes a repository validator test. Its
 `REQUIRED_IDS` tuple explicitly selects SS-B001, SS-B002, SS-C001–SS-C006,
-SS-019, SS-B004, SS-S001–SS-S010, and SS-R001–SS-R006;
+SS-019, SS-B004, SS-S001–SS-S010, SS-R001–SS-R007, SS-E001–SS-E006,
+SS-G001–SS-G007, and SS-T001–SS-T005;
 add an ID there when its complete contract becomes a required automated gate.
+Normal observed AX values remain; raw reviewer screenshots stay unmasked. Native
+framing now uses the actual `browser_scout` name, without custom wrapping.
 Run that file alone for validator development:
 
 ```bash
 scripts/run_tests.sh tests/signal_scout/spec_checks -q --file-retries 0
-.venv/bin/python plugins/signal-scout/spec_checks/check.py --json --require SS-B001 --require SS-B002 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006 --require SS-019 --require SS-B004 --require SS-S001 --require SS-S002 --require SS-S003 --require SS-S004 --require SS-S005 --require SS-S006 --require SS-S007 --require SS-S008 --require SS-S009 --require SS-S010 --require SS-R001 --require SS-R002 --require SS-R003 --require SS-R004 --require SS-R005 --require SS-R006
+.venv/bin/python plugins/signal-scout/spec_checks/check.py --json --require SS-B001 --require SS-B002 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006 --require SS-019 --require SS-B004 --require SS-S001 --require SS-S002 --require SS-S003 --require SS-S004 --require SS-S005 --require SS-S006 --require SS-S007 --require SS-S008 --require SS-S009 --require SS-S010 --require SS-R001 --require SS-R002 --require SS-R003 --require SS-R004 --require SS-R005 --require SS-R006 --require SS-R007 --require SS-E001 --require SS-E002 --require SS-E003 --require SS-E004 --require SS-E005 --require SS-E006 --require SS-G001 --require SS-G002 --require SS-G003 --require SS-G004 --require SS-G005 --require SS-G006 --require SS-G007 --require SS-T001 --require SS-T002 --require SS-T003 --require SS-T004 --require SS-T005
 ```
 
 The full Scout run also executes the existing non-generating Docker tests.

@@ -38,6 +38,20 @@ browser:
   use_real_profile: false
   auto_local_for_private_urls: false
   command_timeout: 30
+  scroll_pixels: 500
+  action_permissions:
+    click: review_required
+    navigate: review_required
+    type: review_required
+    keypress: review_required
+    back: allowed_without_review
+    scroll: allowed_without_review
+    snapshot: allowed_without_review
+    screenshot: allowed_without_review
+    get_images: allowed_without_review
+    list_tabs: allowed_without_review
+    switch_tab: allowed_without_review
+    close: allowed_without_review
   viewport:
     width: 1280
     height: 720

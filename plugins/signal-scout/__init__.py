@@ -1,10 +1,12 @@
-"""Expose the bootstrap status through Hermes' native plugin registry."""
+"""Expose bootstrap status and separately selected reviewed browser routing."""
 
 import json
 
+from . import browser_tools
+
 
 def register(ctx):
-    """Register status only; take the version from the discovered manifest."""
+    """Register independent toolsets; take version from the discovered manifest."""
     def status(args, **_context):
         if args != {"action": "status"}:
             return json.dumps({"error": "Expected exactly {\"action\": \"status\"}."})
@@ -33,3 +35,4 @@ def register(ctx):
         },
         handler=status,
     )
+    browser_tools.register(ctx)

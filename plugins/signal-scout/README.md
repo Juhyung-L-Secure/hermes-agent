@@ -1,8 +1,10 @@
 # Signal Scout bootstrap
 
-One native Hermes tool, `signal_scout`, accepts exactly `{"action": "status"}`.
+Bootstrap's native Hermes tool, `signal_scout`, accepts exactly `{"action": "status"}`.
 It returns the discovered manifest's version and explicit readiness: status is
-ready; research and research security are not implemented.
+ready; research and research security readiness remain unchanged.
+The separate `signal_scout_browser` toolset registers one `browser_scout` tool
+for trusted, run-bound reviewed browsing; bootstrap does not select it.
 
 | File | Owns |
 | --- | --- |
@@ -14,6 +16,7 @@ ready; research and research security are not implemented.
 | `specs.json` | Native integration SS-001 and bootstrap SS-B001–SS-B004 |
 | `missions/specs.json` | Mission execution, stop, checkpoint/resume |
 | `security/` | Browser/proxy/firewall/logging/settings and standalone safety reviewer; broader security specs |
+| `browser_tools/` | Native reviewed-browser registration, trusted binding, feedback and SS-T001–SS-T005 |
 | `evidence/specs.json` | Source inventory, evidence, findings, deduplication |
 | `media/specs.json` | Video/audio analysis and limitations |
 | `budget/specs.json` | Usage measurement and enforcement |
@@ -21,10 +24,19 @@ ready; research and research security are not implemented.
 | `research/specs.json` | Discovery, competitor/demand analysis, synthesis |
 | `spec_checks/` | Spec/link checker, checker contracts, usage guide |
 
-Flow: Hermes discovers the enabled manifest → `register(ctx)` registers the
-toolset → Hermes selects only that toolset → native dispatch validates the
+Bootstrap flow: Hermes discovers the enabled manifest → `register(ctx)` registers
+separate toolsets → bootstrap selects only `signal_scout` → native dispatch validates the
 action and returns readiness. Disablement removes the callable tool; unexpected
 actions or fields return an error without side effects.
+
+Reviewed-browser flow: trusted owner starts its isolated Browser and gate →
+selects only `signal_scout_browser` (plus status if explicitly wanted) → binds
+the gate and mandatory native hard-stop callback → native `browser_scout`
+dispatch forwards the unchanged proposal → gate returns an observation or
+rejection/fatal result. Binding exit closes the gate; normal host owner teardown
+removes its browser container. Unbound calls cannot attach or create a browser.
+No native browser, terminal, code, file, MCP, messaging or delegation tool is
+selected in this surface. [Adapter ownership](browser_tools/README.md).
 
 `chat` resolves native `openai-codex`, constructs `AIAgent`, verifies the exposed
 tools, and runs one bounded conversation. Its check requires one model-requested
@@ -45,7 +57,7 @@ the native/bootstrap owner uses `integration/`. `unit` and `e2e` remain coverage
 metadata, not directories. [Milestones](../../stuff/milestones.md) own delivery
 order and implementation plans and reference these contracts by ID.
 
-Run `HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0` for Scout's
+Run `HERMES_TEST_FILE_TIMEOUT=600 HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0` for Scout's
 automated tests, including its spec/link gate. [Checker usage](spec_checks/README.md)
 explains explicit required IDs and the distinction between links, gaps, manual
 evidence, current test results, and assertion review.
@@ -56,17 +68,19 @@ two API calls and one verified status result/explanation. Sanitized evidence:
 not automated live-test coverage.
 
 Open work: automated live coverage remains separate from this successful smoke.
-Deterministic public-web protection harness now lives under
-[`security/`](security/README.md); it adds no model browser tool. SS-019 and
+Deterministic public-web protection harness lives under
+[`security/`](security/README.md). SS-019 and
 SS-S001–SS-S005 cover only network, sandbox/control, protection logging,
 separate browser container, and disposable single-run lifetime. Trusted host
-smoke uses existing native remote-CDP driver path; model tools remain status-only.
+smoke uses existing native remote-CDP driver path; operator entrypoints remain status-only.
 Independent teardown after coordinator/host loss remains deferred.
-Research missions, model-driven browsing, evidence, reports, messaging, scheduling, and
+Research missions, live model browsing activation, evidence, reports, messaging, scheduling, and
 budget engines remain future work. Native Hermes extension boundaries remain
 available for later explicit messaging integration; no abstraction is added.
 Standalone safety-reviewer contracts SS-R001–SS-R006 now cover prepared in-memory
 evidence, fixed safety policy, fresh native subscription requests, strict verdicts,
 configured deadlines/retries and sanitized rotating metadata. Browser-action gate
-and live reviewer quality/account availability remain future work; status readiness
-is unchanged. [Reviewer ownership](security/README.md#standalone-safety-reviewer).
+and adapter contracts live with their owning features; live reviewer quality,
+account availability and main-model image support remain unverified. No mission
+launcher or live browsing command is added. Status readiness stays unchanged.
+[Reviewer ownership](security/README.md#standalone-safety-reviewer).

@@ -23,6 +23,7 @@ class Browser:
         self.task = "scout-" + uuid.uuid4().hex
         self.ready = False
         self.failed = False
+        self._evidence = None
         self.endpoint = os.environ.get("BROWSER_CDP_URL", "")
         network = self.settings["scout_network"]
         validate_endpoint(self.endpoint, network["browser_address"], network["relay_port"])
@@ -112,15 +113,31 @@ class Browser:
         event("scout", "navigation_allowed")
         return result
 
+    def evidence(self):
+        """Create run-owned private inspection without exposing a model browser tool.
+
+        Adapter requires explicit CDP tab IDs and never executes proposed actions.
+        This Browser closes its connection during existing harness teardown.
+        """
+        if self._evidence is None:
+            from .evidence import BrowserEvidence
+
+            self._evidence = BrowserEvidence(self)
+        return self._evidence
+
     def close(self):
         """Release native session transport; host lifecycle removes browser/profile."""
         from tools import browser_tool
 
         self.ready = False
-        if self.task in browser_tool._active_sessions:
-            browser_tool._cleanup_single_browser_session(self.task)
-        self.failed = True
-        event("scout", "closed")
+        try:
+            if self._evidence is not None:
+                self._evidence.close()
+        finally:
+            if self.task in browser_tool._active_sessions:
+                browser_tool._cleanup_single_browser_session(self.task)
+            self.failed = True
+            event("scout", "closed")
 
     def __enter__(self):
         return self.start()

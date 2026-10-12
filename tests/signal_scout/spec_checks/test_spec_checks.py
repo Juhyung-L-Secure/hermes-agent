@@ -18,7 +18,10 @@ REQUIRED_IDS = ("SS-B001", "SS-B002", "SS-C001", "SS-C002", "SS-C003",
                 "SS-C004", "SS-C005", "SS-C006", "SS-019", "SS-B004",
                 "SS-S001", "SS-S002", "SS-S003", "SS-S004", "SS-S005",
                 "SS-S006", "SS-S007", "SS-S008", "SS-S009", "SS-S010",
-                "SS-R001", "SS-R002", "SS-R003", "SS-R004", "SS-R005", "SS-R006")
+                "SS-R001", "SS-R002", "SS-R003", "SS-R004", "SS-R005", "SS-R006", "SS-R007",
+                "SS-E001", "SS-E002", "SS-E003", "SS-E004", "SS-E005", "SS-E006",
+                "SS-G001", "SS-G002", "SS-G003", "SS-G004", "SS-G005", "SS-G006", "SS-G007",
+                "SS-T001", "SS-T002", "SS-T003", "SS-T004", "SS-T005")
 
 
 @pytest.fixture

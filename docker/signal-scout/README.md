@@ -15,13 +15,14 @@ Run commands from repository root. Requires Linux Docker Engine, Compose with na
 | `firewall.sh` / `proxy.sh` | Helper entrypoints |
 | `chromium-seccomp.json` | Browser container namespace sandbox syscall profile |
 | `../../plugins/signal-scout/security/` | Launcher/relay, CDP harness, policy, logs and security specs |
+| `../../plugins/signal-scout/browser_tools/` | Separately selected native reviewed-browser tool and trusted run binding |
 
 ## Build, verify, and run deterministic smoke
 
 ```bash
 docker compose -f docker/signal-scout/compose.yaml config --quiet
 docker compose -f docker/signal-scout/compose.yaml build
-HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0
+HERMES_TEST_FILE_TIMEOUT=600 HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0
 docker compose -f docker/signal-scout/compose.yaml run --rm -T scout status
 .venv/bin/python docker/signal-scout/browser_run.py https://example.com
 ```
@@ -36,13 +37,13 @@ running/stopped state, and preserve auth/log volumes and historical logs.
 Controlled HTTP/TLS/DNS fixtures temporarily attach public-classified
 `11.203.247.0/29` and `2606:4700:ffff:fffe::/64` to existing proxy, checking
 route conflicts first. Host `openssl` and `ip` are test prerequisites.
-One worker avoids charging shared-stack lock waits against per-file timeout;
-no test selection, timeout increase, or generic runner change is needed.
+One worker serializes shared-stack fixtures; the existing 600-second per-file
+test allowance changes no runtime deadline or test selection.
 
 Required link gate (does not execute tests or assess assertions):
 
 ```bash
-.venv/bin/python plugins/signal-scout/spec_checks/check.py --require SS-B001 --require SS-B002 --require SS-B004 --require SS-019 --require SS-S001 --require SS-S002 --require SS-S003 --require SS-S004 --require SS-S005 --require SS-S006 --require SS-S007 --require SS-S008 --require SS-S009 --require SS-S010 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006 --require SS-R001 --require SS-R002 --require SS-R003 --require SS-R004 --require SS-R005 --require SS-R006
+.venv/bin/python plugins/signal-scout/spec_checks/check.py --require SS-B001 --require SS-B002 --require SS-B004 --require SS-019 --require SS-S001 --require SS-S002 --require SS-S003 --require SS-S004 --require SS-S005 --require SS-S006 --require SS-S007 --require SS-S008 --require SS-S009 --require SS-S010 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006 --require SS-R001 --require SS-R002 --require SS-R003 --require SS-R004 --require SS-R005 --require SS-R006 --require SS-R007 --require SS-E001 --require SS-E002 --require SS-E003 --require SS-E004 --require SS-E005 --require SS-E006 --require SS-G001 --require SS-G002 --require SS-G003 --require SS-G004 --require SS-G005 --require SS-G006 --require SS-G007 --require SS-T001 --require SS-T002 --require SS-T003 --require SS-T004 --require SS-T005
 ```
 
 ## Ownership and lifetime
@@ -142,7 +143,7 @@ Application ports and all Python network rules derive from `scout_network`.
 | --- | --- |
 | `logging.level/max_size_mb/backup_count` | INFO / 5 MiB / 3 |
 | `scout_reviewer.model/reasoning_effort/timeout_seconds/retries` | gpt-6-luna / none / 180 seconds per attempt / 1 |
-| `browser.command_timeout` | 30 seconds |
+| `browser.command_timeout/scroll_pixels` | 30 seconds / 500 pixels |
 | `browser.viewport.width/height/device_scale_factor` | 1280×720 main-window CSS contents / browser-wide scale 1 |
 | `scout_lifecycle.startup_timeout/control_connect_timeout` | 20 / 2 seconds |
 | `scout_lifecycle.shutdown_timeout/smoke_timeout` | 5 / 120 seconds |
@@ -150,7 +151,7 @@ Application ports and all Python network rules derive from `scout_network`.
 | `scout_network` | Subnet, exact .2/.3/.4 addresses, proxy3128/control9222/relay9223 |
 
 Command timeouts are integer 1–120s; proxy/lifecycle timeouts 1–300s; log size 1–1024 MiB, backup count 1–20, level DEBUG/INFO/WARNING/ERROR.
-Viewport requires positive CDP signed-integer width/height and finite positive numeric scale, never booleans. Missing/invalid values or unsupported actual sizing fail without fallback. Captures stay in memory; no evidence gate/archive.
+Viewport requires positive CDP signed-integer width/height and finite positive numeric scale, never booleans. Missing/invalid values or unsupported actual sizing fail without fallback. Scout evidence API captures raw actual full viewport in memory, preserving popup size; gate uses exact original targets without an archive.
 Lifecycle bounds cover owned startup/control/shutdown/smoke, not future mission budgets or auxiliary-supervisor retries.
 Reviewer timeout is a separate positive integer per-attempt deadline; retries are nonnegative integers. Required reviewer model/effort cannot silently clamp/fallback; prepared-evidence client remains unexposed and independent of bootstrap's 90/120s bounds.
 Docker stop's host deadline adds the existing bounded 60-second Docker-command
@@ -174,7 +175,7 @@ No raw page/CDP/screenshots/credentials/URLs are persisted in logs.
 
 ## Existing subscription interfaces
 
-Status remains the only model tool. Existing operator interfaces remain:
+Operator interfaces stay status-only; callable `browser_scout` needs a trusted gate binding and explicitly selected `signal_scout_browser`, never alternate native executors:
 
 ```bash
 docker compose -f docker/signal-scout/compose.yaml run --rm -it scout login
@@ -191,10 +192,9 @@ brief/checkpoint and browser-action review plan retain their original evidence;
 their Hermes-firewall/proxy requirements are superseded by this browser-only
 network boundary and current feature-owned specs.
 
-Open work: independent crash cleanup, supervisor failure policy, browser-action gate,
-selected-tab policy, mission/model-driven research, and broader SS-001,
+Open work: independent crash cleanup, supervisor failure policy, selected-tab closure,
+live browsing activation, mission/model-driven research, and broader SS-001,
 SS-015/SS-016 remain incomplete. [Security ownership](../../plugins/signal-scout/security/README.md)
-and [spec gate](../../plugins/signal-scout/spec_checks/README.md) distinguish passing deterministic coverage from future work. Standalone SS-R001–SS-R006 uses native `openai-codex` resolver/adapter with fake
-transport tests; live model safety/account validation remains unverified.
+and [spec gate](../../plugins/signal-scout/spec_checks/README.md) distinguish test execution from link validation. SS-G001–SS-G007 own gate permissions/execution; SS-T001–SS-T005 own native routing, hard interrupt and text/image feedback. Browser action modes are image-owned: click/navigate/type/keypress require review; other implemented actions initially skip review, not protections. Standalone SS-R001–SS-R007 retains native `openai-codex` and read-only `reviewer-policy.md`; live reviewer quality/account and main-agent image support remain unverified.
 
 References: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/), [service constraints](https://docs.docker.com/reference/compose-file/services/), [pinned native CDP](https://github.com/vercel-labs/agent-browser/blob/v0.26.0/cli/src/native/browser.rs), [pinned native policy path](https://github.com/chromium/chromium/blob/153.0.8010.36/docs/enterprise/policies.md), [DownloadRestrictions scope](https://github.com/chromium/chromium/blob/153.0.8010.36/components/policy/resources/templates/policy_definitions/Miscellaneous/DownloadRestrictions.yaml).

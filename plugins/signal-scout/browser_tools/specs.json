@@ -1,0 +1,83 @@
+{
+  "feature": "signal-scout/browser_tools",
+  "title": "Signal Scout Hermes browser routing",
+  "schemaVersion": 2,
+  "specs": [
+    {
+      "id": "SS-T001",
+      "subfeature": "native-browser-routing",
+      "title": "Separate native discovery and restricted conversation surface",
+      "contract": "Native plugin discovery registers exactly browser_scout in the separate signal_scout_browser toolset, without a scout_browser alias. Existing signal_scout status exposure, bootstrap selection and readiness remain unchanged. A reviewed browser conversation explicitly selects only browser_scout, plus status only if explicitly selected; native browser, terminal, arbitrary code/JavaScript/file, uploads, MCP, messaging, delegation and scheduling supply no alternative execution route. Unavailable names cannot invoke their native handlers; existing native name repair can reach only the same bound browser_scout gate, which rejects invalid raw-executor arguments. Tool schema and system prompt stay stable during each conversation; registration does not override a built-in or modify Hermes core.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_SS_T001_native_discovery_keeps_status_and_browser_separate"},
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_SS_T001_native_model_loop_refuses_alternate_execution_routes"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_SS_T001_SS_T002_SS_T004_SS_T005_native_model_approved_effects_images_and_no_bypass"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-T002",
+      "subfeature": "native-browser-routing",
+      "title": "Faithful proposals and ordinary gate feedback",
+      "contract": "The browser_scout handler forwards the same action, exact args and optional activity to its captured BrowserActionGate without semantic rewriting, extra review or another LLM. Browser identity, reviewer, permissions and callback are trusted binding inputs, never model arguments. Native dispatch returns the gate's success/rejected/fatal status, sanitized reason, truthful execution_started and appropriate data through JSON text feedback. Gate-owned fresh compact snapshots and explicit target IDs reach the main conversation; the adapter does not perform another observation or silently retry a rejection.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_SS_T002_native_forwarding_preserves_proposed_request_and_gate_result"},
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_SS_T002_SS_T005_native_screenshot_envelope_keeps_bytes_out_of_text"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_SS_T001_SS_T002_SS_T004_SS_T005_native_model_approved_effects_images_and_no_bypass"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_SS_T002_SS_T004_native_model_rejection_leaves_healthy_browser"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_SS_T002_SS_T005_native_model_type_keeps_review_data_private"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-T003",
+      "subfeature": "native-browser-routing",
+      "title": "Scoped binding and mandatory enclosing-run stop",
+      "contract": "Trusted bind_browser(gate, *, on_fatal) requires a callable stop callback and supports one binding at a time. Runtime handler enforces the binding on every call, independently of cached discovery checks; unbound calls cannot create or attach a Browser or select a fallback. Scope exit closes the captured gate and releases the binding. Fatal invokes the original bound callback before returning and prevents subsequent dispatch through that binding. Real Hermes wiring calls AIAgent.interrupt(hard_cancel=True), skips remaining tool effects and additional main-model turns, then permits normal owner teardown to remove the exact owned browser. A delayed old call retains its old gate/callback and cannot execute through a new run.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_SS_T003_runtime_binding_is_mandatory_and_scoped"},
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_SS_T003_fatal_calls_stop_before_return_and_never_redispatches"},
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_SS_T003_late_call_keeps_original_gate_and_stop_callback"},
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_SS_T001_SS_T003_native_model_loop_fatal_interrupt_skips_remaining_calls"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_SS_T003_SS_T004_native_final_review_failure_stops_agent_and_host_cleans_owned_browser"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-T004",
+      "subfeature": "native-browser-routing",
+      "title": "Real gate and owned-browser native integration",
+      "contract": "Actual native discovery/dispatch and the real AIAgent model/tool loop, with a fake main transport and trusted offline safety reviewer, exercise BrowserActionGate against the existing owned isolated Chromium lifecycle. Approved effects occur on original checked targets; denied/stale proposals and a timed-out attempt's late approval cause no proposed effect. Healthy rejections allow subsequent observation. Exhausted technical review retries return fatal, trigger the mandatory native hard stop, prevent further browsing/model turns and complete normal exact-owner host cleanup. Contract-shaped fake gates alone do not satisfy this integration; no mission launcher, live model/reviewer call, authentication workflow or alternate Docker stack is activated.",
+      "requiredCoverage": ["e2e"],
+      "coverage": [
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_SS_T001_SS_T002_SS_T004_SS_T005_native_model_approved_effects_images_and_no_bypass"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_SS_T002_SS_T004_native_model_rejection_leaves_healthy_browser"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_SS_T004_native_late_approval_cannot_authorize_current_retry"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_SS_T003_SS_T004_native_final_review_failure_stops_agent_and_host_cleans_owned_browser"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "SS-T005",
+      "subfeature": "native-browser-routing",
+      "title": "Native text and in-memory multimodal observation",
+      "contract": "Explicit screenshot success consumes only data.screenshot.bytes and its PNG MIME from the gate and returns the supported Hermes _multimodal envelope with a text summary and native image content. Image bytes are not embedded as prose, saved to a temporary screenshot, or sent through an auxiliary vision model. Other actions return ordinary JSON text feedback and do not cause an automatic main-agent screenshot. Independently observed AX field values remain, including Scout-typed text; reviewer receives raw full viewport PNG without masking. Private review packets, bindings and action/request payloads are not copied into results; normal observation intentionally enters main-agent context. Native make_tool_result_message recognizes the actual browser_scout name, frames plain or multimodal result text using that matching source, neutralizes embedded delimiter tokens and preserves image parts. Adapter does not supply its own wrapper/source alias or mutate Hermes core. Offline fake-model transport establishes envelope wiring, not live main-agent/provider image support, safety quality or a new conversation-retention guarantee.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_SS_T002_SS_T005_native_screenshot_envelope_keeps_bytes_out_of_text"},
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_SS_T005_native_model_frames_actual_tool_defangs_delimiters_and_preserves_image"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_SS_T001_SS_T002_SS_T004_SS_T005_native_model_approved_effects_images_and_no_bypass"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_SS_T002_SS_T005_native_model_type_keeps_review_data_private"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    }
+  ]
+}

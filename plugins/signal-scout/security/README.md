@@ -1,15 +1,12 @@
 # Scout protection runtime
 
-Protection-only deterministic harness. Model receives only
-`signal_scout({"action":"status"})`; no browser or JavaScript model tool.
-[Original isolation brief](browser-container-isolation-brief.md) records the earlier slice.
-Its Hermes-firewall/proxy requirements and older checkpoint evidence are
-superseded by current browser-only network contracts in `specs.json` and the
-[Docker guide](../../../docker/signal-scout/README.md); historical records remain unchanged.
-[Action review plan](browser-action-review-plan.md) also records future proposals;
-browser-action gate and mission control remain unimplemented. Shared download
-denial and configured main-window sizing are implemented below.
-Standalone safety reviewer below does not expose browser actions.
+Run-owned browser protection and guarded action execution. Bootstrap/status
+remain status-only; native model-tool binding is owned by `../browser_tools/`.
+[Original isolation brief](browser-container-isolation-brief.md) is historical;
+current browser-only contracts/Docker guide supersede its Hermes-firewall slice.
+[Action review plan](browser-action-review-plan.md) records earlier proposals;
+[confirmed routing brief](../browser-gate-routing-brief.md) owns this gate slice.
+Mission control remains unimplemented. Download denial and window sizing persist.
 
 | Artifact | Responsibility |
 | --- | --- |
@@ -24,55 +21,50 @@ Standalone safety reviewer below does not expose browser actions.
 | `settings.py` | Validated image-owned values and host/image consistency digest |
 | `reviewer.py` | Fresh safety-only request, native subscription adapter, strict binary verdict/deadline/retry boundary |
 | `../../../docker/signal-scout/browser_run.py` | Trusted host ownership, single-run lock, container creation/removal, bounded smoke |
-| `specs.json` | SS-019, SS-S001–SS-S010 and visibly unfinished mission contracts |
+| `evidence.py` / `_cdp.py` | Compact exact refs, preparation, viewport capture and recheck |
+| `gate.py` | Trusted run binding, explicit permissions, exact guarded execution and fatal closure |
+| `reviewer-policy.md` | Single authoritative read-only reviewer instructions |
+| `specs.json` | SS-019, SS-S001–S010, SS-R001–R007, SS-E001–E006, SS-G001–G007 and unfinished missions |
 | `../../../tests/signal_scout/security/` | Policy/logging unit checks and real-container boundary/lifetime fixtures |
 
 ## Boundary and control
 
-Hermes and pinned agent-browser remain in `scout`; Chrome and trusted
-launch/control code live in disposable `browser`. Neither PID nor mount nor
-network namespace is shared between those applications. Browser has no Hermes
-runtime, auth volume, persistent logs, host directories, Docker socket, or
-shared writable artifact mount. Chromium runs non-root with sandbox, readonly
-root, dropped capabilities, no-new-privileges, and bounded anonymous `/tmp`.
+Hermes/pinned agent-browser remain in `scout`; Chrome/trusted launch/control in
+disposable `browser`, without shared PID/mount/network namespace. Browser has no
+Hermes runtime/auth/log volume, host folder, Docker socket or writable artifact
+mount. Chrome runs non-root/sandboxed/readonly, dropped capabilities,
+no-new-privileges and bounded anonymous `/tmp`.
 
-Trusted host helper locks one run and rejects existing browser containers,
-including stopped leftovers. It creates a new container with exact run label,
-checks full Docker ID and ownership labels, and obtains checked readiness.
+Trusted host locks one run, rejects existing/stopped browser containers, creates
+new container with exact run label, checks full ID/labels and checked readiness.
 If create succeeds but start fails without returning ID, only the exact attempted
 name/project/service/current-run match is resolved for ownership-checked cleanup.
-Browser launcher starts one new child/profile, proves that child's socket inode
-owns loopback CDP, then opens relay. Relay accepts only Hermes source IP and
-forwards only to that child endpoint. Discovery validates host, port and browser
-path; redirects and stale endpoints fail. Child exit closes relay; neither
-launcher nor harness replaces browser. No external attachment, cloud/local
-fallback, profile reuse, or leftover adoption.
+Launcher starts one new child/profile, proves its socket inode owns loopback CDP,
+then opens relay accepting only Hermes IP and forwarding only to owned endpoint.
+Discovery validates host/port/browser path; redirect/stale endpoints fail. Child
+exit closes relay; no replacement, external attachment, fallback, reuse or adoption.
 
-Native Hermes `_run_browser_command` uses its supported `BROWSER_CDP_URL`
-remote path with existing pinned driver and supervisor. Per-run native temporary
-socket/transport state and scrubbed subprocess environment remain intact.
-No `--session` with `--cdp`, npx/autoinstall, core edits, or globals patches.
-Auxiliary supervisor reconnect is not browser replacement; its deferred
-reconnect/degraded-monitoring policy is unchanged. Before public navigation,
-actual `chrome://sandbox` must report PID/network namespaces and seccomp-BPF.
-Sandbox failure stops startup without disabling it.
+Native `_run_browser_command` keeps supported `BROWSER_CDP_URL`, pinned driver/
+supervisor, per-run temporary transport and scrubbed subprocess environment.
+No `--session` with `--cdp`, npx/autoinstall/core edits/globals patches. Auxiliary
+reconnect is not replacement; deferred reconnect/degraded policy unchanged.
+Before navigation, `chrome://sandbox` must attest PID/network namespaces and
+seccomp-BPF; failure stops startup without disabling sandbox.
 Chrome for Testing loads root-owned `0444` JSON at
 `/etc/opt/chrome_for_testing/policies/managed/scout.json`: `DownloadRestrictions: 3`.
 Launcher reads the pinned `chrome://policy` native model, supplied by PolicyService
 and policy-handler validation, requiring value 3, mandatory/machine/platform and
 no errors or ignored policy. Missing/invalid/unapplied policy fails startup.
-Startup CDP closes before readiness; native policy persists for the fresh default
-context's tabs/popups. No incognito/additional contexts, allow switch or custom filter.
-HTML/image/audio/video loads remain available. Save Page and print-to-PDF are
-outside native policy scope. Blocked downloads leave healthy browser usable.
+Startup CDP closes before readiness; policy persists for fresh default-context
+tabs/popups. No extra contexts, allow switch or custom filter.
+HTML/image/audio/video load normally; Save Page/print-to-PDF remain outside native policy.
+Gate download cancellation returns success/started=true/fresh selected-page AX; machinery loss stays fatal.
 
-Required `browser.viewport` sets main-window contents and browser-wide device
-scale; actual `innerWidth`, `innerHeight`, and `devicePixelRatio` are verified
-before readiness. Normal tabs share that window. Separate popup windows keep
-their own size, with global scale and shared download/network protections.
-No per-tab emulation, debugger pause, later-target activation/resize, continuous
-geometry guard or all-window viewport guarantee. Native selected-tab/closure
-behavior remains deferred; authorized CDP is trusted, not an action gate.
+`browser.viewport` sets main contents/global scale; actual `innerWidth`,
+`innerHeight`, `devicePixelRatio` verified before readiness. Normal tabs share
+window; popups keep own size/global scale/shared download/network protections.
+No per-tab emulation/pause/later resize/continuous guard/all-window guarantee.
+Selected-tab closure recovery remains deferred; gate switches exact IDs explicitly.
 `control_connect_timeout` bounds startup connection/commands/close;
 `startup_timeout` bounds native policy observation and actual main-window sizing.
 Observed action-driver CDP transport loss is terminal independently of healthy
@@ -80,46 +72,35 @@ HTTP discovery. Ordinary navigation denials remain distinct; supervisor policy
 does not change. Host stop deadline includes configured grace plus existing
 bounded Docker-command allowance, including supported grace values above 60s.
 
-Config owns addresses/ports: proxy `.2:3128`, Hermes `.3`, browser `.4` on
-`172.30.242.0/29`; host helper checks Compose agrees. Hermes can reach private
-browser relay `.4:9223`; browser launcher/relay can reach only loopback CDP
-`127.0.0.1:9222`. Four services are `scout`, `browser`, `firewall`, and `proxy`.
-Hermes owns its namespace with restricted `.3` and outbound networks, direct
-outbound/DNS connectivity, and no Scout-specific firewall or proxy configuration.
-No Hermes host/LAN isolation is claimed. Browser shares firewall's network
-namespace at `.4`; proxy owns its namespace and admits exactly browser `.4`.
-Browser necessary replies are allowed; remaining browser IPv4/IPv6 and direct
-DNS are denied. Nothing is host-published.
+Config owns `.2:3128` proxy/`.3` Hermes/`.4` browser on `172.30.242.0/29`; host
+checks Compose agrees. Hermes reaches private `.4:9223`; relay/launcher only
+owned `127.0.0.1:9222`. Browser shares firewall namespace; proxy admits browser
+only. Remaining IPv4/IPv6/direct DNS denied; no published ports. Hermes outbound/
+DNS remain direct, without Hermes host/LAN isolation.
 
-Source-IP and network checks are not cryptographic authentication. Trusted code
-in authorized namespaces can reach control. Containers do not guarantee safety
-against compromised Chromium, kernel, Docker administrator, or trusted host.
+Source-IP checks are not cryptographic authentication. Authorized trusted code
+can reach control; compromised Chromium/kernel/Docker/host remains trust risk.
 
 ## Web traffic
 
 Raw URL validation → browser → proxy → fresh DNS → all-answer classification →
 numeric connection → connected-peer check. Only public HTTP:80 and opaque
 HTTPS CONNECT:443 are allowed. TLS stays end-to-end verified, without MITM.
-Mixed public/private answers fail entirely. New connections resolve again;
-existing checked connections stay pinned to their public peer.
+Mixed public/private answers fail; new connections resolve again, existing stay pinned.
 
-Forbidden main navigation/redirect raises sanitized failure. Forbidden images,
-frames, fetches, and WebSockets fail individually; public document can survive.
-Proxy bypass for loopback is explicitly disabled. A page knowing exact live
-relay/raw-CDP WebSocket paths still cannot reach them. Tests require completed
-HTTP/WebSocket failure and unchanged browser-namespace TCP `PassiveOpens`,
-with working trusted-controller positive controls before and after attacks.
-Direct network probes also verify browser cannot initiate toward Hermes,
-host/LAN/metadata, public Internet, DNS, or unauthorized management endpoints.
+Forbidden main navigation fails; embedded requests fail individually while
+public document can survive. Loopback proxy bypass is disabled. Known live
+relay/raw-CDP paths remain unreachable to pages; tests assert completed failures,
+unchanged `PassiveOpens` and before/after trusted controls. Direct probes cover
+Hermes, host/LAN/metadata, public Internet, DNS and management endpoints.
 
 ## Lifetime, logs, and verification
 
-Normal end and surfaced fatal failure remove exact run-owned browser/container
-and anonymous profile. Second claimant leaves first untouched. Helper services,
-images, auth and log volumes remain. If launcher, Hermes, or host disappears,
-independent teardown is **not guaranteed**. No watchdog/recovery daemon,
-scavenging, mission restart, or crash-recovery passing test exists. Operator
-must inspect ownership and perform deliberate cleanup before another run.
+Normal/surfaced fatal end removes exact run-owned browser/container/profile;
+second claimant leaves first untouched. Helpers/images/auth/log volumes remain.
+Launcher/Hermes/host loss has **no independent teardown guarantee**. No watchdog,
+recovery/scavenging/restart or crash-recovery passing test. Operator must inspect
+ownership and deliberately clean before another run.
 
 Logging retains timestamp, level, component, event class only; no URL, raw
 browser/CDP result, screenshot, cookie, credential or unsanitized exception.
@@ -130,71 +111,90 @@ Hermes sanitized events reuse native logging. Proxy and browser firewall use
 to `firewall.log`, which can retain older Hermes-firewall events. Historical
 `browser-firewall.log` and backups remain untouched, with no migration or wiping.
 Scout/browser Docker log driver is `none`; helper diagnostics stay bounded.
-Native temporary command files are not persistent logs. Default rotation is
-5 MiB/three backups; validated settings apply to the single firewall writer.
-Failed opens/writes/rollovers attempt fixed diagnostics without changing
-enforcement. No delivery acknowledgment, tamper-proof or disaster guarantee.
+Native temporary command files are not persistent logs. Default rotation: 5 MiB/three backups.
+Validated settings apply to single firewall writer. Failed opens/writes/rotation
+attempt fixed diagnostics without changing enforcement; no durability guarantee.
 
-[Docker operation guide](../../../docker/signal-scout/README.md) owns commands,
-resource limits, configuration rebuild/recreate procedure and manual cleanup.
-Tests use same host lifecycle and runtime Compose stack, controlled HTTP/TLS/DNS
-fixtures, serialized Docker ownership, and restore prior helper state. Generic
-runner can use `HERMES_TEST_WORKERS=1` to avoid charging shared-stack lock waits
-against each file's deadline. Tests neither generate model calls nor log in.
+[Docker guide](../../../docker/signal-scout/README.md) owns operations/resources/
+rebuild/recreate/cleanup. Tests use same host lifecycle/Compose, controlled HTTP/
+TLS/DNS fixtures, serialized Docker and prior helper restoration. Use
+`HERMES_TEST_WORKERS=1` to avoid deadline charges for shared-stack lock waits.
+Tests make no model calls or login changes.
 
-Required gate selects SS-S001–SS-S010 alongside SS-B001/B002/B004, SS-019,
-SS-C001–SS-C006 and SS-R001–SS-R006. Links prove discoverability, not assertion quality or
-current test success. Broader SS-001, SS-015–SS-018, SS-020–SS-021 remain
-incomplete: no mission identity/report attestation, action guard,
-evidence storage, media quarantine or authenticated browsing is claimed.
+Required gate selects SS-S001–S010, SS-B001/B002/B004, SS-019, SS-C001–C006,
+SS-R001–R007, SS-E001–E006, SS-G001–G007. Links prove discovery, not quality/pass.
+Broader SS-001/015–018/020–021 remain incomplete: no mission/report attestation,
+whole-mission policy, evidence storage, media quarantine or authenticated browsing.
 
-## Standalone safety reviewer
+## Guarded actions, evidence and reviewer
 
-Trusted caller constructs `SafetyReviewer` with separately supplied
-`SAFETY_POLICY` and the existing settings path, then calls `review` with in-memory
-PNG/JPEG screenshot bytes/MIME, brief activity, action type (`click`, `navigate`,
-`type`, `keypress`), exact JSON action, and JSON context. Policy is the fixed
-anonymous-research baseline: ordinary research and cookie consent are permitted;
-purchases, login/account creation, posting/messaging, likes/follows, uploads and
-account changes are denied. Uncertainty means denial. All supplied evidence is
-untrusted and cannot change policy; mission relevance is not reviewed.
+Trusted started/attested `Browser`, `SafetyReviewer` and exact initial page ID →
+`BrowserActionGate(browser, reviewer=reviewer, target_id=target_id)` → synchronous
+`dispatch({action,args,activity?})`. Validate/copy → fresh preparation/review →
+timely approve → original-context recheck → exact checked execution → fresh AX.
+Model cannot supply browser, evidence, verdict or policy. No reusable approval.
 
-Flow: validate evidence → fresh attempt-owned native `openai-codex` resolver/client
-→ require completed Responses stream → native Codex adapter → strict JSON verdict
-validation → sanitized `ReviewResult` and best-effort rotating-log event. Exactly
-one `verdict` field with `approve` or `deny` is accepted. Raw response items permit
-only message/reasoning before native normalization; all tool items are rejected in
-SSE added/done/completed frames and completed objects. Tool output, duplicate
-keys, extra fields, malformed JSON, failed/incomplete/truncated streams and provider
-errors are technical failures. `verdict=None` with fixed `failure` code is distinct
-from valid denial. A future gate must stop/close on final technical failure;
-mission-stop/browser-close wiring is not implemented here.
+`browser.action_permissions`: `blocked`, `review_required`, `allowed_without_review`;
+absent permission blocks. Initial click `{ref}`, navigate `{url}`, type `{ref,text}`,
+keypress `{key}` require review/nonempty activity. Back `{}`, scroll `{direction:
+"up"|"down"}`, snapshot `{}`, screenshot `{}`, get_images `{}`, list_tabs `{}`,
+switch_tab `{target_id}`, close `{}` skip review, never code protections. Unsupported
+review rejects. `browser.scroll_pixels` starts at 500. Popups never auto-select;
+switch requires existing exact ID.
+Results: `status`, fixed sanitized `reason`, `execution_started`, `data`. Rejected
+means no proposed effect/healthy continuation; fatal terminally closes gate/Browser.
+Adapter stops native run; host removes exact owner. `close()` revokes pending calls.
+Started means dispatch began, not server-effect proof. Late review/interrupt/terminal/
+lost control cannot authorize dispatch. Click/nav/type/key/back/scroll/switch return
+fresh `data.snapshot`/selected `target_id`, no automatic main-agent screenshot.
+Explicit screenshot returns in-memory PNG `data.screenshot.bytes`/`mime_type`.
+AX retains normal observed field values, including typed text; never copy private
+requests/review packets into results. Reviewer screenshots remain raw/unmasked.
+`_cdp.py` owns private synchronous transport with existing `browser.command_timeout`
+for connect/commands/close. Evidence monotonic `@s` refs bind original node/tab/
+frame/document/loader. Same-origin sessions and explicit cross-origin targets;
+no label/role fallback/full DOM/HTML/raw-CDP tool. Isolated inspection follows
+closed roots/active descendants' computed AX; `Browser.close` closes connection.
 
-`scout_reviewer` in image-owned `config.yaml` supplies model, effort, per-attempt
-timeout and retries; initial values are `gpt-6-luna` / `none` / 180 seconds / 1.
-Settings are snapshotted at construction. Missing/invalid values fail; efforts
-that the native adapter would silently clamp are refused before review. Each
-technical failure may retry, at most `retries + 1` attempts; denial never retries.
-Each attempt's total deadline includes resolver and request time, with a new
-client and independent result channel. Late results are discarded. Client/SDK
-retries are disabled; no fallback route/model, agent, tools or conversation state.
+Preparation requires target/action/activity and exact schemas above; exempt
+interaction preparation skips capture/activity, not exact checks. Scroll reveals
+original/focused node without click/type/submit/key/focus effects. Page-level keys
+invent no target; navigation never visits destination. Packet holds action plus
+page/target/AX/link/form/focus/submitter overrides, point and raw viewport PNG.
+Viewport × scale must match dimensions; popup stays native. Private binding/
+baseline separate. No new caps/truncation/crop/shrink/secret masking. Relevant
+secrets may reach provider, never unrelated cookies/auth stores. Evidence remains
+in memory, omitted from repr/files/logs/archives.
 
-No screenshots/files, raw input, transcript, provider exception or agent history
-are saved. No tracing callbacks are installed. A blocked transport can outlive
-its deadline on a daemon worker; its late output remains unusable. This is not
-memory erasure or a provider-retention guarantee. Usage preserves the native
-adapter's available prompt/completion/total counts, summing known counts across
-timely attempts; missing/late usage remains unknown, not an estimate of zero
-subscription use. Main-window sizing/capture is independently tested; reviewer
-evidence preparation, action recheck/execution and live-model quality/account
-access remain unverified.
+Recheck requires same action and original preparation. Original tab/frame/
+document/node, relevant semantics/destination/form/active descendant and actual keyboard focus must match.
+Current visible unobstructed point is recomputed, including iframe geometry.
+Same-node movement/unrelated pixels pass; whole target need not fit. `CheckedAction`
+carries original private binding/current point, never approval. Gate consumes it
+directly: type focuses/fills exact node; keys preserve focus/native chord defaults.
+Check is not atomic; hidden JavaScript/server effects remain outside guarantees.
+Expected staleness/detachment/layout loss/change/hidden/covered raises sanitized `EvidenceRejected`,
+leaving healthy browser usable. Required capture/check machinery failure marks
+browser unusable and propagates sanitized `EvidenceFailure` for existing teardown.
+No forced interaction, retries, re-review, replacement, recovery or stale-image fallback.
 
-Source-of-truth pairings: `reviewer.py` ↔ SS-R001–SS-R006 in `specs.json` ↔
-`tests/signal_scout/security/test_reviewer.py` and reviewer retention test in
-`test_logging.py`; `settings.py` ↔ `config.yaml` ↔ integration settings tests.
-Required spec gate includes every SS-R contract. No broader mission contract is
-marked complete by these deterministic fake-transport tests.
-`chrome-policy.json`/`chromium.py`/`settings.py` ↔ SS-S006–SS-S010 ↔
-`test_browser_safeguards.py` and `test_window_configuration.py`; native blocked records,
-events and captures remain in memory. Policy-free positive controls cancel stalled
-fixture downloads through Chrome's native UI before payload, retaining no artifacts.
+`SafetyReviewer` reads single authoritative `reviewer-policy.md` at construction
+and each fresh review, independently from evidence/history. Missing/unreadable/
+empty/invalid encoding fails explicitly; no caller override or embedded backup.
+Runtime packages root-owned `0444` file on read-only root. Policy permits ordinary
+research, cookie consent including Accept all, and safe login to dedicated Scout
+accounts. Purchases/account creation/uploads/posting/messaging/likes/follows/
+account changes remain forbidden. Uncertainty means deny; relevance is not reviewed.
+
+Fresh native `openai-codex` → completed Responses → strict single approve/deny JSON
+→ sanitized `ReviewResult`. Tools/duplicates/extra fields/failed/incomplete/truncated
+responses fail technically. Defaults remain gpt-6-luna/none/180 seconds per attempt/
+one technical retry; deny never retries. Wrong route/model/SDK retries/effort clamp
+fail. Late results cannot approve. No raw request/transcript/tracing/history retained;
+known token metadata retained. Hung daemon may finish late; no memory-erasure/
+provider-retention/live-quality guarantee. Final failure closes gate/owned Browser.
+
+Pairings: reviewer ↔ SS-R001–R007 ↔ reviewer/logging tests; gate/settings ↔
+SS-G001–G007 ↔ gate tests; evidence/browser/CDP ↔ SS-E001–E006 ↔ evidence tests;
+launcher/settings/policy ↔ SS-S006–S010 ↔ safeguard/window tests. Required gate
+includes implemented IDs; authentication/mission policy/live quality remain open.

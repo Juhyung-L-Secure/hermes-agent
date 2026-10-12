@@ -99,7 +99,7 @@ def test_SS_S003_SS_R006_reviewer_metadata_rotates_without_raw_retention(tmp_pat
         with patch.object(auxiliary, '_select_pool_entry', return_value=(False, None)), \\
              patch.object(auxiliary, '_read_codex_access_token', return_value='offline-poison-token'), \\
              patch.object(auxiliary, '_openai_http_client_kwargs', side_effect=http_client):
-            client = reviewer.SafetyReviewer(safety_policy=reviewer.SAFETY_POLICY, settings_path=config_path)
+            client = reviewer.SafetyReviewer(settings_path=config_path)
             outcomes = []
             for _ in range(4):
                 outcomes.append(client.review(screenshot=b'screenshot-poison', screenshot_mime='image/png',
@@ -108,7 +108,7 @@ def test_SS_S003_SS_R006_reviewer_metadata_rotates_without_raw_retention(tmp_pat
             assert [value.verdict for value in outcomes] == ['approve', 'deny', None, None]
             assert [value.failure for value in outcomes] == [None, None, 'invalid_response', 'provider_error']
             assert all('poison' not in repr(value) for value in outcomes)
-            assert set(vars(client)) == {'_settings', '_policy'}
+            assert set(vars(client)) == {'_settings'}
         import hermes_logging
         hermes_logging.flush_log_queue()
         files = list((directory / 'logs').glob('*.log'))

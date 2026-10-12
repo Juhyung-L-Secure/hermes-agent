@@ -8,6 +8,9 @@ import math
 import yaml
 
 CONFIG = Path("/opt/scout/config.yaml")
+_BROWSER_ACTIONS = frozenset({"click", "navigate", "type", "keypress", "back", "scroll",
+    "snapshot", "screenshot", "get_images", "list_tabs", "switch_tab", "close"})
+_ACTION_MODES = frozenset({"blocked", "review_required", "allowed_without_review"})
 
 
 def settings_digest(config):
@@ -21,6 +24,11 @@ def load_settings(path=CONFIG):
         config = yaml.safe_load(Path(path).read_text())
         logging = config["logging"]
         browser = config["browser"]
+        permissions = browser["action_permissions"]
+        if (not isinstance(permissions, dict) or set(permissions) - _BROWSER_ACTIONS
+                or any(not isinstance(mode, str) or mode not in _ACTION_MODES for mode in permissions.values())
+                or type(browser["scroll_pixels"]) is not int or browser["scroll_pixels"] <= 0):
+            raise ValueError
         viewport = browser["viewport"]
         proxy = config["scout_proxy"]
         lifecycle = config["scout_lifecycle"]
@@ -57,7 +65,8 @@ def load_settings(path=CONFIG):
             raise ValueError
         if browser != {"cloud_provider": "local", "engine": "chrome", "use_real_profile": False,
                        "auto_local_for_private_urls": False, "command_timeout": browser["command_timeout"],
-                       "viewport": viewport}:
+                       "viewport": viewport, "action_permissions": permissions,
+                       "scroll_pixels": browser["scroll_pixels"]}:
             raise ValueError
         if set(viewport) != {"width", "height", "device_scale_factor"}:
             raise ValueError
