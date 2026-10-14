@@ -24,6 +24,9 @@ def load_settings(path=CONFIG):
         config = yaml.safe_load(Path(path).read_text())
         logging = config["logging"]
         browser = config["browser"]
+        if (browser["mode"] not in {"headless", "headed"} or type(browser["viewer"]) is not bool
+                or browser["viewer"] and browser["mode"] != "headed"):
+            raise ValueError
         permissions = browser["action_permissions"]
         if (not isinstance(permissions, dict) or set(permissions) - _BROWSER_ACTIONS
                 or any(not isinstance(mode, str) or mode not in _ACTION_MODES for mode in permissions.values())
@@ -48,7 +51,8 @@ def load_settings(path=CONFIG):
         if set(lifecycle) != {"startup_timeout", "control_connect_timeout", "shutdown_timeout", "smoke_timeout"}:
             raise ValueError
         if set(network) != {"subnet", "proxy_address", "scout_address", "browser_address",
-                            "proxy_port", "control_port", "relay_port"}:
+                            "proxy_port", "control_port", "relay_port", "viewer_port",
+                            "viewer_subnet", "viewer_address"}:
             raise ValueError
         subnet = ipaddress.IPv4Network(network["subnet"])
         addresses = [ipaddress.IPv4Address(network[key]) for key in
@@ -57,13 +61,21 @@ def load_settings(path=CONFIG):
                 or any(address not in subnet or address in {subnet.network_address, subnet.broadcast_address}
                        for address in addresses)):
             raise ValueError
-        if len({network[key] for key in ("proxy_port", "control_port", "relay_port")}) != 3:
+        viewer_subnet = ipaddress.IPv4Network(network["viewer_subnet"])
+        viewer_address = ipaddress.IPv4Address(network["viewer_address"])
+        if (not viewer_subnet.is_private or viewer_subnet.overlaps(subnet)
+                or viewer_address not in viewer_subnet
+                or viewer_address in {viewer_subnet.network_address, viewer_subnet.network_address + 1,
+                                      viewer_subnet.broadcast_address}):
+            raise ValueError
+        if len({network[key] for key in ("proxy_port", "control_port", "relay_port", "viewer_port")}) != 4:
             raise ValueError
         if set(logging) != {"level", "max_size_mb", "backup_count"}:
             raise ValueError
         if set(proxy) != {"dns_timeout", "connect_timeout", "idle_timeout"}:
             raise ValueError
         if browser != {"cloud_provider": "local", "engine": "chrome", "use_real_profile": False,
+                       "mode": browser["mode"], "viewer": browser["viewer"],
                        "auto_local_for_private_urls": False, "command_timeout": browser["command_timeout"],
                        "viewport": viewport, "action_permissions": permissions,
                        "scroll_pixels": browser["scroll_pixels"]}:
@@ -83,7 +95,7 @@ def load_settings(path=CONFIG):
             (browser["command_timeout"], 1, 120),
             *[(proxy[key], 1, 300) for key in proxy],
             *[(lifecycle[key], 1, 300) for key in lifecycle],
-            *[(network[key], 1024, 65535) for key in ("proxy_port", "control_port", "relay_port")],
+            *[(network[key], 1024, 65535) for key in ("proxy_port", "control_port", "relay_port", "viewer_port")],
         ]:
             if type(value) is not int or not low <= value <= high:
                 raise ValueError

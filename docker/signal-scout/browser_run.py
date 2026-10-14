@@ -40,17 +40,31 @@ def validate_topology(model, config):
     """Reject disagreement between Docker addresses and image-owned network settings."""
     network = config["scout_network"]
     services = model["services"]
-    if set(services) != {"scout", "browser", "firewall", "proxy"}:
+    if (set(services) != {"scout", "browser", "firewall", "proxy"}
+            or set(model["networks"]) != {"restricted", "outbound", "viewer"}):
         raise ValueError("Scout network configuration mismatch.")
     if model["networks"]["restricted"]["ipam"]["config"] != [{"subnet": network["subnet"]}]:
+        raise ValueError("Scout network configuration mismatch.")
+    if (model["networks"]["restricted"].get("internal") is not True
+            or model["networks"]["viewer"].get("internal", False)
+            or model["networks"]["viewer"]["ipam"]["config"] != [{"subnet": network["viewer_subnet"]}]
+            or services["firewall"]["networks"]["viewer"]["ipv4_address"] != network["viewer_address"]):
         raise ValueError("Scout network configuration mismatch.")
     for service, key in (("proxy", "proxy_address"), ("scout", "scout_address"), ("firewall", "browser_address")):
         if services[service]["networks"]["restricted"]["ipv4_address"] != network[key]:
             raise ValueError("Scout network configuration mismatch.")
     if services["browser"]["network_mode"] != "service:firewall":
         raise ValueError("Scout network configuration mismatch.")
+    for service in ("scout", "browser", "proxy"):
+        if services[service].get("ports"):
+            raise ValueError("Scout network configuration mismatch.")
+    ports = services["firewall"].get("ports", [])
+    if (len(ports) != 1 or ports[0].get("host_ip") != "127.0.0.1"
+            or ports[0].get("protocol") != "tcp" or ports[0].get("target") != network["viewer_port"]
+            or ports[0].get("published") != str(network["viewer_port"])):
+        raise ValueError("Scout network configuration mismatch.")
     for service, networks in (("scout", {"restricted", "outbound"}),
-                              ("proxy", {"restricted", "outbound"}), ("firewall", {"restricted"})):
+                              ("proxy", {"restricted", "outbound"}), ("firewall", {"restricted", "viewer"})):
         if "network_mode" in services[service] or set(services[service]["networks"]) != networks:
             raise ValueError("Scout network configuration mismatch.")
 
@@ -152,6 +166,22 @@ class BrowserRun:
             raise RuntimeError("Browser control unavailable.")
         return {"SCOUT_BROWSER_RUN": self.run, "SCOUT_BROWSER_CONTAINER": self.container,
                 "BROWSER_CDP_URL": self.endpoint}
+
+    def viewer_access(self):
+        """Return this owned session's local viewer URL/login to trusted operator.
+
+        Credentials are ephemeral browser tmpfs data, separate from model-facing
+        tools and Scout environment. Never persist or log this returned value.
+        """
+        if not self.config["browser"]["viewer"]:
+            raise RuntimeError("Browser viewer disabled.")
+        self.scout_environment()
+        password = checked(["docker", "exec", self.container, "python3", "-c",
+                            "from security.viewer import ACCESS; print(ACCESS.read_text())"])
+        if not re.fullmatch("[A-Za-z0-9_-]{43}", password):
+            raise RuntimeError("Browser viewer authentication unavailable.")
+        return {"url": f"http://127.0.0.1:{self.config['scout_network']['viewer_port']}/vnc.html?autoconnect=1&resize=scale",
+                "username": "scout", "password": password}
 
     def smoke(self, url):
         """Run only the deterministic bounded Scout navigation/observation entrypoint."""

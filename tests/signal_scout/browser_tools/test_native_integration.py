@@ -1,4 +1,4 @@
-"""SS-T001–SS-T005: real gate/owned Chromium through native Hermes dispatch."""
+"""BR_001–BR_005: real gate/owned Chromium through native Hermes dispatch."""
 
 import subprocess
 
@@ -58,7 +58,7 @@ def stable_requests(requests):
 '''
 
 
-def test_SS_T001_SS_T002_SS_T004_SS_T005_native_model_approved_effects_images_and_no_bypass(fixture_web):
+def test_BR_001_BR_002_BR_004_BR_005_native_model_approved_effects_images_and_no_bypass(fixture_web):
     stack, _, _, _ = fixture_web
     with stack.browser_run() as run:
         stack.browser_probe(SETUP + FAKE_MAIN + r'''
@@ -147,7 +147,7 @@ with Browser() as browser:
     assert run.container is None
 
 
-def test_SS_T002_SS_T005_native_model_type_keeps_review_data_private(fixture_web):
+def test_BR_002_BR_005_native_model_type_keeps_review_data_private(fixture_web):
     """Observed typed AX value survives; private review/request packets do not."""
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + FAKE_MAIN + r'''
@@ -189,7 +189,7 @@ with Browser() as browser:
 
 
 @pytest.mark.parametrize("case", ["deny", "stale"])
-def test_SS_T002_SS_T004_native_model_rejection_leaves_healthy_browser(fixture_web, case):
+def test_BR_002_BR_004_native_model_rejection_leaves_healthy_browser(fixture_web, case):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + FAKE_MAIN + f"\ncase={case!r}\n" + r'''
 with Browser() as browser:
@@ -229,7 +229,7 @@ with Browser() as browser:
 ''', timeout=150)
 
 
-def test_SS_T004_native_late_approval_cannot_authorize_current_retry(fixture_web):
+def test_BR_004_native_late_approval_cannot_authorize_current_retry(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + FAKE_MAIN + r'''
 first_done=threading.Event()
@@ -278,7 +278,7 @@ with Browser() as browser:
 ''', timeout=150)
 
 
-def test_SS_T003_SS_T004_native_final_review_failure_stops_agent_and_host_cleans_owned_browser(fixture_web):
+def test_BR_003_BR_004_native_final_review_failure_stops_agent_and_host_cleans_owned_browser(fixture_web):
     stack, _, _, _ = fixture_web
     with stack.browser_run() as run:
         owned = run.container

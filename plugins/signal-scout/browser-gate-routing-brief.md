@@ -204,15 +204,15 @@ Own only:
   `reviewer.py`, `settings.py`, `runtime_logging.py`, `security/specs.json` and README.
 - `docker/signal-scout/config.yaml`; Dockerfile only if new required stdlib-only
   security helper must be copied to browser image; do not change pins/policies.
-- Root plugin `specs.json` only SS-B004 configuration description/links if required.
+- Root plugin `specs.json` only BT_004 configuration description/links if required.
 - `tests/signal_scout/security/` gate tests and concrete necessary fixtures/regressions;
   `tests/signal_scout/integration/test_settings.py` for operating-policy validation.
 
 Never edit Assignment B files. Preserve canonical reviewer policy. New stable
-contracts SS-G001–SS-G007 live in security/specs.json with security-owned tests:
+contracts AG_001–AG_007 live in security/specs.json with security-owned tests:
 request/permissions; approved/denied execution; exact target/recheck; exempt actions/
 selection; post-action observation; fatal/late-review protection; configuration/privacy.
-Keep broader SS-016 truthful about the new slice without claiming full mission policy.
+Keep broader SR_016 truthful about the new slice without claiming full mission policy.
 
 Success criteria: real owned Chromium proves approved actions take effect exactly
 on checked original targets (including frames/focus); denied, stale, malformed,
@@ -239,10 +239,10 @@ Own only:
   verification documentation. Keep ownership READMEs at most 200 lines.
 
 Never edit security implementation/config/fixtures or A's feature contracts.
-New stable contracts SS-T001–SS-T005 live in browser_tools/specs.json with mirrored
+New stable contracts BR_001–BR_005 live in browser_tools/specs.json with mirrored
 tests: discovery/tool scope; unchanged request/result forwarding; bound run/fatal stop;
 real gate dispatch/no bypass; native text/multimodal feedback without review-packet retention.
-Add fully covered SS-G001–SS-G007 and SS-T001–SS-T005 to existing required-ID gate.
+Add fully covered AG_001–AG_007 and BR_001–BR_005 to existing required-ID gate.
 
 Initially develop/test against a contract-shaped fake gate; no fake verdict can
 count as final real-gate integration. After A's gate/image is ready, exercise native

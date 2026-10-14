@@ -8,7 +8,7 @@ Behavioral contracts live in feature-owned specs; this file owns delivery order
 and implementation plans. Paths below are relative to `plugins/signal-scout/`.
 
 Planning context: [browser review/security discussion record](../plugins/signal-scout/security/browser-action-review-plan.md)
-captures latest decisions and unresolved choices. Older SS-016 action-ban and
+captures latest decisions and unresolved choices. Older SR_016 action-ban and
 hook-only browser-policy plans below need reconciliation in the confirmed coding
 brief. Approved [container-isolation brief](../plugins/signal-scout/security/browser-container-isolation-brief.md)
 now has completed split-runtime implementation and deterministic boundary/lifecycle
@@ -28,15 +28,15 @@ does not authorize the older full mission-control scope below.
 
 | Spec owner | IDs |
 | --- | --- |
-| `specs.json` | SS-001, SS-B001–SS-B004 |
-| `missions/specs.json` | SS-002, SS-003, SS-028, SS-029, SS-031 |
-| `security/specs.json` | SS-015–SS-021, SS-S001–SS-S005 |
-| `evidence/specs.json` | SS-010–SS-013 |
-| `media/specs.json` | SS-022–SS-025 |
-| `budget/specs.json` | SS-026, SS-027 |
-| `reporting/specs.json` | SS-030, SS-032 |
-| `research/specs.json` | SS-004–SS-009, SS-014 |
-| `spec_checks/specs.json` | SS-C001–SS-C006 |
+| `specs.json` | IN_001, BT_001–BT_004 |
+| `missions/specs.json` | MI_002, MI_003, MI_028, MI_029, MI_031 |
+| `security/specs.json` | SR_015–SR_021, SR_001–SR_005 |
+| `evidence/specs.json` | EV_010–EV_013 |
+| `media/specs.json` | MD_022–MD_025 |
+| `budget/specs.json` | BU_026, BU_027 |
+| `reporting/specs.json` | RP_030, RP_032 |
+| `research/specs.json` | RS_004–RS_009, RS_014 |
+| `spec_checks/specs.json` | SC_001–SC_006 |
 
 Future implementation and ownership README belong alongside each spec file;
 tests mirror those owners under `tests/signal_scout/`, with `integration/` for
@@ -46,35 +46,35 @@ the native/bootstrap owner. Layers remain coverage metadata. Checker workflow:
 ## Bootstrap — Isolated Status Conversation
 
 This slice precedes Milestone 1: native status-only plugin in
-`plugins/signal-scout/`, Docker setup in `docker/signal-scout/`. SS-B001 owns
-native status behavior, SS-B002 the container boundary, and SS-B003 the bounded
+`plugins/signal-scout/`, Docker setup in `docker/signal-scout/`. BT_001 owns
+native status behavior, BT_002 the container boundary, and BT_003 the bounded
 subscription-model conversation. Runtime configuration and trust limits live in
 the [Docker ownership guide](../docker/signal-scout/README.md).
 
-Completion requires SS-B001 and SS-B002 automated tests, separate user login,
-and SS-B003 live verification. Startup:
+Completion requires BT_001 and BT_002 automated tests, separate user login,
+and BT_003 live verification. Startup:
 `docker/signal-scout/README.md`. Manual live verification passed on 2026-09-10:
 two API calls, one native status call/result, and a completed explanation.
-Sanitized evidence: `stuff/bootstrap-live-verification.json`. SS-B003 records
+Sanitized evidence: `stuff/bootstrap-live-verification.json`. BT_003 records
 this in `otherCoverage`; automated live `requiredCoverage` remains unfulfilled.
 
-Original bootstrap did not complete SS-001, SS-019, or Milestone 1. No browsing, media,
+Original bootstrap did not complete IN_001, SR_019, or Milestone 1. No browsing, media,
 missions, reports, percentage budgets, background jobs, or messaging are added.
 Future deployment target is OVHcloud VPS-2; development stays local for now.
 
 ## Protection-only public-web slice
 
-SS-019 supersedes OpenAI-only network policy: public HTTP:80/HTTPS:443,
+SR_019 supersedes OpenAI-only network policy: public HTTP:80/HTTPS:443,
 proxy-owned DNS/IP/actual-peer checks, redirect/rebinding/background protection,
-and unchanged verified end-to-end TLS. SS-B002 retains container/bypass boundary.
-SS-S001 owns pinned isolated Chromium with actual sandbox attestation;
-SS-S002 owns Hermes-to-browser relay and narrow browser-local CDP exceptions.
+and unchanged verified end-to-end TLS. BT_002 retains container/bypass boundary.
+SR_001 owns pinned isolated Chromium with actual sandbox attestation;
+SR_002 owns Hermes-to-browser relay and narrow browser-local CDP exceptions.
 No broad loopback or private-web access; source-IP rules are not cryptographic
 authentication. Adversarial webpage checks cover raw CDP and active relay.
-SS-S004 owns separate browser container; SS-S005 owns disposable single-run
+SR_004 owns separate browser container; SR_005 owns disposable single-run
 lifecycle using native Hermes remote-CDP. Independent teardown after launcher,
 Hermes or host loss remains deferred; operator inspection/cleanup is required.
-SS-S003 owns metadata-only persistent best-effort protection logs; SS-B004 owns
+SR_003 owns metadata-only persistent best-effort protection logs; BT_004 owns
 validated file settings and edit/rebuild/recreate workflow. Implementation and
 verification live in [security ownership guide](../plugins/signal-scout/security/README.md)
 and [Docker guide](../docker/signal-scout/README.md).
@@ -85,9 +85,9 @@ isolation. Browser shares renamed `firewall` namespace; proxy accepts browser
 only. Four separate services remain: `scout`, `browser`, `firewall`, `proxy`.
 Historical briefs and verification receipts retain their original evidence.
 
-This slice keeps LLM status-only. SS-001, SS-015–SS-018, SS-020–SS-021 and
+This slice keeps LLM status-only. IN_001, SR_015–SR_018, SR_020–SR_021 and
 remaining mission/research/evidence/reporting/budget work stay incomplete.
-SS-B003's existing manual receipt remains unchanged; no new model call occurs.
+BT_003's existing manual receipt remains unchanged; no new model call occurs.
 
 ## Milestone 1 — Safe Anonymous Public-Web Runtime
 
@@ -98,15 +98,15 @@ and Codex-percentage budgeting remain out of scope.
 
 ### Locked runtime scope
 
-- Mission/session binding: SS-003.
-- Anonymous browser identity and permitted actions: SS-015, SS-016.
+- Mission/session binding: MI_003.
+- Anonymous browser identity and permitted actions: SR_015, SR_016.
 - Deterministic `maxToolCalls` ceiling for development safety. This is not the
   50-percent Codex budget promised by Milestone 3.
 - Text and screenshot evidence only. Video/audio artifacts begin in Milestone 2.
 
 ### Delivery boundary and Hermes integration
 
-SS-001 owns the extension boundary. The planned `register(ctx)` wiring uses
+IN_001 owns the extension boundary. The planned `register(ctx)` wiring uses
 existing Hermes extension surfaces:
 
 - `ctx.register_tool(...)`: one `signal_scout` model tool with an `action` enum
@@ -158,25 +158,25 @@ Planned interfaces (their behavior is owned by the referenced specs):
 
 - `register(ctx)` performs all extension registration and no mission work.
 - `missions/`: `MissionSpec.from_dict(data)` and `transition(current, requested)`
-  implement SS-002 and SS-003.
+  implement MI_002 and MI_003.
 - `MissionStore.open(root, mission_id)` contains paths under the plugin data
   root and enables SQLite foreign keys; its `append_*`, `bind_session`,
   `request_stop`, `write_checkpoint`, and `resume_snapshot` methods each own one
   transaction.
 - `security/`: `attest_runtime(config, environment)`, `strict_public_url(url)`,
-  and `ScoutPolicy.pre_tool_call(...)` implement SS-015–SS-017, SS-019, SS-020
-  and the SS-031 policy boundary.
-- `reporting/`: `audit_tool_result(...)` implements SS-032 and routes captures
-  to the SS-011 evidence owner.
+  and `ScoutPolicy.pre_tool_call(...)` implement SR_015–SR_017, SR_019, SR_020
+  and the MI_031 policy boundary.
+- `reporting/`: `audit_tool_result(...)` implements RP_032 and routes captures
+  to the EV_011 evidence owner.
 - `handle_signal_scout(args, **context)` validates action-specific payloads and
   requires a non-empty Hermes `session_id` for start/resume.
 - `configure_cli(parser)` and `handle_cli(args)` expose only operator-safe
   validation, status, stop, and deterministic report operations.
-- `reporting/`: `render_terminal_report(store)` implements SS-030.
+- `reporting/`: `render_terminal_report(store)` implements RP_030.
 
-### Mission implementation plan — SS-002, SS-003, SS-031
+### Mission implementation plan — MI_002, MI_003, MI_031
 
-`MissionSpec.from_dict()` implements SS-002. Planned JSON fields:
+`MissionSpec.from_dict()` implements MI_002. Planned JSON fields:
 
 - `schemaVersion`
 - `missionId`
@@ -189,8 +189,8 @@ Planned interfaces (their behavior is owned by the referenced specs):
 - `output.name`
 
 Planned storage root: `ctx.state.data_dir/missions/<missionId>/`. Validation and
-containment follow SS-002; lifecycle/session binding follows SS-003. Operator
-`stop` uses durable `stop_requested` state and the SS-031 policy boundary.
+containment follow MI_002; lifecycle/session binding follows MI_003. Operator
+`stop` uses durable `stop_requested` state and the MI_031 policy boundary.
 
 ### Durable mission store
 
@@ -207,14 +207,14 @@ Each mission owns `mission.sqlite3` plus `artifacts/`, `checkpoints/`, and
 - complete checkpoint snapshots
 - chronological audit events
 
-Database constraints and capture APIs implement SS-010–SS-013. Checkpoint
-transactions and resume behavior implement SS-028/SS-029. Persistence redaction
-follows SS-020; the audit writer follows SS-032. Keep domain record code in its
+Database constraints and capture APIs implement EV_010–EV_013. Checkpoint
+transactions and resume behavior implement MI_028/MI_029. Persistence redaction
+follows SR_020; the audit writer follows RP_032. Keep domain record code in its
 own feature while sharing the mission's SQLite transaction boundary.
 
 ### Browser policy
 
-`ScoutPolicy.pre_tool_call()` implements SS-016. Planned allowlist tool names:
+`ScoutPolicy.pre_tool_call()` implements SR_016. Planned allowlist tool names:
 
 - `signal_scout`
 - `web_search`
@@ -229,28 +229,28 @@ own feature while sharing the mission's SQLite transaction boundary.
 - `skill_view` for `signal-scout:research`
 
 Hermes dispatch unwraps Tool Search before `pre_tool_call`; test that real path
-for SS-016. SS-019 URL preflight must be independent of Hermes' optional
+for SR_016. SR_019 URL preflight must be independent of Hermes' optional
 `allow_private_urls` setting.
 
 Plugin preflight validates raw syntax, scheme, and credentials only; it cannot
-enforce redirect/rebinding destinations. Implemented SS-019 proxy now owns DNS,
+enforce redirect/rebinding destinations. Implemented SR_019 proxy now owns DNS,
 IP classification and actual connection-time public-web enforcement, with
 redirect/rebinding/background fixtures. Reuse this boundary when mission tools
 ship; do not add duplicate Scout DNS/IP checks or fall back to direct browsing.
-SS-S001–SS-S005 attest only sandbox/control, logs, container separation and
+SR_001–SR_005 attest only sandbox/control, logs, container separation and
 ordinary/surfaced-failure single-run lifecycle, not independent crash recovery.
 Milestone 1 still needs mission-scoped tool policy, untrusted-content handling,
 evidence/report storage and remaining broader contracts before production use.
 
 ### Checkpoints and reports
 
-Implement checkpoint cadence/content from SS-028 and resume from SS-029 without
+Implement checkpoint cadence/content from MI_028 and resume from MI_029 without
 waiting for the unresolved Codex budget source. The planned serialized usage
 field is `usageMeasurement: unavailable` until Milestone 3 supplies one.
 
-`render_terminal_report()` implements SS-030 at `reports/report.json` and
+`render_terminal_report()` implements RP_030 at `reports/report.json` and
 `reports/report.md`; report sections and missing-data behavior belong to that
-spec. Audit contents belong to SS-032.
+spec. Audit contents belong to RP_032.
 
 ### Required tests
 
@@ -275,9 +275,9 @@ Milestone 1 completes only when all tests above pass, no Signal Scout-specific
 Hermes core edits exist, and the chosen second-machine network boundary is
 verified. Until then, missions remain restricted to controlled fixtures.
 
-Milestone 1 targets the runtime portions of SS-001 through SS-003 and the code
-contracts in SS-010 through SS-013, SS-015 through SS-017, SS-019, SS-020, and
-SS-028 through SS-032. Discovery quality, competitor coverage, demand analysis,
+Milestone 1 targets the runtime portions of IN_001 through MI_003 and the code
+contracts in EV_010 through EV_013, SR_015 through SR_017, SR_019, SR_020, and
+MI_028 through RP_032. Discovery quality, competitor coverage, demand analysis,
 and opportunity synthesis remain later LLM-instruction work even though their
 records use this runtime.
 
@@ -287,16 +287,16 @@ Add safe, efficient inspection of video and audio.
 
 ### 6. Safe media acquisition
 
-Implement SS-018 in the security owner and connect it to media acquisition.
+Implement SR_018 in the security owner and connect it to media acquisition.
 
 ### 7. Video and audio preprocessing
 
-Implement SS-022/SS-023 preprocessing, SS-024 synchronized evidence, and SS-025
-failure reporting in the media owner; accepted evidence follows SS-011.
+Implement MD_022/MD_023 preprocessing, MD_024 synchronized evidence, and MD_025
+failure reporting in the media owner; accepted evidence follows EV_011.
 
 ### Completion criterion
 
-Controlled media fixtures satisfy SS-018 and SS-022–SS-025 with the required
+Controlled media fixtures satisfy SR_018 and MD_022–MD_025 with the required
 test layers from their owning specs.
 
 ## Milestone 3 — Budget Enforcement
@@ -305,8 +305,8 @@ Add hard usage limits once a measurable usage source is selected.
 
 ### 8. Usage measurement and stopping
 
-Implement SS-026 measurement and SS-027 enforcement in the budget owner, then
-connect their outputs to checkpoint/report contracts SS-028 and SS-030.
+Implement BU_026 measurement and BU_027 enforcement in the budget owner, then
+connect their outputs to checkpoint/report contracts MI_028 and RP_030.
 
 ### Blocker
 
@@ -318,7 +318,7 @@ an authoritative external Codex usage reading. Do not claim enforcement of
 
 ### Completion criterion
 
-Controlled mission tests satisfy SS-026/SS-027 and their checkpoint/report
+Controlled mission tests satisfy BU_026/BU_027 and their checkpoint/report
 integration using each owning spec's required layers.
 
 ## Deferred Until After These Milestones

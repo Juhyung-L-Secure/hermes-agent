@@ -1,4 +1,4 @@
-"""SS-B004: file-owned validated operating settings, without protection toggles."""
+"""BT_004: file-owned validated operating settings, without protection toggles."""
 
 import copy
 import importlib
@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[3]
 CONFIG = ROOT / 'docker/signal-scout/config.yaml'
 
 
-def test_SS_B004_defaults_and_supplied_file_settings(tmp_path):
+def test_BT_004_defaults_and_supplied_file_settings(tmp_path):
     config = settings.load_settings(CONFIG)
     assert config['scout_reviewer'] == {'model':'gpt-6-luna', 'reasoning_effort':'none',
                                         'timeout_seconds':180, 'retries':1}
@@ -61,7 +61,7 @@ def test_SS_B004_defaults_and_supplied_file_settings(tmp_path):
     ('scout_reviewer','timeout_seconds',0), ('scout_reviewer','retries',True),
     ('scout_reviewer','model',''), ('scout_reviewer','fallback_provider','other'),
 ])
-def test_SS_B004_invalid_or_security_relaxing_configuration_fails(tmp_path, section, key, value):
+def test_BT_004_invalid_or_security_relaxing_configuration_fails(tmp_path, section, key, value):
     config = copy.deepcopy(settings.load_settings(CONFIG))
     config[section][key] = value
     path = tmp_path / 'settings.yaml'
@@ -70,7 +70,7 @@ def test_SS_B004_invalid_or_security_relaxing_configuration_fails(tmp_path, sect
         settings.load_settings(path)
 
 
-def test_SS_B004_image_owned_configuration_matches_runtime(scout_stack):
+def test_BT_004_image_owned_configuration_matches_runtime(scout_stack):
     scout_stack.probe("""
         import importlib
         from pathlib import Path
@@ -86,7 +86,7 @@ def test_SS_B004_image_owned_configuration_matches_runtime(scout_stack):
     """)
 
 
-def test_SS_B004_browser_command_uses_supplied_timeout(monkeypatch):
+def test_BT_004_browser_command_uses_supplied_timeout(monkeypatch):
     from tools import browser_tool
     Browser = importlib.import_module('plugins.signal-scout.security.browser').Browser
     browser = Browser.__new__(Browser)
@@ -105,7 +105,7 @@ def test_SS_B004_browser_command_uses_supplied_timeout(monkeypatch):
     assert observed == [('scout-timeout-unit', 'eval', ['true'], 12)]
 
 
-def test_SS_B004_SS_S005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_path):
+def test_BT_004_SR_005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_path):
     from tests.signal_scout.conftest import lifecycle
     browser_module = importlib.import_module('plugins.signal-scout.security.browser')
     config = settings.load_settings(CONFIG)
@@ -161,7 +161,7 @@ def test_SS_B004_SS_S005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_pat
 
 @pytest.mark.parametrize('change', ['permissions_missing','permissions_invalid','unknown_action',
     'missing_mode','invalid_mode','scroll_missing','scroll_zero','scroll_bool','scroll_fraction'])
-def test_SS_G007_SS_B004_required_action_policy_and_scroll_configuration_fail_explicitly(tmp_path, change):
+def test_AG_007_BT_004_required_action_policy_and_scroll_configuration_fail_explicitly(tmp_path, change):
     config = settings.load_settings(CONFIG)
     browser = config['browser']
     if change == 'permissions_missing':

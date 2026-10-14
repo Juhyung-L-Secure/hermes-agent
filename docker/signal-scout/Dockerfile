@@ -62,7 +62,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip -q /tmp/websockets.whl 'websockets/*' -d /opt/scout && rm /tmp/websockets.whl && \
     useradd --uid 10000 --no-create-home scout && \
     install -d -o root -g root -m 0755 /etc/opt/chrome_for_testing/policies/managed
-COPY plugins/signal-scout/security/chromium.py plugins/signal-scout/security/control.py plugins/signal-scout/security/settings.py /opt/scout/security/
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb x11-utils x11vnc novnc websockify && rm -rf /var/lib/apt/lists/*
+COPY plugins/signal-scout/security/chromium.py plugins/signal-scout/security/control.py plugins/signal-scout/security/settings.py plugins/signal-scout/security/viewer.py /opt/scout/security/
 COPY docker/signal-scout/config.yaml /opt/scout/config.yaml
 COPY --chown=0:0 --chmod=0444 docker/signal-scout/chrome-policy.json /etc/opt/chrome_for_testing/policies/managed/scout.json
 ENV PYTHONPATH=/opt/scout PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1

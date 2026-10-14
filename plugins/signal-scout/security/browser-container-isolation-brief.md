@@ -237,13 +237,13 @@ No edits to Hermes core, general test runner, unrelated specs/features, Graphify
 root instructions/ignore files, or preserved verification receipts. If core change
 is unavoidable, stop and report blocker rather than silently broadening assignment.
 
-Update SS-B002, SS-B004, SS-019, SS-S001, SS-S002, and applicable SS-S003 contracts
+Update BT_002, BT_004, SR_019, SR_001, SR_002, and applicable SR_003 contracts
 and tests for split boundary. Explicitly distinguish Scout-owned remote-container
-CDP from prohibited arbitrary external attachment; reconcile SS-015 wording only
+CDP from prohibited arbitrary external attachment; reconcile SR_015 wording only
 where necessary without claiming complete mission coverage. Add security-owned
-SS-S004 for container separation and SS-S005 for disposable single-run lifecycle,
+SR_004 for container separation and SR_005 for disposable single-run lifecycle,
 with required `unit`/`e2e` links. Existing IDs retain their behavioral ownership.
-Do not mark SS-001/SS-015/SS-016 or unrelated mission/reviewer contracts complete.
+Do not mark IN_001/SR_015/SR_016 or unrelated mission/reviewer contracts complete.
 
 Two firewall helpers must not rotate the same file concurrently. Give them distinct
 component log files under existing log volume; retain historical files, default
@@ -296,7 +296,7 @@ Required final verification, from repository root:
 docker compose -f docker/signal-scout/compose.yaml config --quiet
 docker compose -f docker/signal-scout/compose.yaml build
 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0
-.venv/bin/python plugins/signal-scout/spec_checks/check.py --require SS-B001 --require SS-B002 --require SS-B004 --require SS-019 --require SS-S001 --require SS-S002 --require SS-S003 --require SS-S004 --require SS-S005 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006
+.venv/bin/python plugins/signal-scout/spec_checks/check.py --require BT_001 --require BT_002 --require BT_004 --require SR_019 --require SR_001 --require SR_002 --require SR_003 --require SR_004 --require SR_005 --require SC_001 --require SC_002 --require SC_003 --require SC_004 --require SC_005 --require SC_006
 docker compose -f docker/signal-scout/compose.yaml run --rm -T scout status
 ```
 

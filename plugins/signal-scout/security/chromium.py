@@ -1,6 +1,7 @@
 """Own one Chromium child and a fixed-destination, source-restricted CDP relay."""
 
 import asyncio
+from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
@@ -16,18 +17,21 @@ from websockets.asyncio.client import connect
 
 from .control import discover, validate_endpoint
 from .settings import load_settings, settings_digest
+from .viewer import DISPLAY, HeadedDisplay
 
 CHROME = "/opt/scout/chrome-linux64/chrome"
 READY = Path("/tmp/browser-ready.json")
 
 
-def launch_args(profile, network, viewport):
+def launch_args(profile, network, viewport, mode):
     """Build a sandboxed launch with anonymous storage and mandatory proxy policy."""
     profile = Path(profile)
     if (profile.parent != Path("/tmp") or not profile.name.startswith("scout-chrome-")
             or profile.is_symlink() or not profile.is_dir() or profile.stat().st_uid != os.getuid()):
         raise ValueError("Invalid browser profile.")
-    return [CHROME, f"--user-data-dir={profile}", "--headless=new", "--no-first-run",
+    if mode not in {"headless", "headed"}:
+        raise ValueError("Invalid browser mode.")
+    return [CHROME, f"--user-data-dir={profile}", *(["--headless=new"] if mode == "headless" else ["--window-position=0,0"]), "--no-first-run",
             "--no-default-browser-check", "--disable-background-networking",
             "--disable-component-update", "--disable-default-apps", "--disable-sync",
             "--disable-popup-blocking", "--metrics-recording-only", "--password-store=basic",
@@ -152,7 +156,7 @@ async def run_child(config, run):
     child, server = None, None
     published = False
     connections = set()
-    with tempfile.TemporaryDirectory(prefix="scout-chrome-", dir="/tmp") as profile:
+    with tempfile.TemporaryDirectory(prefix="scout-chrome-", dir="/tmp") as profile, ExitStack() as display:
         try:
             # A stale listener is a failed start, never an attachment candidate.
             with socket.socket() as vacant:
@@ -161,7 +165,10 @@ async def run_child(config, run):
                 vacant.bind(("127.0.0.1", network["control_port"]))
             environment = {"PATH": "/usr/bin:/bin", "HOME": profile, "LANG": "C.UTF-8",
                            "XDG_CONFIG_HOME": profile + "/config", "XDG_CACHE_HOME": profile + "/cache"}
-            child = subprocess.Popen(launch_args(profile, network, config["browser"]["viewport"]), env=environment,
+            if config["browser"]["mode"] == "headed":
+                display.enter_context(HeadedDisplay(config, profile))
+                environment["DISPLAY"] = DISPLAY
+            child = subprocess.Popen(launch_args(profile, network, config["browser"]["viewport"], config["browser"]["mode"]), env=environment,
                                      stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             loop = asyncio.get_running_loop()
             for sig in (signal.SIGTERM, signal.SIGINT):

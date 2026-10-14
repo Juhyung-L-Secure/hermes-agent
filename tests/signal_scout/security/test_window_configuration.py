@@ -1,4 +1,4 @@
-"""SS-S007–SS-S009: changed baked settings reach the existing runtime stack."""
+"""SR_007–SR_009: changed baked settings reach the existing runtime stack."""
 
 import subprocess
 import uuid
@@ -9,7 +9,7 @@ from tests.signal_scout.conftest import lifecycle
 from tests.signal_scout.security.test_browser_safeguards import OBSERVE, settings
 
 
-def test_SS_S007_SS_S008_SS_S009_changed_configuration_reaches_real_window_and_scale(scout_stack, tmp_path):
+def test_SR_007_SR_008_SR_009_changed_configuration_reaches_real_window_and_scale(scout_stack, tmp_path):
     config = settings.load_settings(lifecycle.CONFIG)
     config['browser']['viewport'] = {'width':960, 'height':600, 'device_scale_factor':2}
     path = tmp_path / 'configured-window.yaml'

@@ -4,7 +4,7 @@
   "schemaVersion": 2,
   "specs": [
     {
-      "id": "SS-026",
+      "id": "BU_026",
       "subfeature": "budget",
       "title": "Daily Codex budget source",
       "contract": "Before an unattended mission starts, Signal Scout obtains an authoritative daily allowance and current scout usage for the configured Codex account. The mission receives at most 50 percent of that daily allowance, less Signal Scout usage already consumed during the same allowance window, and refuses to start when the budget cannot be measured.",
@@ -17,7 +17,7 @@
       "blocker": "Runtime provider is selected: native Hermes openai-codex using the existing OpenAI subscription, gpt-5.6-luna with low reasoning. An authoritative daily allowance and remaining-usage interface is still unavailable; choose a measurable budget source before implementing percentage enforcement."
     },
     {
-      "id": "SS-027",
+      "id": "BU_027",
       "subfeature": "budget",
       "title": "Budget enforcement and finalization reserve",
       "contract": "Signal Scout reserves part of the assigned mission budget for checkpoint persistence and the terminal report. It stops starting new discovery or media analysis before that reserve is consumed, finishes durable reporting within the assigned budget, and records the stop threshold and reserve used.",
@@ -27,7 +27,7 @@
       ],
       "coverage": [],
       "otherCoverage": [],
-      "blocker": "Depends on SS-026 budget measurement. Finalization reserve size remains a mission-policy decision."
+      "blocker": "Depends on BU_026 budget measurement. Finalization reserve size remains a mission-policy decision."
     }
   ]
 }

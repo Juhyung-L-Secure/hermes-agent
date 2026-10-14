@@ -4,10 +4,39 @@
   "schemaVersion": 2,
   "specs": [
     {
-      "id": "SS-015",
+      "id": "SR_011", "subfeature": "browser-modes", "title": "Explicit isolated browser modes",
+      "contract": "Image-owned browser.mode requires headless or headed, with headless and browser.viewer=false as production defaults. Invalid or missing modes/viewer settings fail without fallback; a viewer requires headed mode. Headed Chrome uses container-local Xvfb UNIX sockets, with no host display/device/socket mount. Headless launches no display/viewer. Both modes preserve owned disposable browser lifecycle, required sandbox/native download policy, sole anonymous default context, private CDP and verified configured main-window contents/global scale.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/security/test_browser_modes.py", "test": "test_SR_011_required_mode_and_viewer_settings_fail_explicitly"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_modes.py", "test": "test_SR_011_production_headless_has_no_display_or_viewer"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_modes.py", "test": "test_SR_011_headed_without_viewer_uses_only_container_display"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_modes.py", "test": "test_SR_011_SR_006_SR_007_SR_008_SR_009_SR_010_headed_context_viewport_and_native_download_denial"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_modes.py", "test": "test_SR_011_SR_001_SR_002_SR_019_headed_sandbox_public_web_and_network_denials"}
+      ], "otherCoverage": [], "blocker": ""
+    },
+    {
+      "id": "SR_012", "subfeature": "browser-modes", "title": "Local session-authenticated browser viewer",
+      "contract": "Existing browser container optionally serves packaged noVNC through websockify and container-local x11vnc UNIX socket. Docker publishes only configured viewer TCP port on 127.0.0.1 through existing firewall service and its dedicated viewer bridge; restricted browser bridge stays internal and CDP remains unpublished. Enabled viewer accepts only viewer-bridge host-gateway initiated traffic and established replies, preserving other browser network denials. HTTP assets and WebSocket require fresh per-browser-run high-entropy Basic authentication; Host and supplied Origin must name local viewer. Trusted BrowserRun.viewer_access returns URL/login only after owned readiness, separately from Scout environment/model tools. Session secret exists only in browser tmpfs, never process arguments, readiness or persisted logs; credentials rotate on each fresh run. Disabled viewer starts no listener or credential. Closing viewer connection leaves browser and mission running; normal owned cleanup removes display/viewer too. No fifth service, custom viewer framework, automatic reconnect/recovery or public/LAN/CDP access is added.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/security/test_browser_modes.py", "test": "test_SR_012_topology_rejects_nonlocal_viewer_or_any_published_control"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_modes.py", "test": "test_SR_012_real_viewer_authentication_rotation_and_no_lan_control"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_modes.py", "test": "test_SR_012_SR_013_real_noVNC_mouse_keys_bypass_review_and_stale_scout_action_rejects"}
+      ], "otherCoverage": [], "blocker": ""
+    },
+    {
+      "id": "SR_013", "subfeature": "browser-modes", "title": "Trusted human input with reviewed Scout actions",
+      "contract": "Authenticated noVNC lets trusted operator see headed Chrome and click/type through native VNC input without LLM review. Existing Scout model actions remain gated and reviewed; manual input that changes relevant context during a pending Scout review invalidates approval through existing context recheck. Real controlled-page tests exercise noVNC canvas, mouse and keys, verify page effects and show viewer closure leaves browser/gate usable. No human input interception, new action policy, automatic re-review or deferred tab-closure/crash behavior is introduced.",
+      "requiredCoverage": ["e2e"], "coverage": [
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_modes.py", "test": "test_SR_012_SR_013_real_noVNC_mouse_keys_bypass_review_and_stale_scout_action_rejects"}
+      ], "otherCoverage": [], "blocker": ""
+    },
+    {
+      "id": "SR_015",
       "subfeature": "browser-security",
       "title": "Clean browser identity",
-      "contract": "Every mission uses a dedicated Hermes home and an ephemeral anonymous Signal Scout browser identity with no real profile, arbitrary external CDP attachment, personal history, personal cookies, personal account, or inherited extensions. Remote CDP is permitted only for the freshly created, exactly run-owned isolated browser container under SS-S004/SS-S005, not an independently supplied endpoint. Mission start fails if runtime cannot attest this policy, and report records attested browser identity. Protection-only container ownership does not complete this mission contract.",
+      "contract": "Every mission uses a dedicated Hermes home and an ephemeral anonymous Signal Scout browser identity with no real profile, arbitrary external CDP attachment, personal history, personal cookies, personal account, or inherited extensions. Remote CDP is permitted only for the freshly created, exactly run-owned isolated browser container under SR_004/SR_005, not an independently supplied endpoint. Mission start fails if runtime cannot attest this policy, and report records attested browser identity. Protection-only container ownership does not complete this mission contract.",
       "requiredCoverage": [
         "e2e"
       ],
@@ -16,10 +45,10 @@
       "blocker": ""
     },
     {
-      "id": "SS-016",
+      "id": "SR_016",
       "subfeature": "browser-security",
       "title": "Read-only browsing scope",
-      "contract": "Milestone 1 requires a whole-mission default-deny tool policy and immutable safety ceiling. The implemented browser slice under SS-G001–SS-G007 supports explicitly configured guarded click, navigation, type and keypress plus protected exempt observations/control; its native adapter routing is separately owned under SS-T001–SS-T005. This slice does not establish public-search/extraction activation, mission policy, immutable mission binding, report attestation, or whole-mission exclusion of terminal/file/upload/messaging/MCP/delegation/cron and other external-write tools. Reviewer safety policy permits supported ordinary research, cookie consent and dedicated Scout login, not purchases/account creation/posting/account changes. Broader mission contract remains incomplete.",
+      "contract": "Milestone 1 requires a whole-mission default-deny tool policy and immutable safety ceiling. The implemented browser slice under AG_001–AG_007 supports explicitly configured guarded click, navigation, type and keypress plus protected exempt observations/control; its native adapter routing is separately owned under BR_001–BR_005. This slice does not establish public-search/extraction activation, mission policy, immutable mission binding, report attestation, or whole-mission exclusion of terminal/file/upload/messaging/MCP/delegation/cron and other external-write tools. Reviewer safety policy permits supported ordinary research, cookie consent and dedicated Scout login, not purchases/account creation/posting/account changes. Broader mission contract remains incomplete.",
       "requiredCoverage": [
         "e2e"
       ],
@@ -28,7 +57,7 @@
       "blocker": ""
     },
     {
-      "id": "SS-017",
+      "id": "SR_017",
       "subfeature": "browser-security",
       "title": "Untrusted content boundary",
       "contract": "Signal Scout treats webpage text, captions, transcripts, comments, metadata, downloaded content, and stored excerpts as untrusted research data. Hermes web and browser result framing is preserved, delimiter tokens inside attacker content are neutralized, and evidence returned during resume is independently framed. Source content cannot mutate the immutable mission, tool policy, safety ceiling, security policy, or output destination.",
@@ -41,7 +70,7 @@
       "blocker": ""
     },
     {
-      "id": "SS-018",
+      "id": "SR_018",
       "subfeature": "browser-security",
       "title": "Media artifact quarantine",
       "contract": "Media retrieved for analysis is accepted only when its detected type and size satisfy the mission policy, stored in a mission-specific quarantine, and passed only to declared analyzers. Signal Scout never executes a retrieved artifact and reports rejected, mismatched, or oversized content.",
@@ -54,76 +83,76 @@
       "blocker": ""
     },
     {
-      "id": "SS-019",
+      "id": "SR_019",
       "subfeature": "browser-security",
       "title": "Browser local network isolation",
-      "contract": "Scout's deterministic public-web browser harness validates raw HTTP(S) syntax and absence of embedded credentials, without duplicate DNS/IP policy. Proxy owns fresh DNS resolution, every-answer IP classification, numeric destination pinning, and actual connected-peer verification. Browser web traffic permits only public HTTP:80 and HTTPS:443; DNS failure, loopback, unspecified, multicast, link-local, private/local, reserved, transition-to-private, and metadata IPv4/IPv6 addresses are denied. Redirects and DNS rebinding cannot bypass checks. Forbidden main URLs/redirects fail navigation; forbidden embedded/background requests fail individually while public content can load. Sanitized best-effort logging never loosens enforcement. Browser namespace firewall denies direct and DNS bypass; proxy admits only configured browser source address. Browser cannot initiate toward Hermes, host/LAN/metadata or direct Internet. Hermes connects directly without this Scout-specific egress restriction or proxy configuration; no Hermes host/LAN isolation is claimed. TLS stays end-to-end verified. Owned remote control exceptions are not webpage access (SS-S002). Harness exposes no model browser tool and does not complete mission policy.",
+      "contract": "Scout's deterministic public-web browser harness validates raw HTTP(S) syntax and absence of embedded credentials, without duplicate DNS/IP policy. Proxy owns fresh DNS resolution, every-answer IP classification, numeric destination pinning, and actual connected-peer verification. Browser web traffic permits only public HTTP:80 and HTTPS:443; DNS failure, loopback, unspecified, multicast, link-local, private/local, reserved, transition-to-private, and metadata IPv4/IPv6 addresses are denied. Redirects and DNS rebinding cannot bypass checks. Forbidden main URLs/redirects fail navigation; forbidden embedded/background requests fail individually while public content can load. Sanitized best-effort logging never loosens enforcement. Browser namespace firewall denies direct and DNS bypass; proxy admits only configured browser source address. Browser cannot initiate toward Hermes, host/LAN/metadata or direct Internet. Hermes connects directly without this Scout-specific egress restriction or proxy configuration; no Hermes host/LAN isolation is claimed. TLS stays end-to-end verified. Owned remote control exceptions are not webpage access (SR_002). Harness exposes no model browser tool and does not complete mission policy.",
       "requiredCoverage": [
         "unit",
         "e2e"
       ],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/security/test_isolation.py","test":"test_SS_S004_SS_019_browser_direct_egress_and_unauthorized_control_denied"},
-        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_019_raw_url_rejected_before_navigation"},
-        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_019_input_validation_has_no_dns_or_ip_policy"},
-        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_019_proxy_denies_forbidden_address_classes"},
-        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_019_proxy_public_addresses_and_destination_ports"},
-        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_019_dns_failure_and_mixed_answers_connect_nowhere"},
-        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_019_numeric_connection_pinned_and_peer_checked"},
-        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SS_019_public_http_https_tls_and_forbidden_main_redirects"},
-        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SS_019_dns_rebinding_rechecks_new_connections"},
-        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SS_S002_background_http_websocket_cannot_control_cdp"}
+        {"layer":"e2e","file":"tests/signal_scout/security/test_isolation.py","test":"test_SR_004_SR_019_browser_direct_egress_and_unauthorized_control_denied"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SR_019_raw_url_rejected_before_navigation"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SR_019_input_validation_has_no_dns_or_ip_policy"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SR_019_proxy_denies_forbidden_address_classes"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SR_019_proxy_public_addresses_and_destination_ports"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SR_019_dns_failure_and_mixed_answers_connect_nowhere"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SR_019_numeric_connection_pinned_and_peer_checked"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SR_019_public_http_https_tls_and_forbidden_main_redirects"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SR_019_dns_rebinding_rechecks_new_connections"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SR_002_background_http_websocket_cannot_control_cdp"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-S001",
+      "id": "SR_001",
       "subfeature": "browser-security",
       "title": "Mandatory attested isolated Chromium sandbox",
       "contract": "Image pins existing Hermes-supported native agent-browser on Hermes side and Chromium on isolated browser side. Trusted launcher starts one newly owned Chromium with mandatory sandbox/proxy flags and fresh anonymous temporary profile/XDG storage, never a real profile, cloud/local fallback or TLS bypass. Launcher proves child owns loopback listener before relay readiness. Existing native Hermes remote-CDP path connects only to checked run-owned endpoint. Before untrusted navigation actual chrome://sandbox must show PID namespaces, network namespaces and seccomp-BPF active; unavailable sandbox fails without no-sandbox fallback. Tests make no model calls; browser and Hermes have separate PID/mount/network namespaces.",
       "requiredCoverage": ["e2e"],
       "coverage": [
-        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SS_S001_launch_adapter_forces_policy_and_rejects_overrides"},
-        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SS_S001_native_chromium_sandbox_and_anonymous_identity"},
-        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SS_S001_unavailable_namespace_sandbox_prevents_start"}
+        {"layer": "unit", "file": "tests/signal_scout/security/test_policy.py", "test": "test_SR_001_launch_adapter_forces_policy_and_rejects_overrides"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SR_001_native_chromium_sandbox_and_anonymous_identity"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SR_001_unavailable_namespace_sandbox_prevents_start"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-S002",
+      "id": "SR_002",
       "subfeature": "browser-security",
       "title": "Narrow owned browser management exceptions",
-      "contract": "Hermes connects directly to configured private browser relay in its own unrestricted-by-Scout namespace. Browser namespace firewall permits only configured Hermes source into relay, narrow loopback launcher/relay-to-Chromium CDP control and necessary replies in addition to browser proxy access. Relay admits configured Hermes source IP only and forwards solely to newly owned child's loopback listener; child exit closes relay. No host-published port, broad browser loopback allowance or private-web exception. Endpoint host/port/browser path and discovery are checked; redirects, wrong ownership and stale paths fail. Network/source-IP checks are not cryptographic authentication and do not protect against compromised trusted controller/browser. Ordinary page HTTP, WebSocket, frame, image and fetch traffic remains proxy-forced, including loopback; proxy rejects raw CDP and relay even with known active WebSocket paths. Authorized native controller remains usable without Hermes proxy environment settings.",
+      "contract": "Hermes connects directly to configured private browser relay in its own unrestricted-by-Scout namespace. Browser namespace firewall permits only configured Hermes source into relay, narrow loopback launcher/relay-to-Chromium CDP control and necessary replies in addition to browser proxy access. Relay admits configured Hermes source IP only and forwards solely to newly owned child's loopback listener; child exit closes relay. No host-published CDP port, broad browser loopback allowance or private-web exception; optional authenticated localhost viewer transport is separately owned under SR_012. Endpoint host/port/browser path and discovery are checked; redirects, wrong ownership and stale paths fail. Network/source-IP checks are not cryptographic authentication and do not protect against compromised trusted controller/browser. Ordinary page HTTP, WebSocket, frame, image and fetch traffic remains proxy-forced, including loopback; proxy rejects raw CDP and relay even with known active WebSocket paths. Authorized native controller remains usable without Hermes proxy environment settings.",
       "requiredCoverage": ["e2e"],
       "coverage": [
-        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SS_S002_background_http_websocket_cannot_control_cdp"}
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_browser_boundary.py", "test": "test_SR_002_background_http_websocket_cannot_control_cdp"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-S003",
+      "id": "SR_003",
       "subfeature": "browser-security",
       "title": "Persistent best-effort protection event logs",
-      "contract": "Scout Python events reuse native Hermes logging. Proxy and browser firewall emit operational/rejection events to distinct proxy.log and firewall.log files in existing dedicated log volume. Renamed firewall appends to existing firewall.log, which can contain historical Hermes-firewall events; historical browser-firewall.log files and backups remain untouched. No migration or wiping occurs. Defaults are 5 MiB/file and three backups including native errors; validated configuration controls size/backups/verbosity. Events retain timestamp, level, component and allowlisted event class; reviewer completion additionally retains only validated verdict/action type/timing/attempt count/available token counts under SS-R006. No URL, raw browser/CDP arguments/results, screenshot, body, cookie, credential, secret configuration or unsanitized exception is persisted. Open/write/rotation failures attempt fixed diagnostics without stopping browsing or weakening enforcement; no acknowledgment/universal monitor. Logs survive ordinary replacement while volume remains, not tamper-proof/disaster recovery. Browser has no persistent log mount; Scout/browser Docker output is not retained. Mission audit/report remains incomplete.",
+      "contract": "Scout Python events reuse native Hermes logging. Proxy and browser firewall emit operational/rejection events to distinct proxy.log and firewall.log files in existing dedicated log volume. Renamed firewall appends to existing firewall.log, which can contain historical Hermes-firewall events; historical browser-firewall.log files and backups remain untouched. No migration or wiping occurs. Defaults are 5 MiB/file and three backups including native errors; validated configuration controls size/backups/verbosity. Events retain timestamp, level, component and allowlisted event class; reviewer completion additionally retains only validated verdict/action type/timing/attempt count/available token counts under RV_006. No URL, raw browser/CDP arguments/results, screenshot, body, cookie, credential, secret configuration or unsanitized exception is persisted. Open/write/rotation failures attempt fixed diagnostics without stopping browsing or weakening enforcement; no acknowledgment/universal monitor. Logs survive ordinary replacement while volume remains, not tamper-proof/disaster recovery. Browser has no persistent log mount; Scout/browser Docker output is not retained. Mission audit/report remains incomplete.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
-        {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_native_events_sanitize_rotate_and_honor_settings"},
-        {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_native_write_failure_has_fixed_diagnostic_and_keeps_events_safe"},
-        {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_partial_native_log_open_failure_still_sanitizes"},
-        {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_SS_R006_reviewer_metadata_rotates_without_raw_retention"},
-        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_proxy_firewall_events_persist_after_replacement"},
-        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_scout_attached_output_is_not_retained_in_docker_logs"},
-        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_helper_rotation_uses_supplied_file_limits"},
-        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SS_S003_proxy_write_failure_does_not_disable_public_access_or_private_denial"}
+        {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_native_events_sanitize_rotate_and_honor_settings"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_native_write_failure_has_fixed_diagnostic_and_keeps_events_safe"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_partial_native_log_open_failure_still_sanitizes"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_RV_006_reviewer_metadata_rotates_without_raw_retention"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_proxy_firewall_events_persist_after_replacement"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_scout_attached_output_is_not_retained_in_docker_logs"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_helper_rotation_uses_supplied_file_limits"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_proxy_write_failure_does_not_disable_public_access_or_private_denial"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-S004",
+      "id": "SR_004",
       "subfeature": "browser-security",
       "title": "Isolated browser container boundary",
       "contract": "Trusted host creates browser separately from credential-bearing Hermes: no shared PID/mount/network namespace, Hermes runtime, auth/research/log mounts, host folders, Docker socket or writable shared artifact mount. Browser is non-root, readonly, capability-free, no-new-privileges and actually sandboxed with anonymous bounded temporary storage. Compose owns 2,000,000,000-byte memory and equal memory+swap, no CPU quota, PID512 and bounded tmpfs; changed resource configuration reaches actual containers. Private fixed-destination control relay is bound to exact newly created container/run and owned Chromium listener. Wrong ownership, discovery redirect, wrong/stale endpoint, unavailable sandbox or control startup fail safely without adopting/replacing browser. Network/source checks and live positive-control tests enforce boundary; no claim of immunity to browser/kernel/host compromise.",
@@ -135,44 +164,44 @@
         {
           "layer": "unit",
           "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SS_S004_endpoint_and_discovery_reject_redirects_wrong_hosts_and_paths"
+          "test": "test_SR_004_endpoint_and_discovery_reject_redirects_wrong_hosts_and_paths"
         },
         {
           "layer": "unit",
           "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SS_S004_listener_ownership_checks_socket_inode"
+          "test": "test_SR_004_listener_ownership_checks_socket_inode"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SS_S004_container_mount_pid_network_and_resource_separation"
+          "test": "test_SR_004_container_mount_pid_network_and_resource_separation"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SS_S004_browser_cannot_read_hermes_fixture_or_connect_back"
+          "test": "test_SR_004_browser_cannot_read_hermes_fixture_or_connect_back"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SS_S004_SS_019_browser_direct_egress_and_unauthorized_control_denied"
+          "test": "test_SR_004_SR_019_browser_direct_egress_and_unauthorized_control_denied"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SS_S004_existing_listener_never_adopted_or_disturbed"
+          "test": "test_SR_004_existing_listener_never_adopted_or_disturbed"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SS_S004_SS_B004_changed_compose_limits_reach_real_containers"
+          "test": "test_SR_004_BT_004_changed_compose_limits_reach_real_containers"
         }
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-S005",
+      "id": "SR_005",
       "subfeature": "browser-security",
       "title": "Disposable single-run browser lifecycle",
       "contract": "One trusted host lifecycle owns one active run and is reused by deterministic smoke/tests. Each run creates new browser container/process and anonymous temporary profile; second claimant or leftover container is rejected without disturbing/adopting first. Multiple tabs may exist inside run. Normal end or surfaced fatal failure removes only exact owned container and temporary state, retaining helpers, auth/log volumes and images. If Docker creates the current attempt but cannot start it, cleanup resolves exact attempted name/project/service/run ownership and verifies full ID before removal; foreign collisions remain untouched. Browser child exit closes relay; stale/unavailable control, observed native action-driver transport loss even with healthy HTTP discovery, and command timeout are terminal, never browser replacement, mission restart, arbitrary attachment or local/cloud fallback. Ordinary navigation denial is not itself transport loss. Startup/local-control/shutdown/smoke bounds are consumed from validated image-owned settings; host stop deadline allows configured shutdown grace plus bounded Docker overhead, including supported grace above 60 seconds. Existing auxiliary supervisor reconnect is not browser replacement; reconnect/degraded-monitoring policy remains deferred. If Hermes/launcher/host disappears, independent teardown is not guaranteed and requires deliberate operator inspection/cleanup; no watchdog, recovery daemon or scavenging is implemented.",
@@ -181,412 +210,412 @@
         "e2e"
       ],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_create_then_start_failure_removes_only_attempted_owner"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G002_SS_G005_SS_S005_SS_S006_SS_S010_approved_download_navigation_keeps_browser_healthy"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_driver_transport_failure_is_terminal_with_healthy_discovery"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_live_driver_reset_is_terminal_with_healthy_discovery"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_shutdown_deadline_includes_supported_grace"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SS_S005_configured_long_shutdown_removes_stopped_launcher"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_isolation.py","test":"test_SS_S005_command_hang_is_terminal_and_owned_container_removed"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_isolation.py","test":"test_SS_S005_unavailable_relay_cleans_new_child_only"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SR_005_create_then_start_failure_removes_only_attempted_owner"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_002_AG_005_SR_005_SR_006_SR_010_approved_download_navigation_keeps_browser_healthy"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SR_005_driver_transport_failure_is_terminal_with_healthy_discovery"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SR_005_live_driver_reset_is_terminal_with_healthy_discovery"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SR_005_shutdown_deadline_includes_supported_grace"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_lifecycle_failures.py","test":"test_SR_005_configured_long_shutdown_removes_stopped_launcher"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_isolation.py","test":"test_SR_005_command_hang_is_terminal_and_owned_container_removed"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_isolation.py","test":"test_SR_005_unavailable_relay_cleans_new_child_only"},
         {
           "layer": "unit",
           "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SS_S005_wrong_container_and_run_ownership_reject_cleanup"
+          "test": "test_SR_005_wrong_container_and_run_ownership_reject_cleanup"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SS_S005_single_claim_fresh_profile_and_ordinary_fatal_teardown"
+          "test": "test_SR_005_single_claim_fresh_profile_and_ordinary_fatal_teardown"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SS_S005_child_exit_closes_relay_and_never_replaces_browser"
+          "test": "test_SR_005_child_exit_closes_relay_and_never_replaces_browser"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SS_S005_stale_endpoint_fails_without_local_fallback"
+          "test": "test_SR_005_stale_endpoint_fails_without_local_fallback"
         }
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-S006",
+      "id": "SR_006",
       "subfeature": "browser-security",
       "title": "Persistent native browser download denial",
-      "contract": "Pinned Chrome for Testing loads root-owned/read-only /etc/opt/chrome_for_testing/policies/managed/scout.json with mandatory DownloadRestrictions: 3. Before readiness launcher verifies Chrome's validated native policy model reports value 3, mandatory/machine/platform and no error, ignored, warning, conflict or superseded policy. Native policy persists after bounded startup CDP closes, without a download override or policy-only run-lived connection. Real attachment, redirected attachment and generated-blob attempts in initial/new tabs and separate popups emit attempted-download and canceled-progress events and save no file after startup disconnect. Controlled transient policy-free images prove real attachment/redirect downloads enter native progress, then native UI cancels before payload. Ordinary HTML, image, audio and video loading remains available. Native policy blocks ordinary webpage downloads, not Save Page or print-to-PDF. No allow toggle, custom download filter or download destination is introduced. Sole fresh anonymous default context remains supported; arbitrary trusted CDP remains trusted outside the model-facing gate under SS-G001–SS-G007.",
+      "contract": "Pinned Chrome for Testing loads root-owned/read-only /etc/opt/chrome_for_testing/policies/managed/scout.json with mandatory DownloadRestrictions: 3. Before readiness launcher verifies Chrome's validated native policy model reports value 3, mandatory/machine/platform and no error, ignored, warning, conflict or superseded policy. Native policy persists after bounded startup CDP closes, without a download override or policy-only run-lived connection. Real attachment, redirected attachment and generated-blob attempts in initial/new tabs and separate popups emit attempted-download and canceled-progress events and save no file after startup disconnect. Controlled transient policy-free images prove real attachment/redirect downloads enter native progress, then native UI cancels before payload. Ordinary HTML, image, audio and video loading remains available. Native policy blocks ordinary webpage downloads, not Save Page or print-to-PDF. No allow toggle, custom download filter or download destination is introduced. Sole fresh anonymous default context remains supported; arbitrary trusted CDP remains trusted outside the model-facing gate under AG_001–AG_007.",
       "requiredCoverage": ["e2e"],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S006_SS_S010_native_download_attempts_cancel_after_startup_disconnect_and_media_loads"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S006_policy_free_positive_control_enters_native_download_and_cancels_before_payload"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G002_SS_G005_SS_S005_SS_S006_SS_S010_approved_download_navigation_keeps_browser_healthy"}
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SR_006_SR_010_native_download_attempts_cancel_after_startup_disconnect_and_media_loads"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SR_006_policy_free_positive_control_enters_native_download_and_cancels_before_payload"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_002_AG_005_SR_005_SR_006_SR_010_approved_download_navigation_keeps_browser_healthy"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-S007",
+      "id": "SR_007",
       "subfeature": "browser-security",
       "title": "Required canonical window and scale configuration",
       "contract": "Existing image-owned browser.viewport is the sole source for width, height and device_scale_factor; supplied configuration is 1280 by 720 CSS pixels and scale 1. Width and height must be positive CDP signed integers; scale must be finite, positive and numeric, never boolean. Missing values, invalid values and unknown viewport keys fail explicitly without alternate defaults. Changing baked configuration and its consistency digest reaches actual Chromium main-window contents and browser-wide device scale, not only launch arguments.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S007_required_window_configuration_fails_explicitly"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_window_configuration.py","test":"test_SS_S007_SS_S008_SS_S009_changed_configuration_reaches_real_window_and_scale"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SR_007_required_window_configuration_fails_explicitly"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_window_configuration.py","test":"test_SR_007_SR_008_SR_009_changed_configuration_reaches_real_window_and_scale"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-S008",
+      "id": "SR_008",
       "subfeature": "browser-security",
       "title": "Verified main-window contents and browser-wide scale",
       "contract": "Launcher sets initial normal main-window contents with Browser.setContentsSize and browser-wide --force-device-scale-factor. Before readiness actual innerWidth, innerHeight and devicePixelRatio must match validated configuration; --window-size alone is not proof. Real viewport-only PNG captures match configured CSS dimensions multiplied by device scale. No per-tab emulation, debugger pause, screenshot cropping/full-page sizing or continuous geometry guard is implemented; unsupported actual sizing fails startup instead of falling back.",
       "requiredCoverage": ["e2e"],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S008_SS_S009_main_window_tabs_share_contents_and_popup_stays_separate"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_window_configuration.py","test":"test_SS_S007_SS_S008_SS_S009_changed_configuration_reaches_real_window_and_scale"}
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SR_008_SR_009_main_window_tabs_share_contents_and_popup_stays_separate"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_window_configuration.py","test":"test_SR_007_SR_008_SR_009_changed_configuration_reaches_real_window_and_scale"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-S009",
+      "id": "SR_009",
       "subfeature": "browser-security",
       "title": "Shared normal-tab sizing with untouched popup windows",
       "contract": "Ordinary native new tabs share configured main-window identity, actual content dimensions, viewport-only capture size and browser-wide scale. Separate popup windows retain their own requested/native content size while sharing default context, mandatory download denial, network protections and browser-wide scale. Launcher does not initialize, activate or resize later targets. Native selected-tab behavior and tab-closure recovery remain deferred. No fixed viewport for every window or pre-page-execution viewport-ordering guarantee is claimed.",
       "requiredCoverage": ["e2e"],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S008_SS_S009_main_window_tabs_share_contents_and_popup_stays_separate"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_window_configuration.py","test":"test_SS_S007_SS_S008_SS_S009_changed_configuration_reaches_real_window_and_scale"}
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SR_008_SR_009_main_window_tabs_share_contents_and_popup_stays_separate"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_window_configuration.py","test":"test_SR_007_SR_008_SR_009_changed_configuration_reaches_real_window_and_scale"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-S010",
+      "id": "SR_010",
       "subfeature": "browser-security",
       "title": "Startup safeguard failures and owned cleanup",
       "contract": "Missing, malformed, invalid or unapplied native download policy and main-window setup failure prevent readiness and clean the exact owned browser through existing lifecycle. Validated control_connect_timeout bounds startup CDP opening, commands and closing; startup_timeout bounds native policy observation and actual window-size verification. Launcher restores sole initial about:blank page and closes startup CDP before readiness; native policy remains effective, with no policy-only run-lived connection, keepalive or policy-disconnect watcher. A canceled download is successful enforcement and leaves healthy browser usable, not a machinery failure. Ordinary driver transport-loss, child-exit and fatal-cleanup contracts remain unchanged; no reconnect, replacement or watchdog is added. Owned cleanup retains helper state, auth/log volumes and existing ownership checks.",
       "requiredCoverage": ["e2e"],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S010_setup_protocol_failure_prevents_readiness_and_cleans_owner"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S010_missing_invalid_or_unapplied_native_policy_prevents_readiness_and_cleans_owner"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SS_S006_SS_S010_native_download_attempts_cancel_after_startup_disconnect_and_media_loads"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G002_SS_G005_SS_S005_SS_S006_SS_S010_approved_download_navigation_keeps_browser_healthy"}
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SR_010_setup_protocol_failure_prevents_readiness_and_cleans_owner"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SR_010_missing_invalid_or_unapplied_native_policy_prevents_readiness_and_cleans_owner"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_browser_safeguards.py","test":"test_SR_006_SR_010_native_download_attempts_cancel_after_startup_disconnect_and_media_loads"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_002_AG_005_SR_005_SR_006_SR_010_approved_download_navigation_keeps_browser_healthy"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-R001",
+      "id": "RV_001",
       "subfeature": "safety-reviewer",
       "title": "Prepared evidence and independently fixed safety policy",
       "contract": "Standalone client consumes in-memory prepared full-viewport PNG/JPEG bytes, brief activity and exact JSON action/context, independently loading the single authoritative reviewer-policy.md. Policy instructs safety-only review: ordinary research, cookie consent including Accept all/optional tracking, and login to dedicated Scout accounts may be approved when supported; purchases, account creation, posting, messaging, likes/follows, uploads and account changes are denied. Uncertainty or insufficient evidence means deny; relevance cannot authorize forbidden effects and irrelevance cannot reject safe actions. Page/screenshot/action/activity are untrusted evidence and cannot define or mutate policy. Invalid evidence produces sanitized technical failure before any provider request. Model safety quality and authentication workflow are not completed by this contract.",
       "requiredCoverage": ["unit"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R001_SS_R002_SS_R003_native_wire_uses_fresh_policy_evidence_and_settings"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R001_fixed_policy_is_separate_and_safety_only"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R001_SS_R006_invalid_evidence_has_sanitized_failure"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_001_RV_002_RV_003_native_wire_uses_fresh_policy_evidence_and_settings"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_001_fixed_policy_is_separate_and_safety_only"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_001_RV_006_invalid_evidence_has_sanitized_failure"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-R002",
+      "id": "RV_002",
       "subfeature": "safety-reviewer",
       "title": "Strict independent binary verdicts",
       "contract": "Every review builds fresh system-policy and single text/image user input through native Codex adapter with no previous response/conversation history or execution tools. Only completed output with exactly one JSON verdict field equal to approve or deny is valid. Raw output items allow message/reasoning only: function/custom/computer/web-search/MCP and other tool items are rejected before native normalization, whether announced/finished in SSE events, present in the completed-event payload, or returned in a completed response object. Duplicate keys, extra fields, non-JSON/fences, unknown/uncertain verdict, tool output and failed/incomplete/truncated streams containing otherwise valid approval are technical failure, never permission or valid denial. Policy maps uncertainty to deny in model instructions; client never reinterprets malformed output as denial. No live safety-quality claim or action execution is supplied by these deterministic checks.",
       "requiredCoverage": ["unit"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R001_SS_R002_SS_R003_native_wire_uses_fresh_policy_evidence_and_settings"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R002_malformed_or_tool_output_is_technical_failure"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R002_native_failed_or_incomplete_stream_cannot_approve"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R002_native_tool_items_rejected_before_normalization"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R002_native_message_and_reasoning_remain_valid"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R002_SS_R004_native_tool_failure_retries_once"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_001_RV_002_RV_003_native_wire_uses_fresh_policy_evidence_and_settings"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_002_malformed_or_tool_output_is_technical_failure"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_002_native_failed_or_incomplete_stream_cannot_approve"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_002_native_tool_items_rejected_before_normalization"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_002_native_message_and_reasoning_remain_valid"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_002_RV_004_native_tool_failure_retries_once"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-R003",
+      "id": "RV_003",
       "subfeature": "safety-reviewer",
       "title": "File-owned subscription reviewer configuration",
       "contract": "Existing image-owned config.yaml exclusively supplies scout_reviewer model/reasoning_effort/timeout_seconds/retries, initially gpt-6-luna/none/180/1. Required values validate without defaults or alternate providers; settings snapshot at reviewer construction. Fixed native openai-codex resolver and Codex adapter receive configured model/effort/request deadline; wrong resolved model/route or nonzero SDK retry layer fails. Native effort clamping is refused rather than silently changing configured effort. Bootstrap model/low reasoning/status-only readiness remain unchanged. Fake transport exercises actual native SDK/adapter; subscription model availability remains unverified.",
       "requiredCoverage": ["unit"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R001_SS_R002_SS_R003_native_wire_uses_fresh_policy_evidence_and_settings"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R003_invalid_required_configuration_fails"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R003_missing_required_configuration_has_no_defaults"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R003_no_native_effort_substitution"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R003_timeout_and_none_effort_reach_native_adapter"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R003_SS_R004_wrong_route_model_or_retry_layer_fails"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_001_RV_002_RV_003_native_wire_uses_fresh_policy_evidence_and_settings"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_003_invalid_required_configuration_fails"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_003_missing_required_configuration_has_no_defaults"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_003_no_native_effort_substitution"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_003_timeout_and_none_effort_reach_native_adapter"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_003_RV_004_wrong_route_model_or_retry_layer_fails"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-R004",
+      "id": "RV_004",
       "subfeature": "safety-reviewer",
       "title": "Explicit retries and distinct final technical failure",
-      "contract": "Reviewer retries only technical attempt failures, at most configured retries plus one attempts; each fresh attempt owns its native client. Valid denial is returned immediately and never retried. Native SDK retries stay zero; no generic auxiliary retry orchestration or provider/model fallback occurs. Exhausted technical failures return verdict=null and sanitized fixed failure code, distinct from approve/deny, with attempts and available metadata. SS-G006 makes final technical failure terminal and closes owned Browser; native adapter owns enclosing-run hard stop and host teardown. Broader mission wiring remains incomplete.",
+      "contract": "Reviewer retries only technical attempt failures, at most configured retries plus one attempts; each fresh attempt owns its native client. Valid denial is returned immediately and never retried. Native SDK retries stay zero; no generic auxiliary retry orchestration or provider/model fallback occurs. Exhausted technical failures return verdict=null and sanitized fixed failure code, distinct from approve/deny, with attempts and available metadata. AG_006 makes final technical failure terminal and closes owned Browser; native adapter owns enclosing-run hard stop and host teardown. Broader mission wiring remains incomplete.",
       "requiredCoverage": ["unit"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R004_native_sdk_exact_retry_count_and_no_fallback"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R004_denial_never_retries_technical_failure_does"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R002_SS_R004_native_tool_failure_retries_once"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R003_SS_R004_wrong_route_model_or_retry_layer_fails"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_004_native_sdk_exact_retry_count_and_no_fallback"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_004_denial_never_retries_technical_failure_does"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_002_RV_004_native_tool_failure_retries_once"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_003_RV_004_wrong_route_model_or_retry_layer_fails"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-R005",
+      "id": "RV_005",
       "subfeature": "safety-reviewer",
       "title": "Per-attempt deadlines and late-result rejection",
       "contract": "Each attempt gets its own configured total timeout_seconds deadline covering resolver and request, initially 180 seconds; remaining time reaches native adapter. No bootstrap run budget/outer alarm is reused. Timeout counts as technical failure and may retry only within configured count. Each attempt has separate result channel; response finishing at/after deadline is discarded and cannot approve its own or later attempt. Hung resolver/transport cannot hold caller beyond attempt deadline. Transport cleanup is best effort; an uncooperative daemon worker may finish later without usable verdict or logging of late raw output.",
       "requiredCoverage": ["unit"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R005_per_attempt_deadline_rejects_late_approval"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R005_resolver_hang_is_bounded_before_any_provider_request"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_005_per_attempt_deadline_rejects_late_approval"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_005_resolver_hang_is_bounded_before_any_provider_request"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-R006",
+      "id": "RV_006",
       "subfeature": "safety-reviewer",
       "title": "Sanitized rotating reviewer retention",
       "contract": "Reviewer keeps evidence/request/transcript/provider exceptions out of persisted files, logs, traces and main-agent history. Client/result hold only fixed policy/settings and sanitized verdict or technical failure plus timing/attempt/available native prompt/completion/total token metadata, summing known counts across timely attempts; absent/late usage remains unknown instead of estimated zero allowance. Existing configured rotating native logs retain only timestamp/level/component/event plus allowlisted reviewer verdict/action type/duration/attempt/token counts. Unknown fields and poisoned types are stripped before queue/rotation. Logging is best effort and cannot change verdict/failure. No screenshot/transcript archive, saved session or installed tracing callback is created; native default identity seed is not review history. Tests use temporary home/fake transport and real rotation. This does not promise memory erasure or provider retention, live safety quality or mission audit completion.",
       "requiredCoverage": ["unit"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R001_SS_R006_invalid_evidence_has_sanitized_failure"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R006_logging_failure_never_changes_valid_verdict"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_logging.py","test":"test_SS_S003_SS_R006_reviewer_metadata_rotates_without_raw_retention"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_001_RV_006_invalid_evidence_has_sanitized_failure"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_006_logging_failure_never_changes_valid_verdict"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_logging.py","test":"test_SR_003_RV_006_reviewer_metadata_rotates_without_raw_retention"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-R007",
+      "id": "RV_007",
       "subfeature": "safety-reviewer",
       "title": "Single authoritative read-only policy file",
       "contract": "Reviewer loads reviewer-policy.md independently at construction and on every fresh review, supplying its exact contents as system instructions separately from untrusted evidence. No caller policy override or embedded backup exists. Missing, unreadable, empty or invalidly encoded policy fails explicitly before provider requests. Runtime image packages policy root-owned with mode 0444 on read-only root. Existing configured model/effort/deadline/retry behavior remains unchanged.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R007_authoritative_policy_failure_is_explicit"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_SS_R007_fresh_review_reads_policy_file_independently"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_R007_policy_packaged_read_only"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_007_authoritative_policy_failure_is_explicit"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_reviewer.py","test":"test_RV_007_fresh_review_reads_policy_file_independently"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_RV_007_policy_packaged_read_only"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-E001",
+      "id": "AE_001",
       "subfeature": "action-evidence",
       "title": "Compact snapshots and immutable exact references",
       "contract": "Scout-owned snapshot lists compact accessibility role/name text and monotonic @s refs for an explicit CDP page target ID, never full HTML/DOM. Private refs bind original browser node, frame, target and document lifetime. Same node can retain its ref across snapshots; existing refs never bind another node or substitute role/name lookalikes. Same-origin and cross-origin iframe nodes retain their exact frame and CDP target identities. Native agent-browser and Hermes core remain unchanged.",
       "requiredCoverage": ["e2e"],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E001_SS_E002_SS_E003_compact_refs_scroll_raw_evidence_and_no_action"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E001_SS_E002_SS_E004_SS_E005_same_and_cross_origin_frames"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E004_SS_E005_recheck_rejects_changed_identity_or_context[replacement]"}
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_001_AE_002_AE_003_compact_refs_scroll_raw_evidence_and_no_action"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_001_AE_002_AE_004_AE_005_same_and_cross_origin_frames"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_004_AE_005_recheck_rejects_changed_identity_or_context[replacement]"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-E002",
+      "id": "AE_002",
       "subfeature": "action-evidence",
       "title": "Preparation reveals without executing proposed actions",
       "contract": "Preparation accepts exact click {ref}, type {ref,text}, keypress {key}, or navigate {url} plus brief activity and explicit tab target. Click/type resolve original node and scroll into view; keypress inspects and reveals actual focused target, including closed author shadow roots, without changing focus, and page-level keys invent no element target. Navigation includes requested URL/current-page evidence without visiting destination. Preparation does not click, type, submit, press keys or change focus. Whole target need not fit viewport when intended interaction point is visible and unobstructed.",
       "requiredCoverage": ["e2e"],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E001_SS_E002_SS_E003_compact_refs_scroll_raw_evidence_and_no_action"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E002_SS_E004_SS_E005_keys_navigation_movement_and_pixel_changes"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E001_SS_E002_SS_E004_SS_E005_same_and_cross_origin_frames"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E002_SS_E003_SS_E004_closed_shadow_keyboard_focus"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E002_SS_E005_SS_E006_target_loss_during_inspection_rejects"}
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_001_AE_002_AE_003_compact_refs_scroll_raw_evidence_and_no_action"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_002_AE_004_AE_005_keys_navigation_movement_and_pixel_changes"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_001_AE_002_AE_004_AE_005_same_and_cross_origin_frames"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_002_AE_003_AE_004_closed_shadow_keyboard_focus"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_002_AE_005_AE_006_target_loss_during_inspection_rejects"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-E003",
+      "id": "AE_003",
       "subfeature": "action-evidence",
       "title": "Fresh raw full-viewport reviewer evidence",
       "contract": "PreparedReview supplies existing SafetyReviewer.review keyword inputs with exact action/activity, relevant page, target, accessibility, link destination, form/control values and resolved submitter overrides, actual focus, compact active-descendant semantics including computed accessible role/name/description/state and interaction-point details plus fresh unmodified viewport-only PNG bytes. Actual viewport/device scale dimensions are verified; popup windows retain native size. Private CDP bindings, including active-descendant identity, stay outside reviewer input. No new evidence size caps, truncation, cropping, shrinking or reviewer-input secret masking occur. Relevant secrets may reach reviewer; unrelated cookies/authentication stores are not inspected. Evidence and typed text remain in memory, omitted from repr/logs/files/archives.",
       "requiredCoverage": ["e2e"],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E001_SS_E002_SS_E003_compact_refs_scroll_raw_evidence_and_no_action"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E003_raw_capture_bytes_and_popup_dimensions"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E004_SS_E005_recheck_rejects_changed_identity_or_context[submit-base]"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E002_SS_E003_SS_E004_closed_shadow_keyboard_focus"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E003_SS_E004_active_descendant_identity_and_semantics"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E003_SS_E004_active_descendant_computed_accessible_semantics"}
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_001_AE_002_AE_003_compact_refs_scroll_raw_evidence_and_no_action"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_003_raw_capture_bytes_and_popup_dimensions"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_004_AE_005_recheck_rejects_changed_identity_or_context[submit-base]"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_002_AE_003_AE_004_closed_shadow_keyboard_focus"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_003_AE_004_active_descendant_identity_and_semantics"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_003_AE_004_active_descendant_computed_accessible_semantics"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-E004",
+      "id": "AE_004",
       "subfeature": "action-evidence",
       "title": "Exact identity and relevant-context recheck",
       "contract": "Recheck compares same proposed action to original tab/frame/document/node and relevant page/target/accessibility/link/form state, including resolved submitter destinations and privately bound active-descendant identity/semantics with computed accessible role/name/description/state, plus actual keyboard focus for keypress, including closed author shadow roots. Replaced node or active descendant, document navigation, changed relevant context or changed keyboard focus rejects with fixed sanitized reason. No label/role target fallback, automatic retry, re-review, tab replacement or recovery occurs. Successful result exposes checked original binding/current point, not approval, execution or an atomic race/hidden JavaScript/server-effects guarantee.",
       "requiredCoverage": ["e2e"],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E004_SS_E005_recheck_rejects_changed_identity_or_context"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E002_SS_E004_SS_E005_keys_navigation_movement_and_pixel_changes"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E001_SS_E002_SS_E004_SS_E005_same_and_cross_origin_frames"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E002_SS_E003_SS_E004_closed_shadow_keyboard_focus"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E003_SS_E004_active_descendant_identity_and_semantics"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E003_SS_E004_active_descendant_computed_accessible_semantics"}
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_004_AE_005_recheck_rejects_changed_identity_or_context"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_002_AE_004_AE_005_keys_navigation_movement_and_pixel_changes"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_001_AE_002_AE_004_AE_005_same_and_cross_origin_frames"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_002_AE_003_AE_004_closed_shadow_keyboard_focus"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_003_AE_004_active_descendant_identity_and_semantics"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_003_AE_004_active_descendant_computed_accessible_semantics"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-E005",
+      "id": "AE_005",
       "subfeature": "action-evidence",
       "title": "Visible unobstructed current interaction point",
       "contract": "Recheck recomputes interaction point from original node geometry and checks viewport visibility/hit target, including iframe geometry and obstruction. Same-node movement alone and benign unrelated pixel changes pass when relevant context remains unchanged; full target need not fit viewport. Hidden or covered interaction point rejects action while healthy browsing continues. No forced interaction, full-page screenshot fallback or pixel-by-pixel comparison exists.",
       "requiredCoverage": ["e2e"],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E001_SS_E002_SS_E003_compact_refs_scroll_raw_evidence_and_no_action"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E004_SS_E005_recheck_rejects_changed_identity_or_context"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E002_SS_E004_SS_E005_keys_navigation_movement_and_pixel_changes"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E001_SS_E002_SS_E004_SS_E005_same_and_cross_origin_frames"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E002_SS_E005_SS_E006_target_loss_during_inspection_rejects"}
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_001_AE_002_AE_003_compact_refs_scroll_raw_evidence_and_no_action"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_004_AE_005_recheck_rejects_changed_identity_or_context"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_002_AE_004_AE_005_keys_navigation_movement_and_pixel_changes"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_001_AE_002_AE_004_AE_005_same_and_cross_origin_frames"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_002_AE_005_AE_006_target_loss_during_inspection_rejects"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-E006",
+      "id": "AE_006",
       "subfeature": "action-evidence",
       "title": "Fatal required evidence machinery failure",
       "contract": "Required capture/check transport/protocol/machinery failure marks Browser unusable and raises sanitized fatal EvidenceFailure for existing owned teardown. Missing/stale/hidden/covered target, expected node detachment/frame loss/layout loss between inspection calls, or relevant-context change instead raises EvidenceRejected and permits continued browsing. Adapter uses existing validated browser.command_timeout, endpoint/ownership checks and Browser teardown, adds no settings, retries, recovery or browser replacement. Normal/fatal tests retain helper state and auth/log volumes.",
       "requiredCoverage": ["e2e"],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E006_required_machinery_failure_poison_and_owned_teardown"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E006_expected_target_loss_protocol_errors_reject"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_SS_E002_SS_E005_SS_E006_target_loss_during_inspection_rejects"}
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_006_required_machinery_failure_poison_and_owned_teardown"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_006_expected_target_loss_protocol_errors_reject"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_002_AE_005_AE_006_target_loss_during_inspection_rejects"}
       ],
       "otherCoverage": [],
       "blocker": ""
     },
     {
-      "id": "SS-G001",
+      "id": "AG_001",
       "subfeature": "browser-action-gate",
       "title": "Closed request vocabulary and explicit action permissions",
       "contract": "Trusted BrowserActionGate binds an already-started attested owned Browser, existing reviewer and exact initial CDP page identity; model supplies only action/args/optional activity. Every dispatch validates exact action-specific string arguments, HTTP(S)/no-embedded-credentials navigation and permission before preparation, copies request before review, and rejects unknown/extra/invalid inputs without echo. Missing action permission blocks. review_required needs nonempty activity and supported preparation; configured unsupported review rejects, never silently bypasses. No eval/raw-CDP/selector/approval/browser/policy input or executable action invented by configuration exists.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G001_invalid_or_unknown_request_has_no_effect"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G001_missing_permission_never_grants_access"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G001_SS_G004_configured_unsupported_review_cannot_bypass"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G001_SS_G004_SS_G007_modes_and_privacy_reach_real_gate"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_001_invalid_or_unknown_request_has_no_effect"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_001_missing_permission_never_grants_access"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_001_AG_004_configured_unsupported_review_cannot_bypass"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_001_AG_004_AG_007_modes_and_privacy_reach_real_gate"}
       ],
       "otherCoverage": [], "blocker": ""
     },
     {
-      "id": "SS-G002",
+      "id": "AG_002",
       "subfeature": "browser-action-gate",
       "title": "Fresh approved exact execution and native interaction semantics",
       "contract": "Each reviewed click/navigation/type/keypress prepares fresh full-viewport evidence, calls existing fresh safety reviewer, requires current timely approve and rechecks original context before effect. Valid deny rejects only proposal, with no retry or effect and healthy continuation. Gate executes checked original node/current point directly, never similar-label lookup or reusable/transferred approval. Type focuses/fills exact checked editable node using native clear-then-insert semantics; keys preserve checked focus and native browser key/chord defaults, including Enter submission. No OS keyboard, forced action or automatic repeat/re-review occurs; hidden JavaScript/server effects and atomicity are not attested.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G002_SS_G003_fresh_review_copy_and_checked_original_execution"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G002_denial_rejects_then_healthy_request_can_continue"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G002_browser_key_mapping_preserves_native_default_actions"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G002_SS_G003_same_and_cross_origin_exact_nodes_focus_and_movement"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G001_SS_G002_SS_G005_approved_actions_and_fresh_compact_feedback"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G002_SS_G005_SS_S005_SS_S006_SS_S010_approved_download_navigation_keeps_browser_healthy"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_002_AG_003_fresh_review_copy_and_checked_original_execution"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_002_denial_rejects_then_healthy_request_can_continue"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_002_browser_key_mapping_preserves_native_default_actions"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_002_AG_003_same_and_cross_origin_exact_nodes_focus_and_movement"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_001_AG_002_AG_005_approved_actions_and_fresh_compact_feedback"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_002_AG_005_SR_005_SR_006_SR_010_approved_download_navigation_keeps_browser_healthy"}
       ],
       "otherCoverage": [], "blocker": ""
     },
     {
-      "id": "SS-G003",
+      "id": "AG_003",
       "subfeature": "browser-action-gate",
       "title": "Original identity and relevant-context rejection before effect",
       "contract": "Gate consumes existing exact evidence recheck: original selected tab/frame/document/node, target/form/destination/semantics and actual keyboard focus must match reviewed context. Replacement/document/form/focus change, stale loss, hidden or covered target rejects before effect without retry, replacement, forced action or stale image. Harmless same-node/frame movement passes using recomputed visible unobstructed point. Same-origin/cross-origin frames and closed shadow focus retain exact identity. Healthy rejected proposal leaves subsequent protected browsing usable.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G003_stale_context_has_no_retry_or_effect"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G002_SS_G003_rejection_never_executes_proposal_and_browser_continues"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G002_SS_G003_same_and_cross_origin_exact_nodes_focus_and_movement"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_003_stale_context_has_no_retry_or_effect"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_002_AG_003_rejection_never_executes_proposal_and_browser_continues"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_002_AG_003_same_and_cross_origin_exact_nodes_focus_and_movement"}
       ],
       "otherCoverage": [], "blocker": ""
     },
     {
-      "id": "SS-G004",
+      "id": "AG_004",
       "subfeature": "browser-action-gate",
       "title": "Protected review exemptions and explicit selected-page control",
       "contract": "Configured allowed_without_review skips reviewer, not request/permission/ownership/exact-target hard checks. Initial exempt actions back/scroll/snapshot/screenshot/get_images/list_tabs/switch_tab/close use only selected exact page ID; popup/new-tab creation never silently selects. Explicit switch requires existing page ID, preserves native popup size and shared download/network policy; no new context or selected-tab closure recovery exists. Scroll uses required image-owned scroll_pixels initially500 with native up/down semantics. Existing downloads remain denied while controlled HTML/images/audio load; close revokes gate and closes owned Browser, never inventing replacement selection.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G004_explicit_review_exemption_keeps_exact_preparation"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G001_SS_G004_configured_unsupported_review_cannot_bypass"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G004_SS_G005_exempt_observations_selection_scroll_back_close_and_media"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G001_SS_G004_SS_G007_modes_and_privacy_reach_real_gate"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_004_explicit_review_exemption_keeps_exact_preparation"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_001_AG_004_configured_unsupported_review_cannot_bypass"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_004_AG_005_exempt_observations_selection_scroll_back_close_and_media"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_001_AG_004_AG_007_modes_and_privacy_reach_real_gate"}
       ],
       "otherCoverage": [], "blocker": ""
     },
     {
-      "id": "SS-G005",
+      "id": "AG_005",
       "subfeature": "browser-action-gate",
       "title": "Complete truthful outcomes and fresh applicable observations",
       "contract": "Every dispatch returns status success/rejected/fatal, fixed sanitized reason or null, truthful execution_started and dictionary data. Rejection has false execution_started and no proposed effect. Started means effect/read dispatch began, not proof of server effects; post-dispatch or required observation failure is fatal with true. Successful click/navigation/type/key/back/scroll/switch returns fresh compact AX snapshot and exact selected target_id, without automatic main-agent screenshot. Completed native download cancellation is successful enforcement: success with true execution_started, fresh selected-page AX and healthy continuation, not a claim that destination loaded or machinery-loss recovery. Explicit screenshot returns full native viewport PNG bytes/MIME in memory. Tabs/images return actual observations, close returns close result. Navigation synchronization reuses existing CDP command timeout/native load event, not network-idle/final-state guarantee, new deadline or action retry.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G005_SS_G006_fatal_tracks_started_execution_and_is_terminal"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G005_SS_G006_SS_S010_only_completed_download_enforcement_keeps_gate_healthy"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G005_navigation_observation_waits_only_exact_native_load"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G004_SS_G005_exempt_observations_selection_scroll_back_close_and_media"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G005_SS_G006_required_failure_terminal_started_and_owned_cleanup"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G001_SS_G002_SS_G005_approved_actions_and_fresh_compact_feedback"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G002_SS_G005_SS_S005_SS_S006_SS_S010_approved_download_navigation_keeps_browser_healthy"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_005_AG_006_fatal_tracks_started_execution_and_is_terminal"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_healthy"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_005_navigation_observation_waits_only_exact_native_load"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_004_AG_005_exempt_observations_selection_scroll_back_close_and_media"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_005_AG_006_required_failure_terminal_started_and_owned_cleanup"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_001_AG_002_AG_005_approved_actions_and_fresh_compact_feedback"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_002_AG_005_SR_005_SR_006_SR_010_approved_download_navigation_keeps_browser_healthy"}
       ],
       "otherCoverage": [], "blocker": ""
     },
     {
-      "id": "SS-G006",
+      "id": "AG_006",
       "subfeature": "browser-action-gate",
       "title": "Terminal fatal closure, native interrupt and late-review protection",
       "contract": "Required capture/check/review/execution/observation machinery failure makes gate terminal and closes owned Browser; subsequent proposals cannot execute. Native interrupt/closed binding/failed Browser/control-route change is checked before dispatch and after review/recheck; trusted close revokes pending reviews before owner teardown. Existing reviewer keeps gpt-6-luna/none/180seconds per attempt/one technical retry; valid denial never retries. Late timed-out attempt cannot execute or authorize current retry; only current timely approve can. Exhaustion returns fatal, allowing native adapter mandatory hard-stop callback and exact host-owned cleanup. No queue/new deadline/recovery/watchdog or peer/container replacement is introduced.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G005_SS_G006_fatal_tracks_started_execution_and_is_terminal"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G005_SS_G006_SS_S010_only_completed_download_enforcement_keeps_gate_healthy"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G006_invalid_or_failed_review_never_authorizes"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G006_native_interrupt_and_scope_close_prevent_effect"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G005_SS_G006_required_failure_terminal_started_and_owned_cleanup"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G006_late_review_cannot_execute_or_authorize_current_attempt"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_005_AG_006_fatal_tracks_started_execution_and_is_terminal"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_healthy"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_006_invalid_or_failed_review_never_authorizes"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_006_native_interrupt_and_scope_close_prevent_effect"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_005_AG_006_required_failure_terminal_started_and_owned_cleanup"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_006_late_review_cannot_execute_or_authorize_current_attempt"}
       ],
       "otherCoverage": [], "blocker": ""
     },
     {
-      "id": "SS-G007",
+      "id": "AG_007",
       "subfeature": "browser-action-gate",
       "title": "File-owned operating policy and private proposal retention boundary",
       "contract": "Required image-owned browser.action_permissions supplies only implemented actions with explicit blocked/review_required/allowed_without_review modes; required positive integer scroll_pixels supplies native step initially500. Missing mapping/invalid mode/unknown config action/invalid scroll fails explicitly; removed action never grants permission. Gate copies trusted policy at construction and proposal before preparation; callers/reviewer cannot mutate checked action or policy mid-review. Private bindings/review packets/action payloads are not copied into result/repr/log/file/archive; provider exceptions are sanitized. Fresh AX may retain normal independently observed editable-control values, including text Scout just typed, without copying request text to echo it. Reviewer screenshots stay raw, without redaction or masking. Current page observations intentionally reach main context, not private review packet forwarding, memory erasure or a new provider/conversation-retention guarantee. No reviewer policy/account/pin/network/download relaxation occurs.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G007_private_action_and_policy_mutation_are_not_retained"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_SS_G007_required_file_policy_fails_without_fallback"},
-        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_SS_G001_SS_G004_SS_G007_modes_and_privacy_reach_real_gate"}
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_007_private_action_and_policy_mutation_are_not_retained"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_007_required_file_policy_fails_without_fallback"},
+        {"layer":"e2e","file":"tests/signal_scout/security/test_gate_browser.py","test":"test_AG_001_AG_004_AG_007_modes_and_privacy_reach_real_gate"}
       ],
       "otherCoverage": [], "blocker": ""
     },
     {
-      "id": "SS-020",
+      "id": "SR_020",
       "subfeature": "browser-security",
       "title": "Secret protection",
-      "contract": "Signal Scout storage accepts allowlisted fields only and passes persisted strings through Hermes secret redaction. It never stores raw tool arguments or raw tool results in the audit trail. Credentials, session tokens, cookies, authorization headers, and secret configuration values do not enter persisted evidence, checkpoints, logs, or reports; failures retain only source ID and redacted failure class. Relevant in-memory reviewer evidence may contain secrets under SS-E003, without harvesting unrelated authentication stores. Broader storage/audit flow remains unimplemented.",
+      "contract": "Signal Scout storage accepts allowlisted fields only and passes persisted strings through Hermes secret redaction. It never stores raw tool arguments or raw tool results in the audit trail. Credentials, session tokens, cookies, authorization headers, and secret configuration values do not enter persisted evidence, checkpoints, logs, or reports; failures retain only source ID and redacted failure class. Relevant in-memory reviewer evidence may contain secrets under AE_003, without harvesting unrelated authentication stores. Broader storage/audit flow remains unimplemented.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -596,7 +625,7 @@
       "blocker": ""
     },
     {
-      "id": "SS-021",
+      "id": "SR_021",
       "subfeature": "browser-security",
       "title": "Scout-only authenticated accounts",
       "contract": "A source requiring authentication can be enabled only through a dedicated Signal Scout account and isolated browser profile approved for that platform. Personal accounts and personal browser profiles are rejected.",

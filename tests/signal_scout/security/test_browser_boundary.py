@@ -1,4 +1,4 @@
-"""SS-019, SS-S001, SS-S002: real native Chromium and controlled network peers."""
+"""SR_019, SR_001, SR_002: real native Chromium and controlled network peers."""
 
 import ipaddress
 import base64
@@ -42,11 +42,12 @@ def fixture_web(scout_stack, tmp_path_factory):
     public_https = json.loads(scout_stack.exec_proxy("import json, socket; print(json.dumps(sorted({a[4][0] for a in socket.getaddrinfo('example.com', 443, family=socket.AF_INET, type=socket.SOCK_STREAM)})))"))
     override = local / 'dns.yaml'
     override.write_text(yaml.safe_dump({'services': {'proxy': {'dns': ['127.0.0.53']}}}))
-    compose = ['docker', 'compose', '-f', str(Path(__file__).resolve().parents[3] / 'docker/signal-scout/compose.yaml')]
+    compose = list(scout_stack.compose_command)
     subprocess.run(compose + ['-f', str(override), 'up', '-d', '--force-recreate', '--wait', 'proxy'],
                    check=True, capture_output=True, timeout=60)
     proxy = scout_stack.compose('ps', '-q', 'proxy')
-    scout_stack.browser_compose_files = (compose[-1], override)
+    original_files = scout_stack.browser_compose_files
+    scout_stack.browser_compose_files = (*original_files, override)
     try:
         docker('network', 'create', '--internal', '--ipv6', '--subnet', str(ranges[0]),
                '--subnet', str(ranges[1]), NETWORK)
@@ -89,7 +90,7 @@ def fixture_web(scout_stack, tmp_path_factory):
                    for address in ('127.0.0.1', '172.30.242.2', '::1') for port in (80, 443, 8080))
         yield scout_stack, records, counts, baseline
     finally:
-        scout_stack.browser_compose_files = (compose[-1],)
+        scout_stack.browser_compose_files = original_files
         if attached:
             docker('network', 'disconnect', NETWORK, proxy)
         if created:
@@ -98,7 +99,7 @@ def fixture_web(scout_stack, tmp_path_factory):
         scout_stack.compose('up', '-d', '--force-recreate', '--wait', 'proxy')
 
 
-def test_SS_S001_native_chromium_sandbox_and_anonymous_identity(fixture_web):
+def test_SR_001_native_chromium_sandbox_and_anonymous_identity(fixture_web):
     stack, _, _, _ = fixture_web
     with stack.browser_run() as run:
         docker('exec', run.container, 'python3', '-c', """
@@ -119,7 +120,7 @@ with Browser() as browser:
     assert 'Seccomp-BPF sandbox\tYes' in result['sandbox']
 
 
-def test_SS_S001_unavailable_namespace_sandbox_prevents_start(scout_stack, tmp_path):
+def test_SR_001_unavailable_namespace_sandbox_prevents_start(scout_stack, tmp_path):
     compose = ['docker', 'compose', '-f', str(Path(__file__).resolve().parents[3] / 'docker/signal-scout/compose.yaml')]
     override = tmp_path / 'default-seccomp.yaml'
     override.write_text('services:\n  browser:\n    security_opt: !override [no-new-privileges:true]\n')
@@ -132,7 +133,7 @@ def test_SS_S001_unavailable_namespace_sandbox_prevents_start(scout_stack, tmp_p
                       '--filter', 'label=com.docker.compose.project=signal-scout-bootstrap')
 
 
-def test_SS_019_public_http_https_tls_and_forbidden_main_redirects(fixture_web):
+def test_SR_019_public_http_https_tls_and_forbidden_main_redirects(fixture_web):
     stack, _, counts, baseline = fixture_web
     stack.browser_probe(IMPORT + f"""
 with Browser() as browser:
@@ -168,7 +169,7 @@ with Browser() as browser:
         assert actual[key] == value, f'Forbidden listener received connection: {key}'
 
 
-def test_SS_019_dns_rebinding_rechecks_new_connections(fixture_web):
+def test_SR_019_dns_rebinding_rechecks_new_connections(fixture_web):
     stack, _, counts, baseline = fixture_web
     stack.browser_probe(IMPORT + """
 with Browser() as browser:
@@ -185,8 +186,8 @@ with Browser() as browser:
     assert counts()['172.30.242.2:80'] == baseline['172.30.242.2:80']
 
 
-def test_SS_S002_background_http_websocket_cannot_control_cdp(fixture_web):
-    """SS-019 also: background denial leaves allowed main document alive."""
+def test_SR_002_background_http_websocket_cannot_control_cdp(fixture_web):
+    """SR_019 also: background denial leaves allowed main document alive."""
     stack, _, counts, baseline = fixture_web
     code = IMPORT + """
 with Browser() as browser:

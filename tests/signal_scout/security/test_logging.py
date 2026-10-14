@@ -1,4 +1,4 @@
-"""SS-S003: metadata-only native/helper logging, rotation, persistence, best effort."""
+"""SR_003: metadata-only native/helper logging, rotation, persistence, best effort."""
 
 import json
 from pathlib import Path
@@ -24,7 +24,7 @@ def isolated(tmp_path, code):
     return result
 
 
-def test_SS_S003_native_events_sanitize_rotate_and_honor_settings(tmp_path):
+def test_SR_003_native_events_sanitize_rotate_and_honor_settings(tmp_path):
     result = isolated(tmp_path, """
         import importlib, logging, os, yaml
         from pathlib import Path
@@ -65,7 +65,7 @@ def test_SS_S003_native_events_sanitize_rotate_and_honor_settings(tmp_path):
     assert 'connection_allowed' not in output  # INFO suppresses DEBUG.
 
 
-def test_SS_S003_SS_R006_reviewer_metadata_rotates_without_raw_retention(tmp_path):
+def test_SR_003_RV_006_reviewer_metadata_rotates_without_raw_retention(tmp_path):
     result = isolated(tmp_path, """
         import importlib, json, logging, os, httpx
         from pathlib import Path
@@ -145,7 +145,7 @@ def test_SS_S003_SS_R006_reviewer_metadata_rotates_without_raw_retention(tmp_pat
     assert len(files) == 6 and all(0 < path.stat().st_size <= 1024 ** 2 for path in files)
 
 
-def test_SS_S003_native_write_failure_has_fixed_diagnostic_and_keeps_events_safe(tmp_path):
+def test_SR_003_native_write_failure_has_fixed_diagnostic_and_keeps_events_safe(tmp_path):
     result = isolated(tmp_path, """
         import importlib, logging, os, yaml
         from pathlib import Path
@@ -168,7 +168,7 @@ def test_SS_S003_native_write_failure_has_fixed_diagnostic_and_keeps_events_safe
     assert result.stdout.strip() == 'enforcement intact'
 
 
-def test_SS_S003_partial_native_log_open_failure_still_sanitizes(tmp_path):
+def test_SR_003_partial_native_log_open_failure_still_sanitizes(tmp_path):
     (tmp_path / 'logs/errors.log').mkdir(parents=True)
     result = isolated(tmp_path, """
         import importlib, logging, os, yaml
@@ -186,7 +186,7 @@ def test_SS_S003_partial_native_log_open_failure_still_sanitizes(tmp_path):
     assert 'poison' not in text + result.stderr + result.stdout
 
 
-def test_SS_S003_proxy_firewall_events_persist_after_replacement(scout_stack):
+def test_SR_003_proxy_firewall_events_persist_after_replacement(scout_stack):
     code = """
         import json
         from pathlib import Path
@@ -227,7 +227,7 @@ def test_SS_S003_proxy_firewall_events_persist_after_replacement(scout_stack):
                    and mount['Destination'] == '/var/log/scout' for mount in info['Mounts'] if mount['Type'] == 'volume')
 
 
-def test_SS_S003_scout_attached_output_is_not_retained_in_docker_logs(scout_stack):
+def test_SR_003_scout_attached_output_is_not_retained_in_docker_logs(scout_stack):
     identity = scout_stack.compose('run', '--rm', '--no-deps', '-d', '--entrypoint', 'sleep', 'scout', '30')
     try:
         info = json.loads(subprocess.check_output(['docker', 'inspect', identity]))[0]
@@ -246,7 +246,7 @@ def test_SS_S003_scout_attached_output_is_not_retained_in_docker_logs(scout_stac
     assert 'poison' not in result.stdout + result.stderr
 
 
-def test_SS_S003_helper_rotation_uses_supplied_file_limits(scout_stack):
+def test_SR_003_helper_rotation_uses_supplied_file_limits(scout_stack):
     for component in ('proxy', 'firewall'):
         result = json.loads(scout_stack.exec_proxy(f"""
             import json, logging, yaml
@@ -276,7 +276,7 @@ def test_SS_S003_helper_rotation_uses_supplied_file_limits(scout_stack):
         assert all(0 < size <= 1024 ** 2 for size in result.values())
 
 
-def test_SS_S003_proxy_write_failure_does_not_disable_public_access_or_private_denial(scout_stack):
+def test_SR_003_proxy_write_failure_does_not_disable_public_access_or_private_denial(scout_stack):
     """Real ENOSPC stream in existing proxy; retain and restore prior log file."""
     prepare = """
         from pathlib import Path

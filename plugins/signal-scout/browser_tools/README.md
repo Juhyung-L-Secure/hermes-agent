@@ -7,7 +7,7 @@ the existing status-only bootstrap unchanged. No mission launcher is added.
 | File | Owns |
 | --- | --- |
 | `__init__.py` | Fixed schema, runtime binding, native registration and result packaging |
-| `specs.json` | Routing contracts SS-T001–SS-T005 and validated test links |
+| `specs.json` | Routing contracts BR_001–BR_005 and validated test links |
 | `../../../tests/signal_scout/browser_tools/test_adapter.py` | Native discovery/dispatch with contract-shaped gates and fake main transport |
 | `../../../tests/signal_scout/browser_tools/test_native_integration.py` | Real gate, owned Chromium, native model/tool loop and exact host cleanup |
 | `../../../tests/signal_scout/browser_tools/model_fixture.py` | In-memory fake main transport; no provider calls |
@@ -82,7 +82,7 @@ offline verification.
 
 ## Verification and pairings
 
-Schema/handler ↔ SS-T001–SS-T005 ↔ mirrored tests. Gate request/result/close API
+Schema/handler ↔ BR_001–BR_005 ↔ mirrored tests. Gate request/result/close API
 must stay paired with `security/gate.py`, while host cleanup stays paired with
 the existing lifecycle. Coverage rows name only tests that passed; collection
 checks prove links, not assertion quality or executed integration.

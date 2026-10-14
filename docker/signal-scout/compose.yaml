@@ -15,6 +15,10 @@ networks:
       config:
         - subnet: 172.30.242.0/29
   outbound: {}
+  viewer:
+    ipam:
+      config:
+        - subnet: 172.30.243.0/30
 volumes:
   scout-auth: {}
   scout-logs: {}

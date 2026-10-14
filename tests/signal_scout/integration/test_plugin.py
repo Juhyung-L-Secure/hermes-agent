@@ -1,4 +1,4 @@
-"""SS-B001: real native plugin discovery and dispatch, without model calls."""
+"""BT_001: real native plugin discovery and dispatch, without model calls."""
 
 import json
 from pathlib import Path
@@ -19,7 +19,7 @@ def plugin_home(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_SS_B001_native_status_discovery_dispatch_and_invalid_inputs(plugin_home):
+def test_BT_001_native_status_discovery_dispatch_and_invalid_inputs(plugin_home):
     from hermes_cli.plugins import discover_plugins, get_plugin_manager
     from model_tools import get_tool_definitions, handle_function_call
 
@@ -40,7 +40,7 @@ def test_SS_B001_native_status_discovery_dispatch_and_invalid_inputs(plugin_home
     ) == []
 
 
-def test_SS_B001_disabled_plugin_is_unavailable(plugin_home):
+def test_BT_001_disabled_plugin_is_unavailable(plugin_home):
     (plugin_home / "config.yaml").write_text(yaml.safe_dump({
         "plugins": {"enabled": [], "disabled": ["signal-scout"]},
     }))

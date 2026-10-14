@@ -1,4 +1,4 @@
-"""SS-019: raw input and proxy-owned destination policy without model calls."""
+"""SR_019: raw input and proxy-owned destination policy without model calls."""
 
 import asyncio
 import importlib
@@ -20,12 +20,12 @@ proxy = importlib.import_module("plugins.signal-scout.security.network_proxy")
     "https://public.test/%", "https://%31%32%37.0.0.1/", "http://public.test/\x7f",
     'http://public".test/', 'http://public{.test/',
 ])
-def test_SS_019_raw_url_rejected_before_navigation(raw):
+def test_SR_019_raw_url_rejected_before_navigation(raw):
     with pytest.raises(ValueError, match="Invalid HTTP"):
         urls.validate_url(raw)
 
 
-def test_SS_019_input_validation_has_no_dns_or_ip_policy(monkeypatch):
+def test_SR_019_input_validation_has_no_dns_or_ip_policy(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", lambda *_args, **_kw: pytest.fail("Input layer resolved DNS"))
     for raw in ("http://127.1/", "http://2130706433/", "https://[::1]/", "http://public.test:8080/",
                 "https://public.test/path?query=value#fragment"):
@@ -39,11 +39,11 @@ def test_SS_019_input_validation_has_no_dns_or_ip_policy(monkeypatch):
     "::", "::1", "::ffff:127.0.0.1", "64:ff9b::a00:1", "64:ff9b:1::a00:1", "100::1",
     "2001::1", "2001:db8::1", "2002:a00:1::", "3ffe::1", "3fff::1", "fc00::1", "fe80::1", "fec0::1", "ff02::1",
 ])
-def test_SS_019_proxy_denies_forbidden_address_classes(ip):
+def test_SR_019_proxy_denies_forbidden_address_classes(ip):
     assert not proxy.public_address(ip)
 
 
-def test_SS_019_proxy_public_addresses_and_destination_ports():
+def test_SR_019_proxy_public_addresses_and_destination_ports():
     for address in ("1.1.1.1", "93.184.216.34", "2606:4700:4700::1111"):
         assert proxy.public_address(address)
     for target in ("CONNECT public.test:80", "CONNECT public.test:8443", "CONNECT public.test:443/path",
@@ -55,7 +55,7 @@ def test_SS_019_proxy_public_addresses_and_destination_ports():
         assert proxy.parse_request(request)[2] in {80, 443}
 
 
-def test_SS_019_dns_failure_and_mixed_answers_connect_nowhere(monkeypatch):
+def test_SR_019_dns_failure_and_mixed_answers_connect_nowhere(monkeypatch):
     async def scenario():
         loop = asyncio.get_running_loop()
         async def cannot_connect(*_):
@@ -75,13 +75,13 @@ def test_SS_019_dns_failure_and_mixed_answers_connect_nowhere(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_SS_S001_launch_adapter_forces_policy_and_rejects_overrides():
+def test_SR_001_launch_adapter_forces_policy_and_rejects_overrides():
     chromium = importlib.import_module('plugins.signal-scout.security.chromium')
     settings = importlib.import_module('plugins.signal-scout.security.settings')
     config = settings.load_settings(Path(__file__).resolve().parents[3] / 'docker/signal-scout/config.yaml')
     network = config['scout_network']
     with tempfile.TemporaryDirectory(prefix='scout-chrome-', dir='/tmp') as profile:
-        command = chromium.launch_args(profile, network, config['browser']['viewport'])
+        command = chromium.launch_args(profile, network, config['browser']['viewport'], config['browser']['mode'])
         assert '--no-sandbox' not in command
         assert '--remote-debugging-port=9222' in command
         assert command.count('--proxy-server=http://172.30.242.2:3128') == 1
@@ -90,10 +90,10 @@ def test_SS_S001_launch_adapter_forces_policy_and_rejects_overrides():
         assert not any(value.startswith(('--ignore-certificate', '--load-extension', '--disable-seccomp',
                                         '--disable-namespace')) for value in command)
         with pytest.raises(ValueError, match='Invalid browser profile'):
-            chromium.launch_args('/var/lib/scout', network, config['browser']['viewport'])
+            chromium.launch_args('/var/lib/scout', network, config['browser']['viewport'], config['browser']['mode'])
 
 
-def test_SS_019_numeric_connection_pinned_and_peer_checked(monkeypatch):
+def test_SR_019_numeric_connection_pinned_and_peer_checked(monkeypatch):
     async def scenario():
         loop = asyncio.get_running_loop()
         resolutions = []

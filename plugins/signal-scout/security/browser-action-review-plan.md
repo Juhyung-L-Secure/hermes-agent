@@ -8,7 +8,7 @@ proposals and implemented protections. It is not a claim that reviewed browsing
 already works. Continue planning here instead of reconstructing the conversation.
 
 Implementation note, 2026-10-09: standalone safety-reviewer client now lives in
-`reviewer.py`, with SS-R001–SS-R006 and ownership in `README.md`. Current confirmed
+`reviewer.py`, with RV_001–RV_006 and ownership in `README.md`. Current confirmed
 values are `gpt-6-luna` / `none` / 180 seconds per attempt / 1 retry from existing
 image-owned `config.yaml`; these supersede older reviewer values recorded below.
 Prepared evidence is consumed in memory; capture/viewport enforcement, browser-action
@@ -19,7 +19,7 @@ Implementation note, 2026-10-10: confirmed safeguard slice supersedes the all-ta
 viewport proposal below. Launcher denies downloads in one fresh anonymous default
 context with a run-owned CDP connection, sizes/verifies main-window contents and
 sets browser-wide scale. Normal tabs share that window; separate popup windows
-keep their own size. SS-S006–SS-S010 own tests and contracts. No incognito/additional
+keep their own size. SR_006–SR_010 own tests and contracts. No incognito/additional
 contexts, per-tab emulation, debugger pause, selection policy or action gate was
 added. Current security README and Docker guide own implemented behavior;
 historical proposals and evidence remain preserved.
@@ -32,7 +32,7 @@ Startup checks the applied `chrome://policy` record, restores the sole blank pag
 verifies actual window size/scale, and closes startup CDP before readiness.
 No policy keepalive/disconnect watcher remains. Native policy blocks ordinary
 webpage downloads, including tabs/popups; Save Page and print-to-PDF remain outside
-its scope. Current SS-S006/SS-S010, security README and Docker guide own behavior.
+its scope. Current SR_006/SR_010, security README and Docker guide own behavior.
 Historical requirements/proposals below remain preserved, not active instructions.
 
 ## 1. Project direction and scope
@@ -554,7 +554,7 @@ browser-held cookies remain exposed to compromise of that browser.
 
 Current Scout intentionally rejects external attachment and requires local owned
 Chromium with loopback-only control. Split requires explicit startup/control and
-network-policy changes, retained sandbox attestation, revised SS-S001/SS-S002
+network-policy changes, retained sandbox attestation, revised SR_001/SR_002
 contracts, and adversarial tests. Not just adding another Compose service.
 
 User approved the runtime split, not a complete implementation brief. Resolve
@@ -744,7 +744,7 @@ User requires feature-owned specs with test links. Security contracts remain in
 [`tests/signal_scout/security/`](../../../tests/signal_scout/security/).
 Do not put new behavioral specs back into `stuff/` or a single project-wide file.
 
-Existing SS-016 blanket click/type/keypress ban and older milestones' hook-only
+Existing SR_016 blanket click/type/keypress ban and older milestones' hook-only
 policy proposal predate this discussion. They are not the new implementation
 brief. Update affected contracts, test links, ownership docs, and milestone plan
 together within each confirmed slice; do not mark future coverage complete now.

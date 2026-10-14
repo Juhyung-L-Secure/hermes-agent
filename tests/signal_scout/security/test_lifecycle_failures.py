@@ -1,4 +1,4 @@
-"""SS-S005: failed creation/start, action-driver loss and configured stop bounds."""
+"""SR_005: failed creation/start, action-driver loss and configured stop bounds."""
 
 import importlib
 import json
@@ -19,7 +19,7 @@ def docker(*args):
 
 
 @pytest.mark.parametrize('foreign_collision', [False, True])
-def test_SS_S005_create_then_start_failure_removes_only_attempted_owner(scout_stack, tmp_path, monkeypatch, foreign_collision):
+def test_SR_005_create_then_start_failure_removes_only_attempted_owner(scout_stack, tmp_path, monkeypatch, foreign_collision):
     override = tmp_path / 'cannot-start.yaml'
     # Without Docker's init trampoline, absent executable fails OCI start itself.
     override.write_text(yaml.safe_dump({'services': {'browser': {'init': False, 'entrypoint': ['/missing-start-fixture']}}}))
@@ -64,7 +64,7 @@ def test_SS_S005_create_then_start_failure_removes_only_attempted_owner(scout_st
     ('CDP WebSocket connect failed: connection refused', True),
     ('net::ERR_PROXY_CONNECTION_FAILED', False),
 ])
-def test_SS_S005_driver_transport_failure_is_terminal_with_healthy_discovery(monkeypatch, error, terminal):
+def test_SR_005_driver_transport_failure_is_terminal_with_healthy_discovery(monkeypatch, error, terminal):
     from tools import browser_tool
     browser = browser_module.Browser.__new__(browser_module.Browser)
     browser.task, browser.endpoint, browser.failed = 'transport-unit', 'owned-endpoint', False
@@ -89,7 +89,7 @@ def test_SS_S005_driver_transport_failure_is_terminal_with_healthy_discovery(mon
         assert len(calls) == 2
 
 
-def test_SS_S005_live_driver_reset_is_terminal_with_healthy_discovery(scout_stack):
+def test_SR_005_live_driver_reset_is_terminal_with_healthy_discovery(scout_stack):
     with pytest.raises(RuntimeError, match='observed driver transport loss'), scout_stack.browser_run() as run:
         identity = run.container
         code = """
@@ -193,7 +193,7 @@ print('terminal; discovery healthy', flush=True)
 
 
 @pytest.mark.parametrize('grace', [65, 120, 300])
-def test_SS_S005_shutdown_deadline_includes_supported_grace(monkeypatch, grace):
+def test_SR_005_shutdown_deadline_includes_supported_grace(monkeypatch, grace):
     run = lifecycle.BrowserRun.__new__(lifecycle.BrowserRun)
     run.config = lifecycle.settings.load_settings(lifecycle.CONFIG)
     run.config['scout_lifecycle']['shutdown_timeout'] = grace
@@ -209,7 +209,7 @@ def test_SS_S005_shutdown_deadline_includes_supported_grace(monkeypatch, grace):
     assert run.container is None
 
 
-def test_SS_S005_configured_long_shutdown_removes_stopped_launcher(scout_stack, tmp_path):
+def test_SR_005_configured_long_shutdown_removes_stopped_launcher(scout_stack, tmp_path):
     with scout_stack.browser_run() as run:
         identity = run.container
         config = run.config.copy()

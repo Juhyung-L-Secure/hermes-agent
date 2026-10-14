@@ -1,6 +1,7 @@
 """Install namespace policy, subscribe to payload-free NFLOG, then drop privilege."""
 
 import ctypes
+import ipaddress
 import os
 from pathlib import Path
 import socket
@@ -36,12 +37,20 @@ def subscribe():
     return sock
 
 
-def install_rules(network):
-    """Permit browser proxy and owned CDP control; log denials without payload."""
+def install_rules(network, viewer):
+    """Permit proxy/control and optional host-initiated viewer; deny other traffic."""
     for binary in ("iptables", "ip6tables"):
         rules = [["-P", chain, "DROP"] for chain in ("INPUT", "FORWARD", "OUTPUT")]
         rules += [["-F", chain] for chain in ("INPUT", "FORWARD", "OUTPUT")]
         if binary == "iptables":
+            if viewer:
+                gateway = str(ipaddress.IPv4Network(network["viewer_subnet"]).network_address + 1)
+                rules += [
+                    ["-A", "INPUT", "-s", gateway, "-d", network["viewer_address"], "-p", "tcp",
+                     "--dport", str(network["viewer_port"]), "-j", "ACCEPT"],
+                    ["-A", "OUTPUT", "-s", network["viewer_address"], "-d", gateway, "-p", "tcp",
+                     "--sport", str(network["viewer_port"]), "-m", "conntrack", "--ctstate", "ESTABLISHED", "-j", "ACCEPT"],
+                ]
             rules += [
                 ["-A", "OUTPUT", "-d", network["proxy_address"], "-p", "tcp", "--dport", str(network["proxy_port"]), "-j", "ACCEPT"],
                 ["-A", "INPUT", "-s", network["proxy_address"], "-p", "tcp", "--sport", str(network["proxy_port"]), "-m", "conntrack",
@@ -85,7 +94,7 @@ def main():
     if len(sys.argv) != 1:
         raise ValueError("Invalid firewall command.")
     sock = subscribe()
-    install_rules(config["scout_network"])
+    install_rules(config["scout_network"], config["browser"]["viewer"])
     drop_privileges()
     configure_logging("firewall", config)
     Path("/tmp/firewall-ready").touch()

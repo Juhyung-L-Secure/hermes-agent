@@ -1,4 +1,4 @@
-"""SS-S004/SS-S005: actual split-container boundary and owned disposable lifetime."""
+"""SR_004/SR_005: actual split-container boundary and owned disposable lifetime."""
 
 import copy
 import importlib
@@ -28,7 +28,7 @@ def docker(*args):
     return subprocess.check_output(['docker', *args], text=True, timeout=60).strip()
 
 
-def test_SS_S004_endpoint_and_discovery_reject_redirects_wrong_hosts_and_paths():
+def test_SR_004_endpoint_and_discovery_reject_redirects_wrong_hosts_and_paths():
     endpoint = 'ws://172.30.242.4:9223/devtools/browser/01234567-89ab-cdef-0123-456789abcdef'
     assert control.validate_endpoint(endpoint, '172.30.242.4', 9223) == endpoint
     for invalid in (endpoint.replace('172.30.242.4', '127.0.0.1'), endpoint.replace(':9223', ':9222'),
@@ -58,7 +58,7 @@ def test_SS_S004_endpoint_and_discovery_reject_redirects_wrong_hosts_and_paths()
             worker.join()
 
 
-def test_SS_S004_listener_ownership_checks_socket_inode():
+def test_SR_004_listener_ownership_checks_socket_inode():
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0))
         listener.listen()
@@ -72,7 +72,7 @@ def test_SS_S004_listener_ownership_checks_socket_inode():
                 child.wait(timeout=5)
 
 
-def test_SS_S005_wrong_container_and_run_ownership_reject_cleanup(monkeypatch):
+def test_SR_005_wrong_container_and_run_ownership_reject_cleanup(monkeypatch):
     run = lifecycle.BrowserRun.__new__(lifecycle.BrowserRun)
     run.container, run.run, run.project = 'a' * 64, 'b' * 32, 'signal-scout-bootstrap'
     labels = {'com.docker.compose.project': run.project, 'com.docker.compose.service': 'browser',
@@ -91,7 +91,7 @@ def test_SS_S005_wrong_container_and_run_ownership_reject_cleanup(monkeypatch):
         run.inspect_owned()
 
 
-def test_SS_S004_SS_B004_topology_mismatch_is_rejected():
+def test_SR_004_BT_004_topology_mismatch_is_rejected():
     run = lifecycle.BrowserRun()
     assert set(run.model['services']) == {'scout', 'browser', 'firewall', 'proxy'}
     for service in ('proxy', 'scout', 'firewall'):
@@ -106,7 +106,7 @@ def test_SS_S004_SS_B004_topology_mismatch_is_rejected():
             lifecycle.validate_topology(model, run.config)
 
 
-def test_SS_S004_container_mount_pid_network_and_resource_separation(scout_stack):
+def test_SR_004_container_mount_pid_network_and_resource_separation(scout_stack):
     scout = scout_stack.compose('run', '--rm', '--no-deps', '-d', '--entrypoint', 'sleep', 'scout', '120')
     try:
         with scout_stack.browser_run() as run:
@@ -152,7 +152,7 @@ assert all(int(state[key].strip(),16) == 0 for key in ('CapEff','CapBnd','CapPrm
         docker('stop', '-t', '1', scout)
 
 
-def test_SS_S004_browser_cannot_read_hermes_fixture_or_connect_back(scout_stack):
+def test_SR_004_browser_cannot_read_hermes_fixture_or_connect_back(scout_stack):
     fixture = '/var/lib/scout/isolation-fixture-' + os.urandom(8).hex()
     code = f"""
 import socket
@@ -206,7 +206,7 @@ with Browser() as browser:
         docker('stop', '-t', '1', scout)
 
 
-def test_SS_S004_SS_019_browser_direct_egress_and_unauthorized_control_denied(scout_stack):
+def test_SR_004_SR_019_browser_direct_egress_and_unauthorized_control_denied(scout_stack):
     with scout_stack.browser_run() as run:
         scout_stack.browser_probe(IMPORT + "with Browser() as browser: assert browser.command('eval','true')['result'] is True", run=run)
         scout_stack.exec_proxy("""
@@ -253,7 +253,7 @@ for host in ('127.0.0.11','8.8.8.8'):
                 pass
 
 
-def test_SS_S005_single_claim_fresh_profile_and_ordinary_fatal_teardown(scout_stack):
+def test_SR_005_single_claim_fresh_profile_and_ordinary_fatal_teardown(scout_stack):
     identities, profiles = [], []
     for number in range(2):
         with scout_stack.browser_run() as run:
@@ -286,7 +286,7 @@ def test_SS_S005_single_claim_fresh_profile_and_ordinary_fatal_teardown(scout_st
     assert subprocess.run(['docker', 'inspect', fatal], capture_output=True).returncode != 0
 
 
-def test_SS_S004_existing_listener_never_adopted_or_disturbed(scout_stack):
+def test_SR_004_existing_listener_never_adopted_or_disturbed(scout_stack):
     with scout_stack.browser_run() as run:
         before = docker('exec', run.container, 'python3', '-m', 'security.chromium', '--status')
         rejected = subprocess.run(['docker', 'exec', run.container, 'python3', '-m', 'security.chromium'],
@@ -296,7 +296,7 @@ def test_SS_S004_existing_listener_never_adopted_or_disturbed(scout_stack):
         scout_stack.browser_probe(IMPORT + "with Browser() as browser: assert browser.command('eval','true')['result'] is True", run=run)
 
 
-def test_SS_S005_child_exit_closes_relay_and_never_replaces_browser(scout_stack):
+def test_SR_005_child_exit_closes_relay_and_never_replaces_browser(scout_stack):
     with scout_stack.browser_run() as run:
         identity = run.container
         docker('exec', identity, 'python3', '-c', "import json,os,signal; from pathlib import Path; r=json.loads(Path('/tmp/browser-ready.json').read_text()); os.kill(r['pid'],signal.SIGKILL)")
@@ -311,7 +311,7 @@ def test_SS_S005_child_exit_closes_relay_and_never_replaces_browser(scout_stack)
     assert subprocess.run(['docker', 'inspect', identity], capture_output=True).returncode != 0
 
 
-def test_SS_S005_stale_endpoint_fails_without_local_fallback(scout_stack):
+def test_SR_005_stale_endpoint_fails_without_local_fallback(scout_stack):
     with scout_stack.browser_run() as run:
         stale = run.endpoint.rsplit('/', 1)[0] + '/00000000-0000-0000-0000-000000000000'
         scout_stack.browser_probe(IMPORT + """
@@ -327,7 +327,7 @@ assert not list(Path('/tmp').glob('agent-browser-*'))
         assert run.inspect_owned()['State']['Running']
 
 
-def test_SS_S005_command_hang_is_terminal_and_owned_container_removed(scout_stack):
+def test_SR_005_command_hang_is_terminal_and_owned_container_removed(scout_stack):
     with scout_stack.browser_run() as run:
         identity = run.container
         scout_stack.browser_probe(IMPORT + """
@@ -351,7 +351,7 @@ with Browser() as browser:
     assert subprocess.run(['docker', 'inspect', identity], capture_output=True).returncode != 0
 
 
-def test_SS_S005_unavailable_relay_cleans_new_child_only(scout_stack):
+def test_SR_005_unavailable_relay_cleans_new_child_only(scout_stack):
     scout_stack.compose('exec', '-T', '-d', '-u', '10000', 'firewall', 'python3', '-c', """
 import os,socket,time
 from pathlib import Path
@@ -378,7 +378,7 @@ with socket.socket() as fixture:
         scout_stack.compose('exec', '-T', '-u', '10000', 'firewall', 'python3', '-c', "import os,signal; from pathlib import Path; p=Path('/tmp/relay-fixture.pid'); os.kill(int(p.read_text()),signal.SIGTERM); p.unlink()")
 
 
-def test_SS_S004_SS_B004_changed_compose_limits_reach_real_containers(scout_stack, tmp_path):
+def test_SR_004_BT_004_changed_compose_limits_reach_real_containers(scout_stack, tmp_path):
     override = tmp_path / 'limits.yaml'
     override.write_text(yaml.safe_dump({'services': {
         'browser': {'mem_limit': 1_800_000_000, 'memswap_limit': 1_800_000_000, 'pids_limit': 480},

@@ -27,23 +27,14 @@ docker compose -f docker/signal-scout/compose.yaml run --rm -T scout status
 .venv/bin/python docker/signal-scout/browser_run.py https://example.com
 ```
 
-Smoke creates a fresh browser, attests actual `chrome://sandbox`, navigates the
-operator URL, performs one snapshot observation, and returns fixed success
-metadata. No model call, screenshot archive, raw page output, or model browser
-tool. Denied URL or fatal control/startup failure fails smoke and removes its
-owned browser. The same host lifecycle runs integration tests; tests do not
-maintain another Docker stack. Tests serialize helpers, restore prior helper
-running/stopped state, and preserve auth/log volumes and historical logs.
-Controlled HTTP/TLS/DNS fixtures temporarily attach public-classified
-`11.203.247.0/29` and `2606:4700:ffff:fffe::/64` to existing proxy, checking
-route conflicts first. Host `openssl` and `ip` are test prerequisites.
-One worker serializes shared-stack fixtures; the existing 600-second per-file
-test allowance changes no runtime deadline or test selection.
+Smoke creates fresh browser, attests actual `chrome://sandbox`, navigates operator URL, observes one snapshot, and returns fixed success metadata. No model call, screenshot archive, raw page output, or model browser tool. Denied URL/fatal control/startup failure removes owned browser.
+Tests use same host lifecycle/stack, serialize helpers, restore prior running/stopped state, and preserve auth/log volumes/history. Controlled HTTP/TLS/DNS fixtures attach public-classified `11.203.247.0/29` and `2606:4700:ffff:fffe::/64` to existing proxy after route-conflict checks. Host `openssl`, `ip`, and `google-chrome` are test prerequisites; host Chrome uses a temporary profile solely to exercise local noVNC.
+One worker serializes shared-stack fixtures; existing 600-second per-file allowance changes no runtime deadline or test selection.
 
 Required link gate (does not execute tests or assess assertions):
 
 ```bash
-.venv/bin/python plugins/signal-scout/spec_checks/check.py --require SS-B001 --require SS-B002 --require SS-B004 --require SS-019 --require SS-S001 --require SS-S002 --require SS-S003 --require SS-S004 --require SS-S005 --require SS-S006 --require SS-S007 --require SS-S008 --require SS-S009 --require SS-S010 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006 --require SS-R001 --require SS-R002 --require SS-R003 --require SS-R004 --require SS-R005 --require SS-R006 --require SS-R007 --require SS-E001 --require SS-E002 --require SS-E003 --require SS-E004 --require SS-E005 --require SS-E006 --require SS-G001 --require SS-G002 --require SS-G003 --require SS-G004 --require SS-G005 --require SS-G006 --require SS-G007 --require SS-T001 --require SS-T002 --require SS-T003 --require SS-T004 --require SS-T005
+.venv/bin/python plugins/signal-scout/spec_checks/check.py --require BT_001 --require BT_002 --require BT_004 --require SR_019 --require SR_001 --require SR_002 --require SR_003 --require SR_004 --require SR_005 --require SR_006 --require SR_007 --require SR_008 --require SR_009 --require SR_010 --require SR_011 --require SR_012 --require SR_013 --require SC_001 --require SC_002 --require SC_003 --require SC_004 --require SC_005 --require SC_006 --require RV_001 --require RV_002 --require RV_003 --require RV_004 --require RV_005 --require RV_006 --require RV_007 --require AE_001 --require AE_002 --require AE_003 --require AE_004 --require AE_005 --require AE_006 --require AG_001 --require AG_002 --require AG_003 --require AG_004 --require AG_005 --require AG_006 --require AG_007 --require BR_001 --require BR_002 --require BR_003 --require BR_004 --require BR_005
 ```
 
 ## Ownership and lifetime
@@ -109,23 +100,18 @@ Startup verifies Chrome's validated `chrome://policy` record (mandatory/machine/
 Missing, invalid or unapplied policy and sizing failure end owned browser; blocked downloads leave browser healthy. Native policy persists without policy CDP/keepalive/watcher. Ordinary webpage downloads are blocked; Save Page and print-to-PDF are outside this policy's scope.
 Verified main-window size is shared by normal tabs; separate popups keep own size, scale is browser-wide.
 No per-tab emulation/debugger pause/later-target resize or activation. [Contracts](../../plugins/signal-scout/security/README.md) own details.
-No published ports. This is network access control, not cryptographic identity.
+Only viewer TCP is published on host `127.0.0.1`; CDP stays unpublished. Source-IP control is not cryptographic identity.
 Ordinary page HTTP, WebSocket, frame, fetch and image traffic uses forced proxy,
 including loopback, so it cannot reach relay/raw CDP even with live endpoint path.
 Tests use live listeners, namespace connection counters, and before/after positive
 controls. A compromised browser/controller, Docker daemon, or kernel remains a
 trust risk; separation does not prevent every exploit.
 
-Both applications run UID/GID 10000, read-only root, zero capabilities and
-no-new-privileges. Browser keeps namespace/seccomp-BPF sandbox and bounded 64 MiB
-temporary storage. Browser: 2,000,000,000 bytes memory+swap, no CPU quota, 512 PIDs.
-Hermes: 1 GiB memory+swap, 1 CPU, 512 PIDs. Helpers: 256 MiB memory+swap,
-0.5 CPU, 128 PIDs each. Limits are per container, not a total stack ceiling.
-Firewall initially needs NET_ADMIN/SETUID/SETGID/SETPCAP, then drops all
-capabilities and runs UID 10000; its Docker healthcheck retains startup identity.
+Both applications run UID/GID 10000, read-only root, zero capabilities/no-new-privileges. Browser retains namespace/seccomp-BPF sandbox, 64 MiB tmpfs, 2,000,000,000-byte memory+swap, no CPU quota, 512 PIDs. Hermes: 1 GiB memory+swap, 1 CPU, 512 PIDs. Each helper: 256 MiB memory+swap, 0.5 CPU, 128 PIDs; limits are per container.
+Firewall initially needs NET_ADMIN/SETUID/SETGID/SETPCAP, then drops all capabilities/runs UID10000; Docker healthcheck retains startup identity.
 
 Pins remain `agent-browser 0.26.0`, Chrome for Testing `153.0.8010.36`, verified archives and existing base digests.
-Browser adds only locked-hash-verified `websockets==15.0.1` wheel, not Hermes runtime/credentials.
+Browser includes hash-verified `websockets==15.0.1` and Debian Xvfb/x11vnc/noVNC/websockify; no Hermes runtime/credentials.
 Browser seccomp derives from Playwright v1.58.2 commit `ce480a952553175eae75342aad2c5e86cdf2cbba`, with in-user-namespace `chroot` allowed. SQLite retains upstream WAL-reset fix.
 Build downloads are distinct from restricted runtime networking.
 
@@ -144,11 +130,12 @@ Application ports and all Python network rules derive from `scout_network`.
 | `logging.level/max_size_mb/backup_count` | INFO / 5 MiB / 3 |
 | `scout_reviewer.model/reasoning_effort/timeout_seconds/retries` | gpt-6-luna / none / 180 seconds per attempt / 1 |
 | `browser.command_timeout/scroll_pixels` | 30 seconds / 500 pixels |
+| `browser.mode/viewer` | `headless` / `false` (production) |
 | `browser.viewport.width/height/device_scale_factor` | 1280×720 main-window CSS contents / browser-wide scale 1 |
 | `scout_lifecycle.startup_timeout/control_connect_timeout` | 20 / 2 seconds |
 | `scout_lifecycle.shutdown_timeout/smoke_timeout` | 5 / 120 seconds |
 | `scout_proxy.dns_timeout/connect_timeout/idle_timeout` | 5 / 10 / 60 seconds |
-| `scout_network` | Subnet, exact .2/.3/.4 addresses, proxy3128/control9222/relay9223 |
+| `scout_network` | Restricted subnet/.2/.3/.4, viewer `172.30.243.0/30`/.2, proxy3128/control9222/relay9223/viewer6080 |
 
 Command timeouts are integer 1–120s; proxy/lifecycle timeouts 1–300s; log size 1–1024 MiB, backup count 1–20, level DEBUG/INFO/WARNING/ERROR.
 Viewport requires positive CDP signed-integer width/height and finite positive numeric scale, never booleans. Missing/invalid values or unsupported actual sizing fail without fallback. Scout evidence API captures raw actual full viewport in memory, preserving popup size; gate uses exact original targets without an archive.
@@ -161,6 +148,14 @@ allowance to configured shutdown grace, so supported grace values are not cut sh
 docker compose -f docker/signal-scout/compose.yaml build
 docker compose -f docker/signal-scout/compose.yaml up -d --force-recreate --wait proxy firewall
 ```
+
+## Watch and control a test browser
+
+Set `browser.mode: headed` and `browser.viewer: true` in image-owned `config.yaml`, then rebuild/recreate as above. `headed` with viewer false also works unattended; no automatic mode fallback. Restore `headless`/false and rebuild/recreate for production.
+Existing trusted `BrowserRun` caller obtains `run.viewer_access()` after owned readiness. Open returned local URL (`http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale` by default), enter returned `scout` username/session password in browser's HTTP login prompt. Credentials live only in browser tmpfs, rotate each run, and never enter Scout environment/readiness/model tools or persisted logs. Do not persist/log returned access details.
+Packaged noVNC supports trusted clicks/typing without LLM review. Scout actions still pass existing review/context recheck; manual changes can invalidate pending approval. Closing viewer tab leaves mission/browser running. Normal owned cleanup removes display/VNC/viewer; no new crash/reconnect policy.
+Xvfb and VNC use container-local UNIX sockets, without host display/device/socket mounts. Websockify requires authentication for HTTP and WebSocket plus local Host/Origin. Dedicated viewer bridge joins only existing firewall/browser namespace: Docker cannot publish an internal-only bridge. Existing restricted bridge stays internal; firewall permits only viewer bridge's host gateway to viewer port/established replies and denies all other traffic on both interfaces. Docker mapping binds 127.0.0.1 only; no LAN/public/CDP exposure. Disabled configuration starts no listener/credentials even though localhost transport remains. Changing viewer subnet/address/port requires matching Compose bridge/address/localhost mapping; topology mismatch fails.
+Pairing: `security/viewer.py` ↔ mode/settings/launcher/firewall ↔ SR_011–SR_013 and real `test_browser_modes.py` checks.
 
 Active persistent logs are `agent.log`, `errors.log`, `proxy.log`, and
 `firewall.log`. Renamed browser firewall appends to existing `firewall.log`, which
@@ -193,8 +188,8 @@ their Hermes-firewall/proxy requirements are superseded by this browser-only
 network boundary and current feature-owned specs.
 
 Open work: independent crash cleanup, supervisor failure policy, selected-tab closure,
-live browsing activation, mission/model-driven research, and broader SS-001,
-SS-015/SS-016 remain incomplete. [Security ownership](../../plugins/signal-scout/security/README.md)
-and [spec gate](../../plugins/signal-scout/spec_checks/README.md) distinguish test execution from link validation. SS-G001–SS-G007 own gate permissions/execution; SS-T001–SS-T005 own native routing, hard interrupt and text/image feedback. Browser action modes are image-owned: click/navigate/type/keypress require review; other implemented actions initially skip review, not protections. Standalone SS-R001–SS-R007 retains native `openai-codex` and read-only `reviewer-policy.md`; live reviewer quality/account and main-agent image support remain unverified.
+live browsing activation, mission/model-driven research, and broader IN_001,
+SR_015/SR_016 remain incomplete. [Security ownership](../../plugins/signal-scout/security/README.md)
+and [spec gate](../../plugins/signal-scout/spec_checks/README.md) distinguish test execution from link validation. AG_001–AG_007 own gate permissions/execution; BR_001–BR_005 own native routing, hard interrupt and text/image feedback. Browser action modes are image-owned: click/navigate/type/keypress require review; other implemented actions initially skip review, not protections. Standalone RV_001–RV_007 retains native `openai-codex` and read-only `reviewer-policy.md`; live reviewer quality/account and main-agent image support remain unverified.
 
 References: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/), [service constraints](https://docs.docker.com/reference/compose-file/services/), [pinned native CDP](https://github.com/vercel-labs/agent-browser/blob/v0.26.0/cli/src/native/browser.rs), [pinned native policy path](https://github.com/chromium/chromium/blob/153.0.8010.36/docs/enterprise/policies.md), [DownloadRestrictions scope](https://github.com/chromium/chromium/blob/153.0.8010.36/components/policy/resources/templates/policy_definitions/Miscellaneous/DownloadRestrictions.yaml).

@@ -1,4 +1,4 @@
-"""SS-B002: real Docker boundary checks; build the bootstrap images first."""
+"""BT_002: real Docker boundary checks; build the bootstrap images first."""
 
 import json
 import socket
@@ -30,7 +30,7 @@ def boundary(scout_stack):
     """Use serialized shared helpers and restore the caller's prior state."""
 
 
-def test_SS_B002_container_identity_mounts_resources_and_native_status():
+def test_BT_002_container_identity_mounts_resources_and_native_status():
     container = compose("run", "--rm", "--no-deps", "-d", "--entrypoint", "sleep", "scout", "45")
     try:
         info = json.loads(subprocess.check_output(["docker", "inspect", container]))[0]
@@ -78,7 +78,7 @@ def test_SS_B002_container_identity_mounts_resources_and_native_status():
     """)
 
 
-def test_SS_B002_hermes_direct_network_and_bootstrap_environment():
+def test_BT_002_hermes_direct_network_and_bootstrap_environment():
     with socket.socket() as server:
         server.bind(("172.30.242.1", 0))
         server.listen()
@@ -105,7 +105,7 @@ def test_SS_B002_hermes_direct_network_and_bootstrap_environment():
     assert json.loads(output) == {'proxy_variables': []}
 
 
-def test_SS_B002_browser_direct_egress_host_lan_ipv6_and_dns_are_blocked(scout_stack):
+def test_BT_002_browser_direct_egress_host_lan_ipv6_and_dns_are_blocked(scout_stack):
     # A real listener distinguishes firewall denial from a closed host port.
     with socket.socket() as server:
         server.bind(("172.30.242.1", 0))
@@ -146,7 +146,7 @@ def test_SS_B002_browser_direct_egress_host_lan_ipv6_and_dns_are_blocked(scout_s
             server.accept()
 
 
-def test_SS_B002_proxy_denies_private_hosts_ports_and_protocols(scout_stack):
+def test_BT_002_proxy_denies_private_hosts_ports_and_protocols(scout_stack):
     scout_stack.exec_firewall("""
         import socket
         from security.settings import load_settings
@@ -177,7 +177,7 @@ def test_SS_B002_proxy_denies_private_hosts_ports_and_protocols(scout_stack):
     """)
 
 
-def test_SS_B002_proxy_accepts_browser_only(scout_stack):
+def test_BT_002_proxy_accepts_browser_only(scout_stack):
     probe(r"""
         import socket
         with socket.create_connection(('172.30.242.2',3128),timeout=2) as client:
@@ -197,7 +197,7 @@ def test_SS_B002_proxy_accepts_browser_only(scout_stack):
     """)
 
 
-def test_SS_B002_hermes_direct_endpoints_keep_verified_tls():
+def test_BT_002_hermes_direct_endpoints_keep_verified_tls():
     # No login or model generation here: two verified TLS handshakes.
     probe("""
         import socket, ssl
@@ -208,7 +208,7 @@ def test_SS_B002_hermes_direct_endpoints_keep_verified_tls():
     """)
 
 
-def test_SS_B003_missing_auth_fails_without_provider_fallback():
+def test_BT_003_missing_auth_fails_without_provider_fallback():
     probe("""
         import os, tempfile
         os.environ['HERMES_HOME'] = tempfile.mkdtemp(prefix='scout-no-auth-')

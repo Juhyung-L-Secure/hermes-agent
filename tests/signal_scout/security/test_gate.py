@@ -1,4 +1,4 @@
-"""SS-G001–SS-G007: request/review/execution boundary, with trusted offline doubles."""
+"""AG_001–AG_007: request/review/execution boundary, with trusted offline doubles."""
 
 from copy import deepcopy
 import importlib
@@ -75,7 +75,7 @@ def boundary(monkeypatch):
     {'action':'close','args':{},'activity':{}},
     {'action':'execute-javascript-poison','args':{}},
 ])
-def test_SS_G001_invalid_or_unknown_request_has_no_effect(boundary, proposal):
+def test_AG_001_invalid_or_unknown_request_has_no_effect(boundary, proposal):
     result = boundary.gate.dispatch(proposal)
     assert set(result) == {'status','reason','execution_started','data'}
     assert result['status'] == 'rejected' and result['execution_started'] is False and result['data'] == {}
@@ -84,7 +84,7 @@ def test_SS_G001_invalid_or_unknown_request_has_no_effect(boundary, proposal):
 
 
 @pytest.mark.parametrize('mode', ['blocked', None])
-def test_SS_G001_missing_permission_never_grants_access(boundary, mode):
+def test_AG_001_missing_permission_never_grants_access(boundary, mode):
     if mode is None:
         del boundary.gate._permissions['navigate']
     else:
@@ -95,7 +95,7 @@ def test_SS_G001_missing_permission_never_grants_access(boundary, mode):
     assert not boundary.calls and not boundary.effects and not boundary.closed
 
 
-def test_SS_G002_SS_G003_fresh_review_copy_and_checked_original_execution(boundary):
+def test_AG_002_AG_003_fresh_review_copy_and_checked_original_execution(boundary):
     request = {'action':'navigate','args':{'url':'http://public.test/original'},'activity':'Inspect original'}
     reviews = []
     def review(**values):
@@ -112,7 +112,7 @@ def test_SS_G002_SS_G003_fresh_review_copy_and_checked_original_execution(bounda
     assert len([call for call in boundary.calls if call[0] == 'prepare']) == 2
 
 
-def test_SS_G002_denial_rejects_then_healthy_request_can_continue(boundary):
+def test_AG_002_denial_rejects_then_healthy_request_can_continue(boundary):
     boundary.reviewer.review = lambda **_: gate_module.ReviewResult('deny', None, 1, 0, {})
     request = {'action':'navigate','args':{'url':'http://public.test/'},'activity':'Inspect'}
     result = boundary.gate.dispatch(request)
@@ -123,7 +123,7 @@ def test_SS_G002_denial_rejects_then_healthy_request_can_continue(boundary):
     assert boundary.gate.dispatch(request)['status'] == 'success'
 
 
-def test_SS_G003_stale_context_has_no_retry_or_effect(boundary):
+def test_AG_003_stale_context_has_no_retry_or_effect(boundary):
     def stale(*_, **__):
         raise evidence_module.EvidenceRejected('private-context-poison')
     boundary.adapter.recheck = stale
@@ -132,7 +132,7 @@ def test_SS_G003_stale_context_has_no_retry_or_effect(boundary):
     assert len(boundary.calls) == 1 and not boundary.effects and not boundary.closed
 
 
-def test_SS_G004_explicit_review_exemption_keeps_exact_preparation(boundary):
+def test_AG_004_explicit_review_exemption_keeps_exact_preparation(boundary):
     boundary.gate._permissions['navigate'] = 'allowed_without_review'
     boundary.reviewer.review = lambda **_: pytest.fail('Exempt action reviewed')
     result = boundary.gate.dispatch({'action':'navigate','args':{'url':'http://public.test/'}})
@@ -143,7 +143,7 @@ def test_SS_G004_explicit_review_exemption_keeps_exact_preparation(boundary):
 
 
 @pytest.mark.parametrize('action', ['back','scroll','snapshot','screenshot','get_images','list_tabs','switch_tab','close'])
-def test_SS_G001_SS_G004_configured_unsupported_review_cannot_bypass(boundary, action):
+def test_AG_001_AG_004_configured_unsupported_review_cannot_bypass(boundary, action):
     boundary.gate._permissions[action] = 'review_required'
     args = {'direction':'down'} if action == 'scroll' else {'target_id':'owned-page'} if action == 'switch_tab' else {}
     result = boundary.gate.dispatch({'action':action,'args':args,'activity':'Inspect'})
@@ -153,7 +153,7 @@ def test_SS_G001_SS_G004_configured_unsupported_review_cannot_bypass(boundary, a
 
 
 @pytest.mark.parametrize('failure', ['review','capture','recheck','dispatch','observation'])
-def test_SS_G005_SS_G006_fatal_tracks_started_execution_and_is_terminal(boundary, monkeypatch, failure):
+def test_AG_005_AG_006_fatal_tracks_started_execution_and_is_terminal(boundary, monkeypatch, failure):
     def broken(*_, **__):
         raise RuntimeError('private-packet-poison')
     if failure == 'review':
@@ -177,7 +177,7 @@ def test_SS_G005_SS_G006_fatal_tracks_started_execution_and_is_terminal(boundary
 
 @pytest.mark.parametrize('value', [None, {}, SimpleNamespace(verdict='approve', failure=None),
     gate_module.ReviewResult('approve','timeout',2,0,{}), gate_module.ReviewResult('unknown',None,1,0,{})])
-def test_SS_G006_invalid_or_failed_review_never_authorizes(boundary, value):
+def test_AG_006_invalid_or_failed_review_never_authorizes(boundary, value):
     boundary.reviewer.review = lambda **_: value
     result = boundary.gate.dispatch({'action':'navigate','args':{'url':'http://public.test/'},'activity':'Inspect'})
     assert result == {'status':'fatal','reason':'Browser review failed.','execution_started':False,'data':{}}
@@ -185,7 +185,7 @@ def test_SS_G006_invalid_or_failed_review_never_authorizes(boundary, value):
 
 
 @pytest.mark.parametrize('stage', ['before','during_review','after_recheck','closed_review'])
-def test_SS_G006_native_interrupt_and_scope_close_prevent_effect(boundary, stage):
+def test_AG_006_native_interrupt_and_scope_close_prevent_effect(boundary, stage):
     if stage == 'before':
         set_interrupt(True)
     elif stage in {'during_review','closed_review'}:
@@ -205,7 +205,7 @@ def test_SS_G006_native_interrupt_and_scope_close_prevent_effect(boundary, stage
     assert not boundary.effects and boundary.closed == [True]
 
 
-def test_SS_G007_private_action_and_policy_mutation_are_not_retained(boundary):
+def test_AG_007_private_action_and_policy_mutation_are_not_retained(boundary):
     boundary.browser.settings['browser']['action_permissions']['navigate'] = 'allowed_without_review'
     request = {'action':'navigate','args':{'url':'http://private-action-poison.test/'},'activity':'private-activity-poison'}
     boundary.reviewer.review = lambda **_: gate_module.ReviewResult('deny', None, 1, 0, {})
@@ -224,7 +224,7 @@ def test_SS_G007_private_action_and_policy_mutation_are_not_retained(boundary):
     {'isDownload':True,'errorText':'private-other-failure'},
     None,
 ])
-def test_SS_G005_SS_G006_SS_S010_only_completed_download_enforcement_keeps_gate_healthy(boundary, monkeypatch, response):
+def test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_healthy(boundary, monkeypatch, response):
     monkeypatch.setattr(boundary.gate, '_execute',
                         gate_module.BrowserActionGate._execute.__get__(boundary.gate))
     boundary.adapter._frames = lambda _: {'root':SimpleNamespace(parent=None,session='owned')}
@@ -256,7 +256,7 @@ def test_SS_G005_SS_G006_SS_S010_only_completed_download_enforcement_keeps_gate_
         assert boundary.gate.dispatch({'action':'snapshot','args':{}})['status'] == 'fatal'
 
 
-def test_SS_G007_required_file_policy_fails_without_fallback(tmp_path):
+def test_AG_007_required_file_policy_fails_without_fallback(tmp_path):
     original = yaml.safe_load(CONFIG.read_text())
     target = tmp_path / 'config.yaml'
     for key, value in [('action_permissions',None), ('action_permissions',{'eval':'allowed_without_review'}),
@@ -278,12 +278,12 @@ def test_SS_G007_required_file_policy_fails_without_fallback(tmp_path):
     ('.', {'key':'.','code':'Period','windowsVirtualKeyCode':190,'nativeVirtualKeyCode':190,'text':'.','unmodifiedText':'.'}),
     ('+', {'key':'+','code':'Equal','windowsVirtualKeyCode':187,'nativeVirtualKeyCode':187,'text':'+','unmodifiedText':'+'}),
 ])
-def test_SS_G002_browser_key_mapping_preserves_native_default_actions(key, expected):
+def test_AG_002_browser_key_mapping_preserves_native_default_actions(key, expected):
     assert gate_module._key_params(key) == expected
 
 
 @pytest.mark.parametrize('case', ['before_response','after_response','same_document','history','history_hash','bfcache','error'])
-def test_SS_G005_navigation_observation_waits_only_exact_native_load(case):
+def test_AG_005_navigation_observation_waits_only_exact_native_load(case):
     cdp = importlib.import_module('plugins.signal-scout.security._cdp')._CDP.__new__(
         importlib.import_module('plugins.signal-scout.security._cdp')._CDP)
     load = {'method':'Page.lifecycleEvent','sessionId':'owned','params':{'frameId':'root','loaderId':'new','name':'load'}}

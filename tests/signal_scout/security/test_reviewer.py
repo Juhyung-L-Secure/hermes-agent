@@ -1,4 +1,4 @@
-"""SS-R001–SS-R006: standalone reviews through native resolver/adapter, offline."""
+"""RV_001–RV_006: standalone reviews through native resolver/adapter, offline."""
 
 import base64
 import importlib
@@ -87,7 +87,7 @@ def transport(monkeypatch, handler, *, completed_object=False):
     return calls
 
 
-def test_SS_R001_SS_R002_SS_R003_native_wire_uses_fresh_policy_evidence_and_settings(configured, monkeypatch):
+def test_RV_001_RV_002_RV_003_native_wire_uses_fresh_policy_evidence_and_settings(configured, monkeypatch):
     create, config, _ = configured
     calls = transport(monkeypatch, lambda *_: response())
     client = create(model='gpt-6-luna', reasoning_effort='low', timeout_seconds=7, retries=2)
@@ -123,7 +123,7 @@ def test_SS_R001_SS_R002_SS_R003_native_wire_uses_fresh_policy_evidence_and_sett
     assert 'poison' not in repr(first) + repr(second) + repr(vars(client))
 
 
-def test_SS_R001_fixed_policy_is_separate_and_safety_only(configured):
+def test_RV_001_fixed_policy_is_separate_and_safety_only(configured):
     create, _, path = configured
     create()
     policy = reviewer.load_policy()
@@ -139,7 +139,7 @@ def test_SS_R001_fixed_policy_is_separate_and_safety_only(configured):
 
 
 @pytest.mark.parametrize('case', ['missing', 'unreadable', 'empty', 'invalid-encoding'])
-def test_SS_R007_authoritative_policy_failure_is_explicit(configured, monkeypatch, tmp_path, case):
+def test_RV_007_authoritative_policy_failure_is_explicit(configured, monkeypatch, tmp_path, case):
     create, _, _ = configured
     client = create()
     path = tmp_path / 'policy.md'
@@ -156,7 +156,7 @@ def test_SS_R007_authoritative_policy_failure_is_explicit(configured, monkeypatc
         client.review(**evidence())
 
 
-def test_SS_R007_fresh_review_reads_policy_file_independently(configured, monkeypatch, tmp_path):
+def test_RV_007_fresh_review_reads_policy_file_independently(configured, monkeypatch, tmp_path):
     create, _, _ = configured
     policy = tmp_path / 'policy.md'
     policy.write_text('First trusted policy.\n')
@@ -177,7 +177,7 @@ def test_SS_R007_fresh_review_reads_policy_file_independently(configured, monkey
     ('{"verdict":true}', False), ('{"verdict":[]}', False), ('["approve"]', False),
     ('null', False), ('', False), ('{"verdict":"approve"}', True),
 ])
-def test_SS_R002_malformed_or_tool_output_is_technical_failure(configured, monkeypatch, text, tools):
+def test_RV_002_malformed_or_tool_output_is_technical_failure(configured, monkeypatch, text, tools):
     create, _, _ = configured
     calls = transport(monkeypatch, lambda *_: response(text, tools=tools))
     result = create(retries=0).review(**evidence())
@@ -187,7 +187,7 @@ def test_SS_R002_malformed_or_tool_output_is_technical_failure(configured, monke
 
 
 @pytest.mark.parametrize('terminal', ['response.failed', 'response.incomplete', 'truncated', 'bad-status'])
-def test_SS_R002_native_failed_or_incomplete_stream_cannot_approve(configured, monkeypatch, terminal):
+def test_RV_002_native_failed_or_incomplete_stream_cannot_approve(configured, monkeypatch, terminal):
     create, _, _ = configured
     def handler(*_):
         item = response().output[0]
@@ -206,7 +206,7 @@ def test_SS_R002_native_failed_or_incomplete_stream_cannot_approve(configured, m
 @pytest.mark.parametrize('item_type', ['function_call', 'custom_tool_call', 'computer_call',
                                      'web_search_call', 'mcp_call'])
 @pytest.mark.parametrize('source', ['added', 'done', 'completed', 'object'])
-def test_SS_R002_native_tool_items_rejected_before_normalization(configured, monkeypatch, item_type, source):
+def test_RV_002_native_tool_items_rejected_before_normalization(configured, monkeypatch, item_type, source):
     create, _, _ = configured
 
     def handler(*_):
@@ -235,7 +235,7 @@ def test_SS_R002_native_tool_items_rejected_before_normalization(configured, mon
 
 @pytest.mark.parametrize('completed_object', [False, True])
 @pytest.mark.parametrize('verdict', ['approve', 'deny'])
-def test_SS_R002_native_message_and_reasoning_remain_valid(configured, monkeypatch, completed_object, verdict):
+def test_RV_002_native_message_and_reasoning_remain_valid(configured, monkeypatch, completed_object, verdict):
     create, _, _ = configured
 
     def handler(*_):
@@ -250,7 +250,7 @@ def test_SS_R002_native_message_and_reasoning_remain_valid(configured, monkeypat
 
 
 @pytest.mark.parametrize('completed_object', [False, True])
-def test_SS_R002_SS_R004_native_tool_failure_retries_once(configured, monkeypatch, completed_object):
+def test_RV_002_RV_004_native_tool_failure_retries_once(configured, monkeypatch, completed_object):
     create, _, _ = configured
 
     def handler(attempt, _):
@@ -268,7 +268,7 @@ def test_SS_R002_SS_R004_native_tool_failure_retries_once(configured, monkeypatc
 
 
 @pytest.mark.parametrize('retries', [0, 1, 3])
-def test_SS_R004_native_sdk_exact_retry_count_and_no_fallback(configured, monkeypatch, retries):
+def test_RV_004_native_sdk_exact_retry_count_and_no_fallback(configured, monkeypatch, retries):
     create, _, _ = configured
     calls = transport(monkeypatch, lambda *_: httpx.Response(500, json={'error': {'message': 'provider exception poison'}}))
     result = create(retries=retries).review(**evidence())
@@ -279,7 +279,7 @@ def test_SS_R004_native_sdk_exact_retry_count_and_no_fallback(configured, monkey
 
 
 @pytest.mark.parametrize('first', ['deny', 'failure', 'malformed'])
-def test_SS_R004_denial_never_retries_technical_failure_does(configured, monkeypatch, first):
+def test_RV_004_denial_never_retries_technical_failure_does(configured, monkeypatch, first):
     create, _, _ = configured
 
     def handler(attempt, _):
@@ -298,7 +298,7 @@ def test_SS_R004_denial_never_retries_technical_failure_does(configured, monkeyp
 
 
 @pytest.mark.parametrize('case', ['missing_auth', 'wrong_model', 'wrong_route', 'sdk_retries'])
-def test_SS_R003_SS_R004_wrong_route_model_or_retry_layer_fails(configured, monkeypatch, case):
+def test_RV_003_RV_004_wrong_route_model_or_retry_layer_fails(configured, monkeypatch, case):
     create, _, _ = configured
     calls = transport(monkeypatch, lambda *_: response())
     if case == 'missing_auth':
@@ -322,7 +322,7 @@ def test_SS_R003_SS_R004_wrong_route_model_or_retry_layer_fails(configured, monk
     assert result.attempts == 2 and calls == []
 
 
-def test_SS_R005_per_attempt_deadline_rejects_late_approval(configured, monkeypatch):
+def test_RV_005_per_attempt_deadline_rejects_late_approval(configured, monkeypatch):
     create, _, _ = configured
     entered = [threading.Event(), threading.Event()]
     release = [threading.Event(), threading.Event()]
@@ -377,7 +377,7 @@ def test_SS_R005_per_attempt_deadline_rejects_late_approval(configured, monkeypa
         assert all(event.wait(5) for event in finished)
 
 
-def test_SS_R005_resolver_hang_is_bounded_before_any_provider_request(configured, monkeypatch):
+def test_RV_005_resolver_hang_is_bounded_before_any_provider_request(configured, monkeypatch):
     create, _, _ = configured
     release, finished = threading.Event(), threading.Event()
     calls = []
@@ -405,7 +405,7 @@ def test_SS_R005_resolver_hang_is_bounded_before_any_provider_request(configured
     ('activity', ''), ('action_type', 'terminal-poison'), ('action', {}), ('context', []),
     ('action', {'number': float('nan')}),
 ])
-def test_SS_R001_SS_R006_invalid_evidence_has_sanitized_failure(configured, monkeypatch, field, value):
+def test_RV_001_RV_006_invalid_evidence_has_sanitized_failure(configured, monkeypatch, field, value):
     create, _, _ = configured
     calls = transport(monkeypatch, lambda *_: response())
     inputs = evidence()
@@ -422,7 +422,7 @@ def test_SS_R001_SS_R006_invalid_evidence_has_sanitized_failure(configured, monk
     ('timeout_seconds', True), ('timeout_seconds', 1.5), ('retries', -1), ('retries', True),
     ('retries', '1'), ('fallback_model', 'other-model'),
 ])
-def test_SS_R003_invalid_required_configuration_fails(configured, field, value):
+def test_RV_003_invalid_required_configuration_fails(configured, field, value):
     _, config, path = configured
     config['scout_reviewer'][field] = value
     path.write_text(yaml.safe_dump(config))
@@ -431,7 +431,7 @@ def test_SS_R003_invalid_required_configuration_fails(configured, field, value):
 
 
 @pytest.mark.parametrize('field', ['model', 'reasoning_effort', 'timeout_seconds', 'retries', 'section'])
-def test_SS_R003_missing_required_configuration_has_no_defaults(configured, field):
+def test_RV_003_missing_required_configuration_has_no_defaults(configured, field):
     _, config, path = configured
     if field == 'section':
         del config['scout_reviewer']
@@ -442,13 +442,13 @@ def test_SS_R003_missing_required_configuration_has_no_defaults(configured, fiel
         settings.load_settings(path)
 
 
-def test_SS_R003_no_native_effort_substitution(configured):
+def test_RV_003_no_native_effort_substitution(configured):
     create, _, _ = configured
     with pytest.raises(ValueError, match='^Unsupported Scout reviewer reasoning effort\\.$'):
         create(reasoning_effort='max')  # Native adapter clamps this model; refuse.
 
 
-def test_SS_R003_timeout_and_none_effort_reach_native_adapter(configured, monkeypatch):
+def test_RV_003_timeout_and_none_effort_reach_native_adapter(configured, monkeypatch):
     create, _, _ = configured
     calls = transport(monkeypatch, lambda *_: response(usage=False))
     observed = []
@@ -465,7 +465,7 @@ def test_SS_R003_timeout_and_none_effort_reach_native_adapter(configured, monkey
     assert calls[0][1]['reasoning']['effort'] == 'none'
 
 
-def test_SS_R006_logging_failure_never_changes_valid_verdict(configured, monkeypatch):
+def test_RV_006_logging_failure_never_changes_valid_verdict(configured, monkeypatch):
     create, _, _ = configured
     transport(monkeypatch, lambda *_: response('{"verdict":"deny"}'))
     def fail(*_):

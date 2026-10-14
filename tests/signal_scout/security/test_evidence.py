@@ -1,4 +1,4 @@
-"""SS-E001–SS-E006: real owned Chromium evidence, identity and context checks."""
+"""AE_001–AE_006: real owned Chromium evidence, identity and context checks."""
 
 import importlib
 from types import SimpleNamespace
@@ -35,8 +35,8 @@ def rejected(adapter, item, kind, action):
 '''
 
 
-def test_SS_E001_SS_E002_SS_E003_compact_refs_scroll_raw_evidence_and_no_action(fixture_web):
-    """SS-E005: oversized original target still has a checked visible point."""
+def test_AE_001_AE_002_AE_003_compact_refs_scroll_raw_evidence_and_no_action(fixture_web):
+    """AE_005: oversized original target still has a checked visible point."""
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
 with Browser() as browser:
@@ -95,7 +95,7 @@ with Browser() as browser:
 ''', timeout=150)
 
 
-def test_SS_E001_SS_E002_SS_E004_SS_E005_same_and_cross_origin_frames(fixture_web):
+def test_AE_001_AE_002_AE_004_AE_005_same_and_cross_origin_frames(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
 with Browser() as browser:
@@ -143,8 +143,8 @@ with Browser() as browser:
 
 
 @pytest.mark.parametrize('change', ['replacement','text','destination','form','form-value','submit-base','focus','hidden','covered','document','action'])
-def test_SS_E004_SS_E005_recheck_rejects_changed_identity_or_context(fixture_web, change):
-    """SS-E001: exact refs; SS-E003: resolved submitter destination evidence."""
+def test_AE_004_AE_005_recheck_rejects_changed_identity_or_context(fixture_web, change):
+    """AE_001: exact refs; AE_003: resolved submitter destination evidence."""
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + '\nchange='+repr(change)+r'''
 with Browser() as browser:
@@ -190,7 +190,7 @@ with Browser() as browser:
 ''', timeout=150)
 
 
-def test_SS_E002_SS_E004_SS_E005_keys_navigation_movement_and_pixel_changes(fixture_web):
+def test_AE_002_AE_004_AE_005_keys_navigation_movement_and_pixel_changes(fixture_web):
     stack, _, counts, _ = fixture_web
     stack.browser_probe(SETUP + r'''
 with Browser() as browser:
@@ -214,7 +214,7 @@ with Browser() as browser:
 ''', timeout=150)
 
 
-def test_SS_E002_SS_E003_SS_E004_closed_shadow_keyboard_focus(fixture_web):
+def test_AE_002_AE_003_AE_004_closed_shadow_keyboard_focus(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
 with Browser() as browser:
@@ -233,7 +233,7 @@ with Browser() as browser:
 ''', timeout=150)
 
 
-def test_SS_E003_SS_E004_active_descendant_identity_and_semantics(fixture_web):
+def test_AE_003_AE_004_active_descendant_identity_and_semantics(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
 with Browser() as browser:
@@ -256,7 +256,7 @@ with Browser() as browser:
 ''', timeout=150)
 
 
-def test_SS_E003_SS_E004_active_descendant_computed_accessible_semantics(fixture_web):
+def test_AE_003_AE_004_active_descendant_computed_accessible_semantics(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
 with Browser() as browser:
@@ -284,7 +284,7 @@ with Browser() as browser:
 
 @pytest.mark.parametrize('message', ['Node is detached from document',
     'Frame with the given id was not found.','Node does not have a layout object'])
-def test_SS_E006_expected_target_loss_protocol_errors_reject(message):
+def test_AE_006_expected_target_loss_protocol_errors_reject(message):
     evidence = importlib.import_module('plugins.signal-scout.security.evidence')
     browser = SimpleNamespace(failed=False)
     adapter = evidence.BrowserEvidence(browser)
@@ -295,7 +295,7 @@ def test_SS_E006_expected_target_loss_protocol_errors_reject(message):
     assert not browser.failed
 
 
-def test_SS_E002_SS_E005_SS_E006_target_loss_during_inspection_rejects(fixture_web):
+def test_AE_002_AE_005_AE_006_target_loss_during_inspection_rejects(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
 with Browser() as browser:
@@ -331,7 +331,7 @@ with Browser() as browser:
 ''', timeout=150)
 
 
-def test_SS_E003_raw_capture_bytes_and_popup_dimensions(fixture_web):
+def test_AE_003_raw_capture_bytes_and_popup_dimensions(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
 with Browser() as browser:
@@ -362,7 +362,7 @@ with Browser() as browser:
 
 
 @pytest.mark.parametrize('phase', ['capture','check'])
-def test_SS_E006_required_machinery_failure_poison_and_owned_teardown(fixture_web, phase):
+def test_AE_006_required_machinery_failure_poison_and_owned_teardown(fixture_web, phase):
     stack, _, _, _ = fixture_web
     helper=stack.compose('ps','-q','proxy')
     with pytest.raises(AssertionError,match='Required browser evidence check failed.'):
@@ -396,7 +396,7 @@ with Browser() as browser:
     assert stack.compose('ps','-q','proxy')==helper
 
 
-def test_SS_R007_policy_packaged_read_only(scout_stack):
+def test_RV_007_policy_packaged_read_only(scout_stack):
     scout_stack.probe('''
 from pathlib import Path
 path=Path('/opt/hermes/plugins/signal-scout/security/reviewer-policy.md')

@@ -20,9 +20,11 @@ class ScoutStack:
     """Execute bounded checks against the existing Compose services only."""
 
     browser_compose_files = (lifecycle.COMPOSE,)
+    browser_config_path = lifecycle.CONFIG
+    compose_command = COMPOSE
 
     def compose(self, *args, timeout=90):
-        result = subprocess.run(COMPOSE + list(args), capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(self.compose_command + list(args), capture_output=True, text=True, timeout=timeout)
         assert result.returncode == 0, result.stderr[-4000:]
         return result.stdout.strip()
 
@@ -40,6 +42,7 @@ class ScoutStack:
     def browser_run(self, **kwargs):
         """Use production ownership/start/stop implementation in every browser fixture."""
         kwargs.setdefault('compose_files', self.browser_compose_files)
+        kwargs.setdefault('config_path', self.browser_config_path)
         return lifecycle.BrowserRun(**kwargs)
 
     def browser_probe(self, code, *options, timeout=90, run=None):

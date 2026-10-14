@@ -1,4 +1,4 @@
-"""SS-G001–SS-G007: real run-owned Chromium guarded execution, offline reviewer."""
+"""AG_001–AG_007: real run-owned Chromium guarded execution, offline reviewer."""
 
 import pytest
 
@@ -42,7 +42,7 @@ def successful(gate,action,args=None):
 '''
 
 
-def test_SS_G001_SS_G002_SS_G005_approved_actions_and_fresh_compact_feedback(fixture_web):
+def test_AG_001_AG_002_AG_005_approved_actions_and_fresh_compact_feedback(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
 with Browser() as browser:
@@ -86,7 +86,7 @@ with Browser() as browser:
 
 
 @pytest.mark.parametrize('change', ['deny','replacement','form','focus','hidden','covered','document'])
-def test_SS_G002_SS_G003_rejection_never_executes_proposal_and_browser_continues(fixture_web, change):
+def test_AG_002_AG_003_rejection_never_executes_proposal_and_browser_continues(fixture_web, change):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + '\nchange=' + repr(change) + r'''
 with Browser() as browser:
@@ -119,7 +119,7 @@ with Browser() as browser:
 ''', timeout=150)
 
 
-def test_SS_G002_SS_G003_same_and_cross_origin_exact_nodes_focus_and_movement(fixture_web):
+def test_AG_002_AG_003_same_and_cross_origin_exact_nodes_focus_and_movement(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
 with Browser() as browser:
@@ -157,7 +157,7 @@ with Browser() as browser:
 ''', timeout=180)
 
 
-def test_SS_G004_SS_G005_exempt_observations_selection_scroll_back_close_and_media(fixture_web):
+def test_AG_004_AG_005_exempt_observations_selection_scroll_back_close_and_media(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
 with Browser() as browser:
@@ -206,7 +206,7 @@ with Browser() as browser:
 ''', timeout=180)
 
 
-def test_SS_G001_SS_G004_SS_G007_modes_and_privacy_reach_real_gate(fixture_web):
+def test_AG_001_AG_004_AG_007_modes_and_privacy_reach_real_gate(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
 with Browser() as browser:
@@ -241,7 +241,7 @@ with Browser() as browser:
 
 
 @pytest.mark.parametrize('phase', ['capture','dispatch','observation'])
-def test_SS_G005_SS_G006_required_failure_terminal_started_and_owned_cleanup(fixture_web, phase):
+def test_AG_005_AG_006_required_failure_terminal_started_and_owned_cleanup(fixture_web, phase):
     stack, _, _, _ = fixture_web
     helper = stack.compose('ps','-q','proxy')
     with stack.browser_run() as run:
@@ -278,7 +278,7 @@ with Browser() as browser:
 
 
 @pytest.mark.parametrize('kind', ['attachment','redirect'])
-def test_SS_G002_SS_G005_SS_S005_SS_S006_SS_S010_approved_download_navigation_keeps_browser_healthy(fixture_web, kind):
+def test_AG_002_AG_005_SR_005_SR_006_SR_010_approved_download_navigation_keeps_browser_healthy(fixture_web, kind):
     stack, _, _, _ = fixture_web
     with stack.browser_run() as run:
         stack.browser_probe(SETUP + OBSERVE + '\nkind=' + repr(kind) + r'''
@@ -329,7 +329,7 @@ with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, op
 
 
 @pytest.mark.parametrize('current', ['deny','approve','timeout'])
-def test_SS_G006_late_review_cannot_execute_or_authorize_current_attempt(fixture_web, current):
+def test_AG_006_late_review_cannot_execute_or_authorize_current_attempt(fixture_web, current):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + '\ncurrent=' + repr(current) + r'''
 import threading

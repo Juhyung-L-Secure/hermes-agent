@@ -13,10 +13,10 @@ for trusted, run-bound reviewed browsing; bootstrap does not select it.
 | `bootstrap.py` | Docker operator entrypoint: status, login, one chat, internal deterministic smoke |
 | `../../docker/signal-scout/` | Image, immutable config, network enforcement, startup |
 | `../../tests/signal_scout/integration/` | Real discovery/dispatch and container checks |
-| `specs.json` | Native integration SS-001 and bootstrap SS-B001–SS-B004 |
+| `specs.json` | Native integration IN_001 and bootstrap BT_001–BT_004 |
 | `missions/specs.json` | Mission execution, stop, checkpoint/resume |
 | `security/` | Browser/proxy/firewall/logging/settings and standalone safety reviewer; broader security specs |
-| `browser_tools/` | Native reviewed-browser registration, trusted binding, feedback and SS-T001–SS-T005 |
+| `browser_tools/` | Native reviewed-browser registration, trusted binding, feedback and BR_001–BR_005 |
 | `evidence/specs.json` | Source inventory, evidence, findings, deduplication |
 | `media/specs.json` | Video/audio analysis and limitations |
 | `budget/specs.json` | Usage measurement and enforcement |
@@ -62,22 +62,22 @@ automated tests, including its spec/link gate. [Checker usage](spec_checks/READM
 explains explicit required IDs and the distinction between links, gaps, manual
 evidence, current test results, and assertion review.
 
-SS-B003 manual live smoke passed on 2026-09-10 after separate operator login:
+BT_003 manual live smoke passed on 2026-09-10 after separate operator login:
 two API calls and one verified status result/explanation. Sanitized evidence:
 `../../stuff/bootstrap-live-verification.json`. This is manual `otherCoverage`,
 not automated live-test coverage.
 
 Open work: automated live coverage remains separate from this successful smoke.
 Deterministic public-web protection harness lives under
-[`security/`](security/README.md). SS-019 and
-SS-S001–SS-S005 cover only network, sandbox/control, protection logging,
+[`security/`](security/README.md). SR_019 and
+SR_001–SR_005 cover only network, sandbox/control, protection logging,
 separate browser container, and disposable single-run lifetime. Trusted host
 smoke uses existing native remote-CDP driver path; operator entrypoints remain status-only.
 Independent teardown after coordinator/host loss remains deferred.
 Research missions, live model browsing activation, evidence, reports, messaging, scheduling, and
 budget engines remain future work. Native Hermes extension boundaries remain
 available for later explicit messaging integration; no abstraction is added.
-Standalone safety-reviewer contracts SS-R001–SS-R006 now cover prepared in-memory
+Standalone safety-reviewer contracts RV_001–RV_006 now cover prepared in-memory
 evidence, fixed safety policy, fresh native subscription requests, strict verdicts,
 configured deadlines/retries and sanitized rotating metadata. Browser-action gate
 and adapter contracts live with their owning features; live reviewer quality,

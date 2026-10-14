@@ -23,6 +23,10 @@ services:
     networks:
       restricted:
         ipv4_address: 172.30.242.4
+      viewer:
+        ipv4_address: 172.30.243.2
+    # Only viewer transport is published. Disabled config starts no listener.
+    ports: ["127.0.0.1:6080:6080"]
     depends_on:
       proxy:
         condition: service_healthy

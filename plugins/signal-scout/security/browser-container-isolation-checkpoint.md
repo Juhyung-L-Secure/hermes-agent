@@ -13,7 +13,7 @@ policy, setting, general-runner change, crash recovery, or supervisor policy.
   522.8s. Counts: container5, plugin2, settings31, browser-boundary5, isolation14,
   lifecycle11, logging7, policy57, spec-check35.
 - Final required spec gate: exit 0; 47 specs, 167 collected tests, 63 valid links.
-  SS-S005 adds five passing unit/e2e links. Future mission/reviewer gaps remain.
+  SR_005 adds five passing unit/e2e links. Future mission/reviewer gaps remain.
 - Final `scout status`: exit 0; version0.1.0 ready, broader research not implemented.
 - Final deterministic HTTPS smoke: exit 0;
   `{"success":true,"sandbox":"verified","observation":"completed"}`.
@@ -97,7 +97,7 @@ Coordinator also appended session outcomes to
 | `plugins/signal-scout/security/network_proxy.py` | modified | Exact two-client allowlist from config |
 | `plugins/signal-scout/security/runtime_logging.py` | modified | Distinct browser-firewall log |
 | `plugins/signal-scout/security/settings.py` | modified | Strict topology/lifecycle validation and config digest |
-| `plugins/signal-scout/security/specs.json` | modified | Updated contracts and SS-S004/SS-S005 coverage, including five regression links |
+| `plugins/signal-scout/security/specs.json` | modified | Updated contracts and SR_004/SR_005 coverage, including five regression links |
 | `plugins/signal-scout/security/README.md` | modified | Security ownership and exclusions |
 | `plugins/signal-scout/bootstrap.py` | modified | Bounded non-model smoke entrypoint |
 | `plugins/signal-scout/specs.json` | modified | B002/B004 contract updates; broader gaps preserved |
@@ -118,9 +118,9 @@ Coordinator also appended session outcomes to
 
 Resume authorized 2026-09-18. Patches rebuilt; focused lifecycle suite passed
 11 tests, 0 failures/skips in 116.1s. Settings passed 31/31 in 14.6s.
-Final config validation and rebuild passed; five proven SS-S005 coverage links added.
+Final config validation and rebuild passed; five proven SR_005 coverage links added.
 Full suite attempt 1: 166 passed, 1 failed, 0 skipped across 9 files in 539.5s.
-Only failure: existing `test_SS_B002_proxy_denies_private_hosts_ports_and_protocols`
+Only failure: existing `test_BT_002_proxy_denies_private_hosts_ports_and_protocols`
 receives `TimeoutError` while test socket allows 3 seconds and configured proxy
 DNS allowance is 5 seconds. All 11 new lifecycle cases passed again in full suite.
 Unchanged focused retry reproduced failure (0 passed, 1 failed, 4 deselected,
@@ -190,7 +190,7 @@ build each passed both before focused tests and after spec links were updated.
 | `tests/signal_scout/security/test_lifecycle_failures.py` | Added | 11 passing unit/real-container regressions for three findings. |
 | `tests/signal_scout/integration/test_settings.py` | Modified | Existing stop-bound assertion follows configured grace. |
 | `tests/signal_scout/integration/test_container.py` | Modified | Denial response deadline follows configured DNS bound plus 2s delivery/scheduling overhead; denial assertions unchanged. |
-| `plugins/signal-scout/security/specs.json` | Modified | SS-S005 contract clarified; five passing unit/e2e links added. |
+| `plugins/signal-scout/security/specs.json` | Modified | SR_005 contract clarified; five passing unit/e2e links added. |
 | `docker/signal-scout/README.md` | Modified | Reviewed ownership, transport-failure and shutdown semantics. |
 | `plugins/signal-scout/security/README.md` | Modified | Same security guarantees; deferred policies unchanged. |
 | `plugins/signal-scout/security/browser-container-isolation-checkpoint.md` | Added/updated | Durable pause/resume evidence and current blocked verification. |
@@ -262,7 +262,7 @@ Preserve user files, `.gitignore`, `AGENTS.md`, auth/log volumes, and historical
 | `plugins/signal-scout/security/README.md` | Modified | Same security/lifecycle semantics. |
 | `plugins/signal-scout/security/browser-container-isolation-checkpoint.md` | Added | Durable pause handoff and sanitized essential evidence. |
 
-No fix-round spec links added yet. Add applicable SS-S005 links only after passing coverage; do not claim completed coverage now.
+No fix-round spec links added yet. Add applicable SR_005 links only after passing coverage; do not claim completed coverage now.
 
 ## Exact test commands and known results
 
@@ -356,7 +356,7 @@ Required final commands, separately, after final source/spec updates:
 docker compose -f docker/signal-scout/compose.yaml config --quiet
 docker compose -f docker/signal-scout/compose.yaml build
 HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0
-.venv/bin/python plugins/signal-scout/spec_checks/check.py --require SS-B001 --require SS-B002 --require SS-B004 --require SS-019 --require SS-S001 --require SS-S002 --require SS-S003 --require SS-S004 --require SS-S005 --require SS-C001 --require SS-C002 --require SS-C003 --require SS-C004 --require SS-C005 --require SS-C006
+.venv/bin/python plugins/signal-scout/spec_checks/check.py --require BT_001 --require BT_002 --require BT_004 --require SR_019 --require SR_001 --require SR_002 --require SR_003 --require SR_004 --require SR_005 --require SC_001 --require SC_002 --require SC_003 --require SC_004 --require SC_005 --require SC_006
 docker compose -f docker/signal-scout/compose.yaml run --rm -T scout status
 .venv/bin/python docker/signal-scout/browser_run.py https://example.com
 ```

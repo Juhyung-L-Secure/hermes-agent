@@ -15,8 +15,9 @@ from pathlib import Path, PurePosixPath
 SPEC_ROOT = Path("plugins/signal-scout")
 TEST_ROOT = Path("tests/signal_scout")
 LAYERS = {"unit", "e2e"}
-SPEC_ID = re.compile(r"SS-[A-Z]?\d{3}")
-TEST_ID = re.compile(r"(?<![A-Za-z0-9])SS[-_][A-Z]?\d{3}(?![A-Za-z0-9])")
+SPEC_ID = re.compile(r"[A-Z]{2}_[0-9]{3}")
+_DELIMITERS = r"\s`'\"\[\](){};, :"
+_DOC_ID = re.compile(rf"(?<![^{_DELIMITERS}]){SPEC_ID.pattern}(?![^{_DELIMITERS}])")
 
 
 def _require(condition, message):
@@ -109,6 +110,17 @@ def _read_specs(root):
     return specs
 
 
+def _declarations(name, docstring):
+    declared = set(_DOC_ID.findall(docstring))
+    for component in name.split("::"):
+        tokens = component.removeprefix("Test").split("_")
+        for prefix, number in zip(tokens, tokens[1:]):
+            spec_id = f"{prefix}_{number}"
+            if SPEC_ID.fullmatch(spec_id):
+                declared.add(spec_id)
+    return frozenset(declared)
+
+
 def _collect(root):
     # Pytest owns discovery; test bodies and fixtures never execute here.
     import pytest
@@ -119,11 +131,10 @@ def _collect(root):
 
         def pytest_collection_finish(self, session):
             for item in session.items:
-                title = item.nodeid.split("::", 1)[-1].split("[", 1)[0]
-                title += " " + (inspect.getdoc(item.obj) or "")
-                self.tests[item.nodeid] = sorted({
-                    match.replace("_", "-") for match in TEST_ID.findall(title)
-                })
+                obj = getattr(item, "obj", None)
+                names = [node.name for node in item.listchain() if isinstance(node, pytest.Class)]
+                names.append(getattr(item, "originalname", None) or getattr(obj, "__name__", ""))
+                self.tests[item.nodeid] = sorted(_declarations("::".join(names), inspect.getdoc(obj) or ""))
 
     inventory = Inventory()
     with contextlib.redirect_stdout(sys.stderr):

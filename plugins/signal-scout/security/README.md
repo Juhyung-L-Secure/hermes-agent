@@ -14,6 +14,7 @@ Mission control remains unimplemented. Download denial and window sizing persist
 | `network_proxy.py` | Approved clients, fresh DNS, every-answer classification, numeric connect, actual-peer check |
 | `firewall.py` | Browser namespace default-deny rules and payload-free NFLOG |
 | `chromium.py` | Owned child/profile/listener, native policy attestation, main-window sizing, relay |
+| `viewer.py` | Isolated Xvfb/VNC lifetime and authenticated packaged noVNC transport |
 | `../../../docker/signal-scout/chrome-policy.json` | Image-owned mandatory `DownloadRestrictions: 3` |
 | `control.py` | Strict owned endpoint shape and non-redirecting discovery |
 | `browser.py` | Existing native Hermes remote-CDP path and actual sandbox attestation |
@@ -24,7 +25,7 @@ Mission control remains unimplemented. Download denial and window sizing persist
 | `evidence.py` / `_cdp.py` | Compact exact refs, preparation, viewport capture and recheck |
 | `gate.py` | Trusted run binding, explicit permissions, exact guarded execution and fatal closure |
 | `reviewer-policy.md` | Single authoritative read-only reviewer instructions |
-| `specs.json` | SS-019, SS-S001–S010, SS-R001–R007, SS-E001–E006, SS-G001–G007 and unfinished missions |
+| `specs.json` | SR_019, SR_001–S013, RV_001–R007, AE_001–E006, AG_001–G007 and unfinished missions |
 | `../../../tests/signal_scout/security/` | Policy/logging unit checks and real-container boundary/lifetime fixtures |
 
 ## Boundary and control
@@ -41,8 +42,7 @@ If create succeeds but start fails without returning ID, only the exact attempte
 name/project/service/current-run match is resolved for ownership-checked cleanup.
 Launcher starts one new child/profile, proves its socket inode owns loopback CDP,
 then opens relay accepting only Hermes IP and forwarding only to owned endpoint.
-Discovery validates host/port/browser path; redirect/stale endpoints fail. Child
-exit closes relay; no replacement, external attachment, fallback, reuse or adoption.
+Discovery validates host/port/browser path; redirect/stale endpoints fail. Child exit closes relay; no replacement, external attachment, fallback, reuse or adoption.
 
 Native `_run_browser_command` keeps supported `BROWSER_CDP_URL`, pinned driver/
 supervisor, per-run temporary transport and scrubbed subprocess environment.
@@ -72,11 +72,10 @@ HTTP discovery. Ordinary navigation denials remain distinct; supervisor policy
 does not change. Host stop deadline includes configured grace plus existing
 bounded Docker-command allowance, including supported grace values above 60s.
 
-Config owns `.2:3128` proxy/`.3` Hermes/`.4` browser on `172.30.242.0/29`; host
-checks Compose agrees. Hermes reaches private `.4:9223`; relay/launcher only
-owned `127.0.0.1:9222`. Browser shares firewall namespace; proxy admits browser
-only. Remaining IPv4/IPv6/direct DNS denied; no published ports. Hermes outbound/
-DNS remain direct, without Hermes host/LAN isolation.
+Config owns `.2:3128` proxy/`.3` Hermes/`.4` browser on internal `172.30.242.0/29`; host checks Compose agrees. Separate viewer `172.30.243.0/30`/.2 bridge joins only firewall/browser namespace for localhost publication. Firewall permits only its gateway's viewer ingress/established replies; other traffic stays denied on both interfaces. Hermes reaches private `.4:9223`; relay/launcher only owned `127.0.0.1:9222`. Proxy admits browser only. Remaining IPv4/IPv6/direct DNS denied; CDP stays unpublished. Hermes outbound/DNS remain direct, without Hermes host/LAN isolation.
+
+`browser.mode` explicitly selects headless (default) or headed/container-local Xvfb. `browser.viewer` defaults false and requires headed when true. Native x11vnc UNIX socket → websockify/packaged noVNC → host `127.0.0.1:6080`; no host display/device mounts or fifth service. Firewall adds only host-gateway viewer ingress/established replies. HTTP/WS require fresh per-run Basic auth and local Host/Origin; secret lives in tmpfs, never Chrome/Scout environment, process arguments/readiness/logs. Trusted `BrowserRun.viewer_access()` returns operator login after owned readiness; disabled viewer creates no listener/secret. Viewer-tab closure leaves browser/mission running. Human click/type bypasses LLM review, while Scout review and stale-context recheck stay enforced.
+Pairing: viewer/launcher/settings/firewall/Docker mapping ↔ SR_011–SR_013 ↔ `test_browser_modes.py`; [Docker guide](../../../docker/signal-scout/README.md) owns access/rebuild steps.
 
 Source-IP checks are not cryptographic authentication. Authorized trusted code
 can reach control; compromised Chromium/kernel/Docker/host remains trust risk.
@@ -102,10 +101,7 @@ Launcher/Hermes/host loss has **no independent teardown guarantee**. No watchdog
 recovery/scavenging/restart or crash-recovery passing test. Operator must inspect
 ownership and deliberately clean before another run.
 
-Logging retains timestamp, level, component, event class only; no URL, raw
-browser/CDP result, screenshot, cookie, credential or unsanitized exception.
-Reviewer completion events additionally retain validated verdict, action type,
-duration in milliseconds, attempt count, and available adapter token counts.
+Logging retains timestamp, level, component, event class only; no URL, raw browser/CDP result, screenshot, cookie, credential or unsanitized exception. Reviewer completion events additionally retain validated verdict, action type, duration in milliseconds, attempt count, and available adapter token counts.
 Hermes sanitized events reuse native logging. Proxy and browser firewall use
 `proxy.log` and `firewall.log` in existing log volume. Renamed firewall appends
 to `firewall.log`, which can retain older Hermes-firewall events. Historical
@@ -121,9 +117,9 @@ TLS/DNS fixtures, serialized Docker and prior helper restoration. Use
 `HERMES_TEST_WORKERS=1` to avoid deadline charges for shared-stack lock waits.
 Tests make no model calls or login changes.
 
-Required gate selects SS-S001–S010, SS-B001/B002/B004, SS-019, SS-C001–C006,
-SS-R001–R007, SS-E001–E006, SS-G001–G007. Links prove discovery, not quality/pass.
-Broader SS-001/015–018/020–021 remain incomplete: no mission/report attestation,
+Required gate selects SR_001–S013, BT_001/B002/B004, SR_019, SC_001–C006,
+RV_001–R007, AE_001–E006, AG_001–G007. Links prove discovery, not quality/pass.
+Broader IN_001/015–018/020–021 remain incomplete: no mission/report attestation,
 whole-mission policy, evidence storage, media quarantine or authenticated browsing.
 
 ## Guarded actions, evidence and reviewer
@@ -194,7 +190,7 @@ fail. Late results cannot approve. No raw request/transcript/tracing/history ret
 known token metadata retained. Hung daemon may finish late; no memory-erasure/
 provider-retention/live-quality guarantee. Final failure closes gate/owned Browser.
 
-Pairings: reviewer ↔ SS-R001–R007 ↔ reviewer/logging tests; gate/settings ↔
-SS-G001–G007 ↔ gate tests; evidence/browser/CDP ↔ SS-E001–E006 ↔ evidence tests;
-launcher/settings/policy ↔ SS-S006–S010 ↔ safeguard/window tests. Required gate
+Pairings: reviewer ↔ RV_001–R007 ↔ reviewer/logging tests; gate/settings ↔
+AG_001–G007 ↔ gate tests; evidence/browser/CDP ↔ AE_001–E006 ↔ evidence tests;
+launcher/settings/policy ↔ SR_006–S010 ↔ safeguard/window tests. Required gate
 includes implemented IDs; authentication/mission policy/live quality remain open.
