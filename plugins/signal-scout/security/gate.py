@@ -1,15 +1,20 @@
 """Execute one exact browser proposal through the run-owned safety boundary."""
 
 from copy import deepcopy
+import logging
 import os
 import re
+import time
 
-from ._cdp import _ProtocolError
+from ._cdp import _NavigationOutcome, _ProtocolError
 from .browser import Browser
 from .evidence import EvidenceFailure, EvidenceRejected
 from .reviewer import ReviewResult
 from .settings import _ACTION_MODES
 from .urls import validate_url
+
+
+logger = logging.getLogger(__name__)
 
 
 _FIELDS = {
@@ -94,11 +99,13 @@ class BrowserActionGate:
         permissions = policy["action_permissions"]
         if (not isinstance(permissions, dict) or set(permissions) - _FIELDS.keys()
                 or any(not isinstance(mode, str) or mode not in _ACTION_MODES for mode in permissions.values())
-                or type(policy["scroll_pixels"]) is not int or policy["scroll_pixels"] <= 0):
+                or type(policy["scroll_pixels"]) is not int or policy["scroll_pixels"] <= 0
+                or type(policy["navigation_retries"]) is not int or policy["navigation_retries"] < 0):
             raise ValueError("Invalid Scout operating settings.")
         self._browser, self._reviewer = browser, reviewer
         self._permissions = dict(permissions)
         self._scroll_pixels = policy["scroll_pixels"]
+        self._navigation_retries = policy["navigation_retries"]
         self._selected = target_id
         self._terminal = False
         self._fatal_reason = "Browser gate is closed."
@@ -191,14 +198,27 @@ class BrowserActionGate:
         return frame, obj
 
     def _navigation(self, frames, root, method, params, invoke):
-        # Match native navigation's load synchronization within the existing
-        # command timeout. No network-idle guarantee or stale/action retry.
         evidence = self._evidence
         evidence._command("Page.enable", session=root.session)
         evidence._command("Page.setLifecycleEventsEnabled", {"enabled": True}, root.session)
         frame_id = next(key for key, frame in frames.items() if frame is root)
+        if method == "Page.navigate":
+            return invoke(lambda: evidence._cdp.navigate(params["url"], root.session, frame_id))
         return invoke(lambda: evidence._cdp.command(method, params, root.session,
             navigation_frame=frame_id))
+
+    def _navigation_page(self, connection):
+        self._live()
+        evidence = self._evidence
+        if connection is None or evidence._cdp is not connection:
+            raise EvidenceFailure("Browser control unavailable.")
+        self._browser.verify_control()
+        evidence._frames(self._selected)
+        snapshot = evidence.snapshot(self._selected)
+        self._live()
+        if evidence._cdp is not connection:
+            raise EvidenceFailure("Browser control unavailable.")
+        return {"snapshot": snapshot, "target_id": self._selected}
 
     def _execute(self, action, args, checked, invoke):
         evidence = self._evidence
@@ -212,11 +232,7 @@ class BrowserActionGate:
         root = self._root(frames)
         command = lambda method, params: invoke(lambda: evidence._command(method, params, root.session))
         if action == "navigate":
-            result = self._navigation(frames, root, "Page.navigate", {"url": args["url"]}, invoke)
-            # Attested native download denial aborts navigation, not control.
-            if result.get("errorText") and not (result.get("isDownload") is True
-                    and result["errorText"] == "net::ERR_ABORTED"):
-                raise EvidenceFailure("Browser navigation failed.")
+            return self._navigation(frames, root, "Page.navigate", {"url": args["url"]}, invoke)
         elif action == "click":
             x, y = checked.interaction_point
             for kind, buttons in (("mousePressed", 1), ("mouseReleased", 0)):
@@ -266,8 +282,8 @@ class BrowserActionGate:
             })).filter(img => img.src && !img.src.startsWith('data:'))"""))["value"]
             return {"images": images, "target_id": tab}
         if action in _POST_SNAPSHOT:
-            self._live()
-            return {"snapshot": evidence.snapshot(self._selected), "target_id": self._selected}
+            return {"snapshot": invoke(lambda: evidence.snapshot(self._selected), phase_name="observation"),
+                    "target_id": self._selected}
         raise EvidenceFailure("Browser action execution unavailable.")
 
     def dispatch(self, request):
@@ -278,48 +294,96 @@ class BrowserActionGate:
         closes this gate/Browser; adapter must stop its enclosing run. Started
         means dispatch began, never proof of completed server-side effects.
         """
-        started = False
-        def invoke(operation):
-            nonlocal started
+        started, action, phase, began = False, "unknown", "preparation", time.monotonic()
+        def invoke(operation, *, phase_name="execution"):
+            nonlocal started, phase
+            phase = phase_name
             self._live()
             started = True
             return operation()
+        def diagnostic(*, failure=None):
+            try:
+                logger.error("Browser action failed action=%s phase=%s elapsed_ms=%d failure=%s",
+                    action, phase, int((time.monotonic() - began) * 1000), failure,
+                    exc_info=True if failure is None else None)
+            except Exception:
+                pass
+        def incomplete():
+            nonlocal phase
+            phase = "observation"
+            return self._result("incomplete", "Browser navigation did not complete.",
+                started=True, data=self._navigation_page(connection))
         try:
             self._live()
             try:
                 request, mode = self._request(request)
             except EvidenceRejected as error:
                 return self._result("rejected", str(error))
-            action, args = request["action"], request["args"]
-            checked = None
-            if action in _REVIEWED:
-                prepared = self._evidence.prepare(target_id=self._selected, action_type=action,
-                    action=args, activity=request.get("activity"), capture=mode == "review_required")
-                if action == "type":
-                    frame, obj = self._type_target(prepared._binding, self._evidence._frames(self._selected))
-                    self._evidence._command("Runtime.releaseObject", {"objectId": obj}, frame.session)
-                if mode == "review_required":
-                    result = self._reviewer.review(**prepared.reviewer_input())
-                    self._live()
-                    if (not isinstance(result, ReviewResult) or result.failure is not None
-                            or result.verdict not in {"approve", "deny"}):
-                        return self._fatal("Browser review failed.", False)
-                    if result.verdict == "deny":
-                        return self._result("rejected", "Browser action denied.")
+            action = request["action"]
+            connection = getattr(self._evidence, "_cdp", None)
+            failed_navigation = False
+            attempts = 1 + self._navigation_retries if action == "navigate" else 1
+            for attempt in range(attempts):
+                phase = "preparation"
+                try:
+                    current, mode = self._request(request)
+                    args = current["args"]
+                    checked = None
+                    if action in _REVIEWED:
+                        prepared = self._evidence.prepare(target_id=self._selected, action_type=action,
+                            action=args, activity=current.get("activity"), capture=mode == "review_required")
+                        if action == "type":
+                            frame, obj = self._type_target(prepared._binding, self._evidence._frames(self._selected))
+                            self._evidence._command("Runtime.releaseObject", {"objectId": obj}, frame.session)
+                        if mode == "review_required":
+                            phase = "review"
+                            result = self._reviewer.review(**prepared.reviewer_input())
+                            self._live()
+                            if (not isinstance(result, ReviewResult) or result.failure is not None
+                                    or result.verdict not in {"approve", "deny"}):
+                                diagnostic(failure="invalid_review_result")
+                                return self._fatal("Browser review failed.", started)
+                            if result.verdict == "deny":
+                                if failed_navigation:
+                                    return incomplete()
+                                return self._result("rejected", "Browser action denied.")
+                        self._live()
+                        phase = "recheck"
+                        checked = self._evidence.recheck(prepared, action_type=action, action=args)
+                except (EvidenceRejected, _ProtocolError) as error:
+                    if (failed_navigation and phase in {"preparation", "recheck"}
+                            and (isinstance(error, EvidenceRejected) or error.stale)):
+                        return incomplete()
+                    raise
                 self._live()
-                checked = self._evidence.recheck(prepared, action_type=action, action=args)
-            self._live()
-            data = self._execute(action, args, checked, invoke)
-            return self._result("success", started=started, data=data)
+                phase = "execution"
+                data = self._execute(action, args, checked, invoke)
+                if isinstance(data, _NavigationOutcome):
+                    if data in {_NavigationOutcome.LOAD_TIMEOUT, _NavigationOutcome.LOAD_ERROR}:
+                        failed_navigation = True
+                        phase = "observation"
+                        current_page = self._navigation_page(connection)
+                        if attempt + 1 < attempts:
+                            continue
+                        return self._result("incomplete", "Browser navigation did not complete.",
+                            started=True, data=current_page)
+                    if failed_navigation and data is _NavigationOutcome.SAME_DOCUMENT:
+                        return incomplete()
+                    data = {"snapshot": invoke(lambda: self._evidence.snapshot(self._selected),
+                        phase_name="observation"), "target_id": self._selected}
+                return self._result("success", started=started, data=data)
         except _Stopped as error:
             return self._fatal(str(error), started)
         except EvidenceRejected:
             if not started:
                 return self._result("rejected", "Browser context changed.")
+            diagnostic()
             return self._fatal("Browser action failed.", True)
         except _ProtocolError as error:
             if error.stale and not started:
                 return self._result("rejected", "Browser context changed.")
+            diagnostic()
             return self._fatal("Browser action failed.", started)
         except Exception:
+            diagnostic()
             return self._fatal("Browser action failed.", started)

@@ -75,6 +75,16 @@ def test_BR_001_native_discovery_keeps_status_and_browser_separate(native_plugin
     assert "error" in json.loads(handle_function_call("scout_browser", {}))
 
 
+def test_BR_002_incomplete_result_forwards_without_stop_or_redispatch(native_plugin):
+    result={'status':'incomplete','reason':'Browser navigation did not complete.','execution_started':True,
+            'data':{'snapshot':'- heading "Current page"','target_id':'tab-a'}}
+    gate=FakeGate(result)
+    request={'action':'navigate','args':{'url':'https://example.com/'},'activity':'Inspect source'}
+    with native_plugin.bind_browser(gate,on_fatal=lambda: pytest.fail('Incomplete navigation stopped agent')):
+        assert json.loads(dispatch(request))==result
+        assert gate.requests==[request]
+
+
 @pytest.mark.parametrize("proposed", [
     {"action": "click", "args": {"ref": "@s10"}, "activity": "Inspect menu"},
     {"action": "navigate", "args": {"url": "https://example.com/search?q=%E9%9B%AA"}, "activity": "Open source"},

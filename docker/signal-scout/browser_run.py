@@ -76,7 +76,7 @@ class BrowserRun:
     apply explicit test/operator configurations; none is a fallback source.
     """
 
-    def __init__(self, compose_files=(COMPOSE,), config_path=CONFIG):
+    def __init__(self, compose_files=(COMPOSE,), config_path=CONFIG, *, restore_helpers=False):
         self.config = settings.load_settings(config_path)
         self.compose = ["docker", "compose"]
         for path in compose_files:
@@ -88,6 +88,47 @@ class BrowserRun:
         self.container = None
         self.endpoint = None
         self.lock = None
+        self.restore_helpers = restore_helpers
+        self._helper_state = None
+
+    def inspect_helper(self, service):
+        identifier = checked(self.compose + ["ps", "-a", "-q", service])
+        if not identifier:
+            return None
+        if not re.fullmatch("[0-9a-f]{64}", identifier):
+            raise RuntimeError("Helper ownership verification failed.")
+        info = json.loads(checked(["docker", "inspect", identifier]))[0]
+        labels = info["Config"]["Labels"]
+        if (info["Id"] != identifier or labels.get("com.docker.compose.project") != self.project
+                or labels.get("com.docker.compose.service") != service):
+            raise RuntimeError("Helper ownership verification failed.")
+        return info
+
+    def _restore_helpers(self):
+        if self._helper_state is None:
+            return
+        errors = []
+        try:
+            for service, running in self._helper_state.items():
+                try:
+                    info = self.inspect_helper(service)
+                    if running and (info is None or not info["State"]["Running"]):
+                        checked(self.compose + ["up", "-d", "--wait", service])
+                except Exception as error:
+                    errors.append(error)
+            for service, running in self._helper_state.items():
+                try:
+                    info = self.inspect_helper(service)
+                    if not running and info is not None and info["State"]["Running"]:
+                        grace = self.config["scout_lifecycle"]["shutdown_timeout"]
+                        checked(["docker", "stop", "-t", str(grace), info["Id"]],
+                                timeout=grace + DOCKER_COMMAND_TIMEOUT)
+                except Exception as error:
+                    errors.append(error)
+        finally:
+            self._helper_state = None
+        if errors:
+            raise RuntimeError("Scout helper restoration failed.") from None
 
     def start_helpers(self):
         """Install browser policy and start its proxy before creating the browser."""
@@ -123,6 +164,16 @@ class BrowserRun:
                                 "--filter", "label=com.docker.compose.service=browser"])
             if existing:
                 raise RuntimeError("Existing Scout browser requires operator inspection.")
+            if self.restore_helpers:
+                existing = checked(["docker", "ps", "-aq", "--filter", "label=com.docker.compose.project=" + self.project,
+                                    "--filter", "label=com.docker.compose.service=scout"])
+                if existing:
+                    raise RuntimeError("Existing Scout mission requires operator inspection.")
+                snapshot = {}
+                for service in ("firewall", "proxy"):
+                    info = self.inspect_helper(service)
+                    snapshot[service] = bool(info and info["State"]["Running"])
+                self._helper_state = snapshot
             self.start_helpers()
             name = self.project + "-browser-active"
             try:
@@ -195,7 +246,7 @@ class BrowserRun:
         return metadata
 
     def close(self):
-        """Stop/remove exact owned browser; retain images, helpers, and all volumes."""
+        """Remove exact owned browser, optionally restore helpers; retain images/volumes."""
         try:
             if self.container is not None:
                 self.inspect_owned()
@@ -205,9 +256,12 @@ class BrowserRun:
                 checked(["docker", "rm", self.container])
                 self.container = None
         finally:
-            if self.lock is not None:
-                os.close(self.lock)
-                self.lock = None
+            try:
+                self._restore_helpers()
+            finally:
+                if self.lock is not None:
+                    os.close(self.lock)
+                    self.lock = None
 
     def __exit__(self, *_):
         self.close()

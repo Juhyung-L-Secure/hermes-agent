@@ -1,6 +1,7 @@
 """Expose bootstrap status and separately selected reviewed browser routing."""
 
 import json
+from pathlib import Path
 
 from . import browser_tools
 
@@ -36,3 +37,4 @@ def register(ctx):
         handler=status,
     )
     browser_tools.register(ctx)
+    ctx.register_skill("browser-research", Path(__file__).parent / "skills/browser-research/SKILL.md")

@@ -17,6 +17,7 @@ _SCHEMA = {
         "Supply a brief activity for actions requiring safety review. "
         "Use exact references from returned snapshots and IDs from list_tabs. "
         "Rejected actions did not execute; fatal outcomes stop the run. "
+        "Incomplete navigation returns current page content; choose another URL if needed. "
         "Snapshots describe current capture state, not a settled-page guarantee."
     ),
     "parameters": {

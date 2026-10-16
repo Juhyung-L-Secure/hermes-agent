@@ -4,10 +4,15 @@ import base64
 from copy import deepcopy
 from dataclasses import dataclass, field
 import json
+import logging
 import struct
+import time
 
 from ._cdp import _CDP, _ProtocolError
 from .urls import validate_url
+
+
+logger = logging.getLogger(__name__)
 
 
 class EvidenceRejected(Exception):
@@ -178,16 +183,19 @@ class BrowserEvidence:
         return self._cdp.command(method, params, session)
 
     def _run(self, operation):
+        began = time.monotonic()
         try:
             return operation()
         except EvidenceRejected:
             raise
-        except _ProtocolError as exc:
-            if exc.stale:
+        except Exception as error:
+            if isinstance(error, _ProtocolError) and error.stale:
                 raise EvidenceRejected("Original browser target is stale.") from None
-            self._browser.failed = True
-            raise EvidenceFailure("Required browser evidence check failed.") from None
-        except Exception:
+            try:
+                logger.error("Browser evidence failed operation=inspection elapsed_ms=%d",
+                    int((time.monotonic() - began) * 1000), exc_info=True)
+            except Exception:
+                pass
             self._browser.failed = True
             raise EvidenceFailure("Required browser evidence check failed.") from None
 

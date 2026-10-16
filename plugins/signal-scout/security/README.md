@@ -103,6 +103,8 @@ ownership and deliberately clean before another run.
 
 Hermes diagnostics preserve logger names, formatted messages, session context, exceptions, and stacks under native secret redaction. The Scout-owned WARNING console uses the same native redactor. Other handlers keep their own formatters. Native diagnostics may retain URLs, request/evidence/response content, and provider errors, including SDK DEBUG records. Native secret redaction does not remove all sensitive content.
 
+Unexpected browser failures record action, preparation/review/recheck/execution/observation phase, monotonic elapsed milliseconds, and original exception traceback before generic result conversion. CDP diagnostics add method, configured timeout, response receipt, and send/command-response/navigation-load wait state. Native protocol code/message, navigation `errorText`, and selected Runtime exception text/description/class name are recorded before callers discard them. Evidence inspection also records original exceptions before its generic failure conversion. No command parameters, complete packets, proposals, screenshots, or review evidence are dumped by these diagnostics. Expected stale/no-hit protocol detail uses INFO; other unexpected failures use ERROR. Exact native canceled-download success remains success without an ERROR record. Invalid returned reviewer results produce fixed failure metadata without a fabricated traceback. Diagnostic delivery is best effort and cannot replace results or prevent owned closure. Existing deadlines, retries, and enforcement stay unchanged. `SR_022` owns this contract; diagnostics do not establish the cause of the earlier rice mission failure.
+
 Scout protection events retain timestamp, level, component, and fixed event class. Reviewer completion events add only validated verdict, action type, duration in milliseconds, attempt count, and available adapter token counts. These producers do not interpolate raw browser/CDP arguments/results, screenshots, bodies, cookies, credentials, secret configuration, or provider exceptions. Unknown review fields and invalid types are removed before queueing.
 
 Hermes writes `agent.log` and `errors.log` at `/var/lib/scout/logs`. Proxy and browser firewall write `proxy.log` and `firewall.log` at `/var/log/scout`. All three services share the writable `scout-logs` volume and can access its files. Browser has no log-volume mount. Renamed firewall appends to `firewall.log`, which can retain older Hermes-firewall events. Historical `browser-firewall.log` and backups remain untouched, with no migration or wiping.
@@ -134,6 +136,7 @@ review rejects. `browser.scroll_pixels` starts at 500. Popups never auto-select;
 switch requires existing exact ID.
 Results: `status`, fixed sanitized `reason`, `execution_started`, `data`. Rejected
 means no proposed effect/healthy continuation; fatal terminally closes gate/Browser.
+Navigation loading exhaustion or a denied/stale retry returns `incomplete`, fixed warning, current compact AX, and selected target ID while control stays healthy. `execution_started` remains true after any earlier attempt. Hermes can choose another URL in its next ordinary turn.
 Adapter stops native run; host removes exact owner. `close()` revokes pending calls.
 Started means dispatch began, not server-effect proof. Late review/interrupt/terminal/
 lost control cannot authorize dispatch. Click/nav/type/key/back/scroll/switch return
@@ -166,7 +169,11 @@ Check is not atomic; hidden JavaScript/server effects remain outside guarantees.
 Expected staleness/detachment/layout loss/change/hidden/covered raises sanitized `EvidenceRejected`,
 leaving healthy browser usable. Required capture/check machinery failure marks
 browser unusable and propagates sanitized `EvidenceFailure` for existing teardown.
-No forced interaction, retries, re-review, replacement, recovery or stale-image fallback.
+No forced interaction, stale-action retry, replacement, or stale-image fallback.
+
+Only explicit `navigate` uses `browser.navigation_retries`, a required nonnegative integer with default one. The existing `browser.command_timeout` bounds each command and navigation load wait. Acknowledged ordinary loading errors and load timeouts can retry the original copied URL through `Page.navigate`. Each attempt repeats current permissions, fresh preparation, full-viewport review when required, and exact recheck. No page Reload control, form replay, or automatic repeat of other actions occurs. First success returns immediately; default permits at most two attempts. A same-document reply after a failed load stays incomplete because it does not prove that earlier load completed. A loaded error page returns ordinary observed content without 404-text heuristics.
+
+Private CDP navigation outcomes distinguish loaded, same-document, native denied-download, acknowledged load timeout, and native loading error. The command's own validated reply fixes its root session, frame, and loader; old frame, history, within-document, BFCache, and old-loader events cannot complete another navigation. Recovery requires the original evidence connection, owned endpoint, live selected frame, and fresh actual AX. Missing replies, malformed/protocol data, control loss, interruption, and review/evidence machinery failure remain fatal. No stopLoading, reconnect, poison reset, target adoption, or browser replacement is used.
 
 `SafetyReviewer` reads single authoritative `reviewer-policy.md` at construction
 and each fresh review, independently from evidence/history. Missing/unreadable/
@@ -183,6 +190,6 @@ one technical retry; deny never retries. Wrong route/model/SDK retries/effort cl
 fail. Late results cannot approve. Returned results and main-agent history contain sanitized outcomes and known token metadata. Reviewer creates no separate request/transcript archive, saved review session, or tracing callback. Native backend diagnostics can retain review content under the logging boundary above. Hung daemon may finish late; no memory-erasure/provider-retention/live-quality guarantee. Final failure closes gate/owned Browser.
 
 Pairings: reviewer ↔ RV_001–R007 ↔ reviewer/logging tests; gate/settings ↔
-AG_001–G007 ↔ gate tests; evidence/browser/CDP ↔ AE_001–E006 ↔ evidence tests;
+AG_001–G008 ↔ gate/navigation-recovery tests; evidence/browser/CDP ↔ AE_001–E006 ↔ evidence tests;
 launcher/settings/policy ↔ SR_006–S010 ↔ safeguard/window tests. Required gate
 includes implemented IDs; authentication/mission policy/live quality remain open.

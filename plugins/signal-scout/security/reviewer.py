@@ -8,7 +8,7 @@ import queue
 import threading
 import time
 
-from .runtime_logging import configure_logging, review_event
+from .runtime_logging import configure_logging, diagnostic, review_attempt, review_event
 from .settings import CONFIG, load_settings
 
 
@@ -219,6 +219,10 @@ class SafetyReviewer:
         else:
             available_usage = {}
             for attempts in range(1, self._settings["retries"] + 2):
+                try:
+                    review_attempt(action_type, attempts)
+                except Exception:
+                    diagnostic()
                 deadline = time.monotonic() + self._settings["timeout_seconds"]
                 completed = queue.Queue(maxsize=1)
                 worker = threading.Thread(target=_attempt, daemon=True,

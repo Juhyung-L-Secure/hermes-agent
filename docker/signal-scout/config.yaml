@@ -4,8 +4,8 @@ model:
 agent:
   max_turns: 3
   reasoning_effort: low
-  run_budget_seconds: 90
-  api_max_retries: 1
+  run_budget_seconds: 0
+  api_max_retries: 2
   intent_ack_continuation: false
   empty_response_guard:
     enabled: false
@@ -39,7 +39,8 @@ browser:
   engine: chrome
   use_real_profile: false
   auto_local_for_private_urls: false
-  command_timeout: 30
+  command_timeout: 60
+  navigation_retries: 1
   scroll_pixels: 500
   action_permissions:
     click: review_required

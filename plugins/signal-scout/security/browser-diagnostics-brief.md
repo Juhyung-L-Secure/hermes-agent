@@ -2,17 +2,19 @@
 
 ## Outcome and scope
 
-Make the next browser-action failure explain itself in existing persistent Hermes logs. This slice adds diagnostics and repeatable tests, not a navigation fix, mission launcher, Discord reporting, new logging service, recovery policy or provider change. Requirements gathering is complete without additional user questions; runtime implementation has not started.
+Make the next browser-action failure explain itself in existing persistent Hermes logs. This slice adds diagnostics and repeatable tests, not a navigation fix, mission launcher, Discord reporting, new logging service, recovery policy or provider change. Requirements gathering is complete without additional user questions. Implementation follows the selected boundary-local design below.
 
-Owning contract: `plugins/signal-scout/security/specs.json`, `SR_022`. Preserve `SR_003`, `SR_020`, `AG_005`, `AG_006` and `AG_007`. New coverage is intentionally empty until maintained tests exist; do not claim existing logger-only tests prove emission by the browser action path.
+Owning contract: `plugins/signal-scout/security/specs.json`, `SR_022`. Preserve `SR_003`, `SR_020`, `AG_005`, `AG_006` and `AG_007`. Coverage links identify maintained browser-path tests, not logger-only synthetic emissions. Check execution receipts separately from collection and assertion review.
 
 ## Grounded starting point
 
 HEAD at planning: `1d55ae1701f04569f8b4cf9c13d70ad680dd1524`, with existing uncommitted native-logging work. Preserve that work and all unrelated changes. A later implementer must inspect its actual starting diff; HEAD alone does not describe this snapshot.
 
+Implementation starts from clean pushed checkpoint `a51319e47d5cd085c09f117f193ad109ca3781a4`, which includes the native-logging restoration and this contract. No implementation commit or push is included in the logging task.
+
 Rice mission used a real headed browser and reviewer. Main model answered; reviewer approved navigation to Wikipedia in 1261 ms. Browser action became fatal approximately 30 seconds later and the mission stopped without an answer. That resembles the configured command limit but is not proof of the cause. Actual result summary and operational scripts remain under `/tmp/scout-rice-headed-yyHDx5`; native logs remain in the dedicated Docker volume.
 
-`gate.py` catches execution/inspection exceptions and returns a fixed reason without writing their detail. `_cdp.py` discards protocol code/message when constructing `_ProtocolError`; `Page.navigate` can also return `errorText`, which the gate replaces with a generic failure. Navigation currently waits for the matching native load event under the existing CDP deadline. A gate-only traceback cannot recover protocol text already discarded upstream.
+Before this slice, `gate.py` caught execution/inspection exceptions and returned a fixed reason without writing their detail. `_cdp.py` discarded protocol code/message when constructing `_ProtocolError`; `Page.navigate` could also return `errorText`, which the gate replaced with a generic failure. `BrowserEvidence._run()` suppressed original exception context during conversion. Navigation waits for the matching native load event under the existing CDP deadline. A gate-only traceback cannot recover protocol text discarded upstream.
 
 ## Confirmed boundaries
 
@@ -31,6 +33,16 @@ These are agent-chosen implementation defaults within the logging request, not n
 - At the gate boundary record action type, phase and original exception/traceback while preserving sanitized result/representation contracts. Keep protocol exceptions generic outside diagnostic emission; do not attach raw error packets to them.
 - Preserve the original failure and terminal cleanup even when diagnostic delivery fails. Reuse existing best-effort logging behavior; add no durability acknowledgment, universal log-failure detector or synchronous drain to the action path.
 - Stay in Scout plugin code. Likely touch points are `security/gate.py`, `security/_cdp.py`, focused tests and maintained logging documentation. Do not modify Hermes core or redesign `runtime_logging.py` unless a concrete integration failure proves that necessary.
+
+## Selected implementation
+
+Diagnostic data stays local to each invocation. Gate tracks validated action, current phase and monotonic start. Existing private `invoke` callback marks actual execution and post-action observation without changing `_execute` or public interfaces. No proposal, review packet, exception payload or phase history is retained on the gate.
+
+CDP tracks method, existing timeout/deadline, response receipt and current native wait. It emits selected protocol code/message before generic `_ProtocolError` escapes, selected Runtime exception text/description/class name before returning an error result, and unexpected navigation `errorText` before the gate converts it. It preserves transport exception identity and native navigation event matching. Expected stale/no-hit detail remains visible at INFO. Exact attested canceled download is not ERROR. Selected native fields are not arbitrarily truncated; no full remote object, stack-frame array, expression, value, preview or screenshot is dumped.
+
+Evidence inspection logs original unexpected failures before existing Browser poisoning and generic `from None` conversion. Gate logs unexpected failures and fixed invalid/failed reviewer results before the existing outcome and close branches. Each diagnostic emission handles logging failures locally; logging cannot change enforcement. Existing native logger names, session context, configured levels/rotation, redaction and persistence remain authoritative. `runtime_logging.py`, Hermes core, reviewer/configuration and browser/network/download policies remain unchanged.
+
+Maintained proof lives in `test_browser_diagnostics.py`, the saved-file boundary cases in `test_logging.py`, and the existing three-phase owned Chromium failure fixture in `test_gate_browser.py`. These checks use deterministic transport clocks or controlled Chromium and offline reviewers. No automated check requires public Wikipedia or a live subscription model.
 
 ## Repeatable proof
 

@@ -58,6 +58,105 @@ def stable_requests(requests):
 '''
 
 
+def test_AG_008_BR_002_native_incomplete_navigation_continues_same_browser_and_prompt(fixture_web):
+    stack, _, _, _ = fixture_web
+    with stack.browser_run() as run:
+        owned=run.container
+        stack.browser_probe(SETUP + FAKE_MAIN + r'''
+with Browser() as browser:
+    evidence=browser.evidence();tab=evidence.tabs()[0]['target_id']
+    class Reviewer:
+        calls=[]
+        def review(self,**inputs):
+            assert inputs['screenshot'][:8]==b'\x89PNG\r\n\x1a\n'
+            self.calls.append((inputs['action_type'],inputs['action']))
+            return verdict('approve')
+    reviewer=Reviewer();gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
+    connection=evidence._cdp;connection.timeout=1
+    outcomes=[];stops=[];sent=[];native=connection.connection.send
+    def send(raw):
+        sent.append(json.loads(raw));return native(raw)
+    connection.connection.send=send
+    first='http://public.test/navigation/always/native-continue'
+    def plan(index,kwargs):
+        if index==1:
+            return response([tool({'action':'navigate','args':{'url':first},'activity':'Inspect loading source'})],content='')
+        result=model_result([m for m in kwargs['messages'] if m.get('role')=='tool'][-1])
+        outcomes.append(result)
+        assert result['execution_started'] is True and result['data']['target_id']==tab
+        assert browser.ready and not browser.failed and evidence._cdp is connection
+        if index==2:
+            assert result['status']=='incomplete' and result['reason']=='Browser navigation did not complete.'
+            assert 'Navigation attempt 2' in result['data']['snapshot']
+            return response([tool({'action':'navigate','args':{'url':'http://public.test/safe'},'activity':'Inspect another source'})],content='')
+        assert index==3 and result['status']=='success' and result['reason'] is None
+        assert 'public fixture survives' in result['data']['snapshot']
+        return response()
+    with fake_main(plan) as (agent,requests):
+        def stop():
+            stops.append(True);agent.interrupt(hard_cancel=True)
+        with adapter.bind_browser(gate,on_fatal=stop):
+            outcome=agent.run_conversation('Inspect one source, then choose another if loading is incomplete.')
+        assert outcome.get('completed') and not outcome.get('interrupted') and not stops
+        assert [item['status'] for item in outcomes]==['incomplete','success']
+        stable_requests(requests)
+        assert reviewer.calls==[('navigate',{'url':first}),('navigate',{'url':first}),('navigate',{'url':'http://public.test/safe'})]
+        assert [row['params']['url'] for row in sent if row['method']=='Page.navigate']==[first,first,'http://public.test/safe']
+        assert not any(row['method'].startswith('Input.') or row['method'] in {'Page.reload','Page.navigateToHistoryEntry'} for row in sent)
+''', run=run, timeout=150)
+    assert run.container is None
+    inspected=subprocess.run(['docker','inspect',owned],capture_output=True,timeout=10)
+    assert inspected.returncode!=0 and b'no such object' in inspected.stderr.lower()
+
+
+@pytest.mark.parametrize('failures', [1, 2])
+def test_BT_005_native_model_retry_does_not_repeat_browser_effect(fixture_web, failures):
+    stack, _, _, _ = fixture_web
+    with stack.browser_run() as run:
+        owned = run.container
+        stack.browser_probe(SETUP + FAKE_MAIN + '\nfailures=' + repr(failures) + '\n' + r'''
+import httpx
+with Browser() as browser:
+    tab=open_fixture(browser)
+    class Reviewer:
+        calls=0
+        def review(self,**inputs):
+            self.calls+=1
+            return verdict('approve')
+    reviewer=Reviewer()
+    gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
+    def plan(index,kwargs):
+        if index==1:
+            return response([tool({'action':'click','args':{'ref':ref},
+                'activity':'Inspect research control'})],content='')
+        assert browser.command('eval','window.counts.click')['result']==1
+        latest=[item for item in kwargs['messages'] if item.get('role')=='tool']
+        assert len(latest)==1 and model_result(latest[0])['status']=='success'
+        if index<=failures+1:
+            raise httpx.ReadError('[Errno 32] Broken pipe')
+        assert index==3,'Native model retry exceeded configured ordinary attempts'
+        return response()
+    with fake_main(plan) as (agent,requests):
+        assert agent._api_max_retries==browser.settings['agent']['api_max_retries']
+        stops=[]
+        with adapter.bind_browser(gate,on_fatal=lambda: stops.append(True)):
+            observed=unpack(dispatch({'action':'snapshot','args':{}}))
+            ref=reference(observed['data']['snapshot'],'Below fold')
+            outcome=agent.run_conversation('Inspect one research control and explain result.')
+            assert browser.command('eval','window.counts.click')['result']==1
+            assert browser.ready and not browser.failed
+        assert not stops and reviewer.calls==1
+        assert bool(outcome.get('completed')) is (failures==1)
+        assert bool(outcome.get('failed')) is (failures==2)
+        assert len(requests)==3 and requests[1]['messages']==requests[2]['messages']
+        assert len(tool_replies(outcome))==1
+        stable_requests(requests)
+''', run=run, timeout=150)
+    assert run.container is None
+    inspected=subprocess.run(['docker','inspect',owned],capture_output=True,timeout=10)
+    assert inspected.returncode!=0 and b'no such object' in inspected.stderr.lower()
+
+
 def test_BR_001_BR_002_BR_004_BR_005_native_model_approved_effects_images_and_no_bypass(fixture_web):
     stack, _, _, _ = fixture_web
     with stack.browser_run() as run:
@@ -278,15 +377,19 @@ with Browser() as browser:
 ''', timeout=150)
 
 
-def test_BR_003_BR_004_native_final_review_failure_stops_agent_and_host_cleans_owned_browser(fixture_web):
+@pytest.mark.parametrize('case', ['initial','navigation_retry'])
+def test_BR_003_BR_004_native_final_review_failure_stops_agent_and_host_cleans_owned_browser(fixture_web, case):
     stack, _, _, _ = fixture_web
     with stack.browser_run() as run:
         owned = run.container
-        stack.browser_probe(SETUP + FAKE_MAIN + r'''
+        stack.browser_probe(SETUP + FAKE_MAIN + '\ncase='+repr(case)+'\n' + r'''
 attempts=[]
 def offline_attempt(settings,policy,evidence,deadline,completed):
     attempts.append(len(attempts)+1)
-    completed.put((None,'provider_error',{},time.monotonic()))
+    if case=='navigation_retry' and len(attempts)==1:
+        completed.put(('approve',None,{},time.monotonic()))
+    else:
+        completed.put((None,'provider_error',{},time.monotonic()))
 r._attempt=offline_attempt
 with Browser() as browser:
     tab=open_fixture(browser)
@@ -294,14 +397,19 @@ with Browser() as browser:
     gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
     effects=[]
     evidence=browser.evidence()
-    original_command=evidence._command
-    def observed_command(method,*args,**kwargs):
+    evidence._cdp.timeout=1
+    original_send=evidence._cdp.connection.send
+    def observed_send(raw):
+        message=json.loads(raw);method=message['method']
         if method.startswith('Input.') or method=='Page.navigate': effects.append(method)
-        return original_command(method,*args,**kwargs)
-    evidence._command=observed_command
+        return original_send(raw)
+    evidence._cdp.connection.send=observed_send
     def plan(index,kwargs):
         assert index==1,'Fatal review permitted another main-model request'
-        return response([tool({'action':'click','args':{'ref':ref},'activity':'Inspect controlled button'}),
+        proposed=({'action':'navigate','args':{'url':'http://public.test/navigation/always/native-fatal'},
+            'activity':'Inspect loading source'} if case=='navigation_retry' else
+            {'action':'click','args':{'ref':ref},'activity':'Inspect controlled button'})
+        return response([tool(proposed),
             tool({'action':'click','args':{'ref':ref},'activity':'Must never run'},call_id='must-not-execute')],content='')
     with fake_main(plan) as (agent,requests):
         stops=[]
@@ -315,13 +423,15 @@ with Browser() as browser:
             assert browser.failed and not browser.ready
             assert evidence._cdp is None
             assert unpack(dispatch({'action':'snapshot','args':{}}))['status']=='fatal'
-        assert stops==[(True,True)] and attempts==[1,2] and effects==[]
+        assert stops==[(True,True)]
+        assert attempts==([1,2,3] if case=='navigation_retry' else [1,2])
+        assert effects==(['Page.navigate'] if case=='navigation_retry' else [])
         assert outcome.get('interrupted') and not outcome.get('completed')
         assert len(requests)==1
         replies=tool_replies(outcome)
         assert len(replies)==2
         failure=model_result(replies[0])
-        assert failure['status']=='fatal' and failure['execution_started'] is False and failure['data']=={}
+        assert failure['status']=='fatal' and failure['execution_started'] is (case=='navigation_retry') and failure['data']=={}
         assert 'was not started' in replies[1]['content']
 ''', run=run, timeout=150)
     assert run.container is None

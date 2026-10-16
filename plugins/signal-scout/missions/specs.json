@@ -4,6 +4,79 @@
   "schemaVersion": 2,
   "specs": [
     {
+      "id": "MI_032",
+      "subfeature": "foreground-cli",
+      "title": "Run one browser-only research mission",
+      "contract": "A documented foreground CLI accepts a nonempty research request and starts one mission through the existing trusted BrowserRun and native Hermes conversation loop. It uses image-owned configured main/reviewer models and retry settings, preloads the full browser-research skill once before research, and exposes only browser_scout to the main model. Research has no Scout-imposed wall-clock or tool-call ceiling; bounded bootstrap status/chat remains unchanged. Headless remains default and configured headed/viewer operation remains available without relaxing immutable configuration checks, browser isolation, action review or download denial. No Discord, durable mission store, resume engine, terminal tool or fallback provider is introduced.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_032_invalid_request_fails_before_docker"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_032_full_native_skill_preload_and_disabled_failure"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_032_bootstrap_retains_explicit_native_bounds"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_032_stale_scout_refuses_before_attach_or_inference"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_032_actual_bootstrap_status_retains_bounded_alarm"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_032_actual_stale_scout_config_fails_before_inference"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_headed.py", "test": "test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotation"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "MI_033",
+      "subfeature": "foreground-cli",
+      "title": "Show actual mission progress without verbose mode",
+      "contract": "Normal terminal output identifies startup, model work, proposed browser action and its activity, pending safety review before the first verdict, review technical retry and completion, browser result, existing recoverable failures and mission outcome. These messages reflect actual callbacks or events rather than invented periodic activity, and include the final answer only when one exists. Private screenshot/review packets are not rendered as normal progress. Progress delivery failure cannot approve an action or disable independent protections.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_033_review_pending_and_retry_precede_real_transport_at_error_level"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_033_observer_failure_does_not_change_actual_review_verdict"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_033_MI_035_actual_cli_failed_native_outcome_and_denial"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_headed.py", "test": "test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotation"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "MI_034",
+      "subfeature": "foreground-cli",
+      "title": "Stream configured native diagnostics with verbose mode",
+      "contract": "The CLI's --verbose flag adds real-time Hermes, proxy, firewall and collected browser-process/relay diagnostics to terminal progress, including native exception/stack details when emitted at the configured logging level. It does not rewrite native messages, weaken native secret redaction, increase persistent logging level or create a second persistent log system. Following a rotating configured log continues into its replacement file without replaying prior-run history; browser diagnostics emitted during startup are associated with the current run rather than silently skipped when the Scout container starts later. Normal nonverbose mode keeps concise mission progress and relevant warnings/errors instead of streaming routine browser diagnostics. Reader/observer processes stop with the foreground mission and diagnostics failure remains visible without changing browser safety decisions.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_034_native_console_preserves_saved_handlers_levels_redaction_and_traceback"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_034_network_cursor_current_only_append_replace_truncate_and_late_create"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_034_file_observer_failure_is_visible_and_stops_without_changing_review"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_headed.py", "test": "test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotation"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "MI_035",
+      "subfeature": "foreground-cli",
+      "title": "Own foreground termination and report truthful exit status",
+      "contract": "Normal success requires a completed, nonfailed, noninterrupted native conversation with a nonempty final answer and exits zero. Startup, model, browser/reviewer technical failure or unsuccessful native outcome exits nonzero. Ctrl+C stops the foreground mission and exits 130. Normal exit, handled failure and cancellation remove only exact owned Scout/browser resources, stop owned diagnostic observers, preserve auth/log volumes and restore initially running/stopped helper state. A second mission cannot borrow an active run. There is no promise of cleanup after host death, forced kill or Docker unavailability, nor automatic browser replacement, orphan adoption, durable stop or checkpoint/resume support.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_035_native_outcome_requires_complete_nonempty_answer"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_035_lock_rejects_second_owner_without_reading_or_restoring_helpers"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_035_existing_resource_rejection_never_changes_helpers"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_035_partial_helper_start_restores_state_before_unlock"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_035_attach_status_cannot_override_native_exit_or_cleanup"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_035_creation_failure_and_deferred_cancel_clean_attempted_owner"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_035_browser_create_then_start_failure_removes_only_exact_attempt"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_035_actual_failed_cli_restores_both_stopped_helpers"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_033_MI_035_actual_cli_failed_native_outcome_and_denial"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_035_actual_sigint_and_rejected_second_cli_preserve_active_owner"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_headed.py", "test": "test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotation"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
       "id": "MI_002",
       "subfeature": "mission",
       "title": "Mission validation",

@@ -4,6 +4,7 @@ import subprocess
 import sys
 import textwrap
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -235,6 +236,77 @@ def test_SR_003_partial_native_log_open_failure_preserves_redacted_diagnostics(t
     assert 'scout logging write failed' in result.stderr
     assert 'Native request https://example.test/research credential=' in result.stderr
     assert 'Zx9AbCdEfGhIjKlMnOpQ' not in text + result.stderr + result.stdout
+
+
+@pytest.mark.parametrize('write_failure', [False, True])
+def test_SR_022_browser_failure_uses_saved_native_logs_redaction_and_best_effort(tmp_path, write_failure):
+    result = isolated(tmp_path, 'write_failure = ' + repr(write_failure) + '\n' + textwrap.dedent("""
+        import importlib, json, logging, os, yaml
+        from pathlib import Path
+        from types import SimpleNamespace
+        runtime = importlib.import_module('plugins.signal-scout.security.runtime_logging')
+        gate_module = importlib.import_module('plugins.signal-scout.security.gate')
+        cdp_module = importlib.import_module('plugins.signal-scout.security._cdp')
+        directory = Path(os.environ['HERMES_HOME'])
+        config = yaml.safe_load((directory / 'config.yaml').read_text())
+        runtime.configure_logging('scout', config)
+        import hermes_logging
+        hermes_logging.set_session_context('diagnostic-browser-session')
+        if write_failure:
+            def fail(*_):
+                raise OSError('fixture sink failure')
+            for handler in hermes_logging.rotating_file_handlers():
+                handler.doRollover = fail
+                handler.shouldRollover = lambda _: True
+        token = 'glpat-' + 'Zx9AbCdEfGhIjKlMnOpQ'
+        cdp = cdp_module._CDP.__new__(cdp_module._CDP)
+        cdp.timeout, cdp.sequence = 30, 0
+        cdp.connection = SimpleNamespace(send=lambda _: None, recv=lambda **_: json.dumps({
+            'id':1, 'error':{'code':-32601,'message':'native browser detail ' + token,
+                            'data':'bulk-response-marker'}}))
+        browser = gate_module.Browser.__new__(gate_module.Browser)
+        browser.settings, browser.ready, browser.failed = config, True, False
+        browser.endpoint = 'ws://owned-fixture'
+        os.environ['BROWSER_CDP_URL'] = browser.endpoint
+        closed = []
+        def close():
+            closed.append(True)
+            browser.ready, browser.failed = False, True
+        browser.close = close
+        prepared = SimpleNamespace(reviewer_input=lambda: {})
+        adapter = SimpleNamespace(tabs=lambda: [{'target_id':'owned'}],
+            prepare=lambda **_: prepared, recheck=lambda *_, **__: object(),
+            _frames=lambda _: {'root':SimpleNamespace(parent=None,session='session')},
+            _command=lambda *_, **__: {}, _cdp=cdp)
+        browser.evidence = lambda: adapter
+        reviewer = SimpleNamespace(review=lambda **_: gate_module.ReviewResult('approve',None,1,0,{}))
+        gate = gate_module.BrowserActionGate(browser, reviewer=reviewer, target_id='owned')
+        result = gate.dispatch({'action':'navigate','args':{'url':'https://bulk-params-marker.test/'},
+                                'activity':'bulk-review-marker'})
+        assert result == {'status':'fatal','reason':'Browser action failed.','execution_started':True,'data':{}}
+        assert closed == [True] and gate._terminal and browser.failed and not browser.ready
+        assert 'native browser detail' not in repr(result) + repr(gate)
+        hermes_logging.flush_log_queue()
+        handlers = hermes_logging.rotating_file_handlers()
+        assert {Path(h.baseFilename).name:h.level for h in handlers} == {
+            'agent.log':logging.INFO, 'errors.log':logging.WARNING}
+        assert all(h.maxBytes == 1024**2 and h.backupCount == 2 for h in handlers)
+        if not write_failure:
+            for handler in handlers:
+                text = Path(handler.baseFilename).read_text()
+                assert 'ERROR [diagnostic-browser-session]' in text
+                assert 'method=Page.navigate' in text and 'timeout_seconds=30' in text
+                assert 'response_received=True' in text and 'wait_state=command_response' in text
+                assert 'protocol_code=-32601' in text and 'native browser detail' in text
+                assert 'action=navigate phase=execution elapsed_ms=' in text
+                assert 'Traceback (most recent call last):' in text and '_ProtocolError:' in text
+                assert 'Zx9AbCdEfGhIjKlMnOpQ' not in text and 'bulk-' not in text
+        print(json.dumps(result, sort_keys=True))
+    """))
+    assert json.loads(result.stdout) == {'status':'fatal','reason':'Browser action failed.',
+                                        'execution_started':True,'data':{}}
+    assert 'Zx9AbCdEfGhIjKlMnOpQ' not in result.stderr + result.stdout
+    assert 'scout logging write failed' in result.stderr if write_failure else 'native browser detail' in result.stderr
 
 
 def test_SR_003_proxy_firewall_events_persist_after_replacement(scout_stack):

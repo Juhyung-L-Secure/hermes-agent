@@ -2,15 +2,25 @@
 
 ## Signal Scout
 
+### Native browser-helper lifecycle and removal
+
+**Decision needed:** Retain native helper/supervisor for whole research mission, retire redundant startup dependency through Scout's private CDP, or define a deliberate handoff and dialog behavior.
+
+**Current boundary:** User explicitly puts helper discussion on hold and prioritizes identifying cause of original mission failure. No helper removal, startup migration, idle-timeout change, supervisor policy change or lifecycle fix authorized by current discussion. Preserve sandbox checks and other protections. Existing lifecycle assertion records helper loss but does not prove this caused original ConnectionClosedError; two controlled replay missions completed despite cleanup.
+
+**Revisit when:** Original mission failure cause is identified, or user explicitly resumes helper-lifecycle discussion.
+
+**Source:** `daily_log/2026-10-16.md`
+
 ### Diagnostic logging design
 
-**Decision needed:** Choose any additional diagnostic events, context and correlation identifiers beyond restored native logging, separately from user-facing research progress updates.
+**Decision needed:** Choose any broader diagnostic events or correlation identifiers beyond restored native logging, implemented SR_022 action diagnostics and the planned SR_023/SR_024 browser-process/relay/container diagnostics, separately from user-facing research progress updates.
 
-**Current boundary:** Headed mode is verified. User authorizes removing Scout's blanket rewriting and accepts native diagnostic detail in the shared Hermes/proxy/firewall log volume, which browser does not mount. Preserve native secret redaction, configured rotation and fixed protection/reviewer completion metadata. Do not add reviewer-specific suppression; native DEBUG paths may retain reviewer request/evidence/provider details and native redaction is not universal content removal. No separate screenshot/transcript archive, viewer-password logging, new diagnostic event/correlation system or Discord progress pipeline is authorized by this restoration.
+**Current boundary:** Headed mode is verified. User authorizes removing Scout's blanket rewriting and accepts native diagnostic detail in the shared Hermes/proxy/firewall log volume, which browser does not mount. SR_022 focused action-phase, timing and original browser-error diagnostics are implemented and locally verified. User now requests requirements for Chromium output, child exit/signal, relay ending and pre-teardown container/OOM observations to diagnose original mission failure; SR_023/SR_024 and extended SR_003/MI_034 are saved with new tests still absent, not implemented or verified. Trusted collection must preserve no persistent browser auth/log mount, existing rotation, native redaction, best-effort behavior and normal cleanup; bounded browser output transport is in scope. Preserve fixed protection/reviewer completion metadata. Do not add reviewer-specific suppression; native DEBUG paths may retain reviewer request/evidence/provider details and native redaction is not universal content removal. No separate screenshot/transcript archive, viewer-password logging, external diagnostic service, general tracing system, helper redesign or Discord progress pipeline is included.
 
-**Revisit when:** User starts richer diagnostics or Discord progress work, or retained native diagnostics expose a concrete missing observation. Native retention and shared-volume access are already decided. Later possible removal of headed mode is not authorized now.
+**Revisit when:** Focused SR_023/SR_024 verification or an authorized instrumented replay exposes another missing observation, or user starts broader diagnostics or Discord progress work. Native retention, shared-volume access and focused diagnostic scope are already decided. Later possible removal of headed mode is not authorized now.
 
-**Source:** `daily_log/2026-10-15.md`
+**Source:** `daily_log/2026-10-15.md`; `daily_log/2026-10-16.md`
 
 ### Screenshot-on-every-review policy
 

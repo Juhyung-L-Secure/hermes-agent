@@ -9,7 +9,7 @@ EVENTS = frozenset({
     "sandbox_verified", "sandbox_failed", "connection_allowed", "connection_failed",
     "dns_failed", "private_destination", "peer_mismatch", "destination_port",
     "invalid_request", "client_denied", "denied_ipv4", "denied_ipv6",
-    "review_completed",
+    "review_attempt", "review_completed",
 })
 COMPONENTS = {"scout", "proxy", "firewall"}
 
@@ -114,3 +114,11 @@ def review_event(action_type, verdict, failure, duration_ms, attempts, usage):
     logging.getLogger("signal_scout.scout").log(logging.WARNING if failure else logging.INFO,
         "event=review_completed " + json.dumps(metadata, sort_keys=True), extra={"scout_component": "scout",
                                         "scout_event": "review_completed", "scout_review": metadata})
+
+
+def review_attempt(action_type, attempts):
+    """Observe the real attempt before its worker can complete."""
+    metadata = _review_metadata({"action_type": action_type, "attempts": attempts})
+    logging.getLogger("signal_scout.scout").info(
+        "event=review_attempt " + json.dumps(metadata, sort_keys=True),
+        extra={"scout_component": "scout", "scout_event": "review_attempt", "scout_review": metadata})

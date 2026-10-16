@@ -12,6 +12,7 @@ Run commands from repository root. Requires Linux Docker Engine, Compose with na
 | `config.yaml` | Shared image-owned application settings and validated topology |
 | `chrome-policy.json` | Root-owned native mandatory Chrome for Testing download policy |
 | `browser_run.py` | Trusted host ownership lock, browser creation, smoke, exact teardown |
+| `mission_run.py` / `mission_viewer.py` | Foreground mission ownership and disposable local viewer |
 | `firewall.sh` / `proxy.sh` | Helper entrypoints |
 | `chromium-seccomp.json` | Browser container namespace sandbox syscall profile |
 | `../../plugins/signal-scout/security/` | Launcher/relay, CDP harness, policy, logs and security specs |
@@ -36,6 +37,26 @@ Run standalone link validation separately from test execution using the [plugin 
 ```bash
 spec-checker . --json
 ```
+
+## Run a foreground research mission
+
+Build the current image-owned configuration once, then use the public host command. Authenticate the dedicated Scout account with the existing login command first.
+
+```bash
+docker compose -f docker/signal-scout/compose.yaml build scout browser proxy
+.venv/bin/python docker/signal-scout/mission_run.py "Research why rice became a staple food. Cite sources actually consulted."
+.venv/bin/python docker/signal-scout/mission_run.py --verbose "Research the history of bacon."
+```
+
+One command owns one foreground mission. Normal stderr shows browser startup, model steps, proposed actions and activities, pending safety review before its verdict, technical review retries, browser results, native recoverable warnings, and the outcome. Stdout contains the final research answer on success. Exit codes are `0` for completed research with a nonempty answer, `1` for execution or cleanup failure, `2` for invalid input, and `130` for handled Ctrl+C. Closing the viewer leaves research running. Ctrl+C stops the exact owned Scout and browser, closes the disposable viewer and observers, and restores helpers' initial running or stopped state while retaining auth and log volumes.
+
+The mission exposes only `browser_scout`, preloads the full registered `signal-scout:browser-research` skill once before inference, and uses the configured main model, effort, reviewer and native retry loop. Missing or disabled guidance fails before inference. Canonical `agent.run_budget_seconds: 0` disables the research budget. Research uses no Scout wall-clock or tool-call ceiling. Existing bootstrap `chat` retains its explicit 90-second budget, three iterations, and 120-second alarm.
+
+`--verbose` adds configured-level native Hermes diagnostics and new proxy/firewall log content from the existing shared volume. It retains native secret redaction, messages, multiline exceptions, saved handler levels and rotation. It starts network followers at current EOF and reopens replaced or truncated files. WARNING diagnostics remain visible in normal and verbose modes. Verbose mode neither forces DEBUG nor replays older missions. Observer failure reports on stderr and cannot grant browser permission.
+
+For headed viewing, set `browser.mode: headed` and `browser.viewer: true` in `docker/signal-scout/config.yaml`, then rebuild all three targets with the build command above before invoking the same mission command. All four services must share the same baked settings digest. The launcher opens local authenticated noVNC in host `google-chrome` using a disposable profile and an available desktop display. Missing Chrome or desktop access reports an explicit viewer warning. Headless operation needs neither. Viewer passwords stay in memory and never enter arguments or progress. Restore `headless` and `false`, then rebuild the same targets to return to defaults.
+
+Explicit operator variants use repeated `--compose-file PATH` in merge order and `--config PATH` for the matching baked configuration source. Include the base Compose file first. Topology and immutable-image digest checks still apply. Host verifies the exact waiting Scout's baked settings before sending research text, so stale main-model or retry settings fail before inference. These options do not mount writable configuration or select arbitrary browser endpoints. Another active or leftover Scout/browser prevents startup. Host death, SIGKILL, and Docker loss can prevent cleanup. Durable missions, saved stop requests, resume and Discord remain separate work.
 
 ## Ownership and lifetime
 
@@ -128,8 +149,10 @@ Application ports and all Python network rules derive from `scout_network`.
 | Application settings | Defaults |
 | --- | --- |
 | `logging.level/max_size_mb/backup_count` | INFO / 5 MiB / 3 |
+| `agent.api_max_retries` | 2 application-level attempts per model request |
 | `scout_reviewer.model/reasoning_effort/timeout_seconds/retries` | gpt-6-luna / none / 180 seconds per attempt / 1 |
-| `browser.command_timeout/scroll_pixels` | 30 seconds / 500 pixels |
+| `browser.command_timeout/scroll_pixels` | 60 seconds / 500 pixels |
+| `browser.navigation_retries` | 1 additional explicit-navigation attempt |
 | `browser.mode/viewer` | `headless` / `false` (production) |
 | `browser.viewport.width/height/device_scale_factor` | 1280×720 main-window CSS contents / browser-wide scale 1 |
 | `scout_lifecycle.startup_timeout/control_connect_timeout` | 20 / 2 seconds |
@@ -138,8 +161,10 @@ Application ports and all Python network rules derive from `scout_network`.
 | `scout_network` | Restricted subnet/.2/.3/.4, viewer `172.30.243.0/30`/.2, proxy3128/control9222/relay9223/viewer6080 |
 
 Command timeouts are integer 1–120s; proxy/lifecycle timeouts 1–300s; log size 1–1024 MiB, backup count 1–20, level DEBUG/INFO/WARNING/ERROR.
+Despite its name, Hermes's `agent.api_max_retries` counts total attempts in its ordinary API retry loop: 1 means no retry, 2 allows one retry. Scout uses that existing loop and backoff for transient main-model failures, including `ReadError` and connection failures. It retries the pending model request with the existing conversation, not the mission or completed browser actions. Native non-retryable errors, SDK behavior and separate primary-transport recovery remain unchanged; this setting is not a strict cap on every underlying wire request. Reviewer attempts remain separately configured by `scout_reviewer.retries`.
+`browser.navigation_retries` is a required nonnegative integer; booleans and nonintegers fail validation. The reviewed gate retries only acknowledged ordinary navigation loading failure on the same controllable browser. Every retry gets fresh evidence, review when required, and exact recheck. Exhaustion returns `incomplete` with current AX so the main model can choose another URL. Other actions and control failures keep their existing behavior.
 Viewport requires positive CDP signed-integer width/height and finite positive numeric scale, never booleans. Missing/invalid values or unsupported actual sizing fail without fallback. Scout evidence API captures raw actual full viewport in memory, preserving popup size; gate uses exact original targets without an archive.
-Lifecycle bounds cover owned startup/control/shutdown/smoke, not future mission budgets or auxiliary-supervisor retries.
+Lifecycle bounds cover owned startup/control/shutdown/smoke, not foreground research duration or auxiliary-supervisor retries.
 Reviewer timeout is a separate positive integer per-attempt deadline; retries are nonnegative integers. Required reviewer model/effort cannot silently clamp/fallback; prepared-evidence client remains unexposed and independent of bootstrap's 90/120s bounds.
 Docker stop's host deadline adds the existing bounded 60-second Docker-command
 allowance to configured shutdown grace, so supported grace values are not cut short.
@@ -165,7 +190,7 @@ Native Hermes diagnostics preserve logger names, formatted messages, session con
 
 ## Existing subscription interfaces
 
-Operator interfaces stay status-only; callable `browser_scout` needs a trusted gate binding and explicitly selected `signal_scout_browser`, never alternate native executors:
+The existing container commands below stay status-only. The foreground mission command separately supplies the trusted gate binding and explicitly selected `signal_scout_browser` toolset.
 
 ```bash
 docker compose -f docker/signal-scout/compose.yaml run --rm -it scout login
@@ -182,9 +207,6 @@ brief/checkpoint and browser-action review plan retain their original evidence;
 their Hermes-firewall/proxy requirements are superseded by this browser-only
 network boundary and current feature-owned specs.
 
-Open work: independent crash cleanup, supervisor failure policy, selected-tab closure,
-live browsing activation, mission/model-driven research, and broader IN_001,
-SR_015/SR_016 remain incomplete. [Security ownership](../../plugins/signal-scout/security/README.md)
-and [spec validation](../../plugins/signal-scout/README.md#validate-spec-links) distinguish test execution from link validation. AG_001–AG_007 own gate permissions/execution; BR_001–BR_005 own native routing, hard interrupt and text/image feedback. Browser action modes are image-owned: click/navigate/type/keypress require review; other implemented actions initially skip review, not protections. Standalone RV_001–RV_007 retains native `openai-codex` and read-only `reviewer-policy.md`; live reviewer quality/account and main-agent image support remain unverified.
+Open work includes independent crash cleanup, supervisor failure policy, selected-tab closure, durable mission/resume, live-provider research completion, and broader IN_001/SR_015/SR_016. [Security ownership](../../plugins/signal-scout/security/README.md) and [spec validation](../../plugins/signal-scout/README.md#validate-spec-links) distinguish test execution from link validation. AG_001–AG_007 own gate permissions/execution; BR_001–BR_005 own native routing, hard interrupt and text/image feedback. Browser action modes are image-owned: click/navigate/type/keypress require review; other implemented actions initially skip review, not protections. Standalone RV_001–RV_007 retains native `openai-codex` and read-only `reviewer-policy.md`; live reviewer quality/account and main-agent image support remain unverified.
 
 References: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/), [service constraints](https://docs.docker.com/reference/compose-file/services/), [pinned native CDP](https://github.com/vercel-labs/agent-browser/blob/v0.26.0/cli/src/native/browser.rs), [pinned native policy path](https://github.com/chromium/chromium/blob/153.0.8010.36/docs/enterprise/policies.md), [DownloadRestrictions scope](https://github.com/chromium/chromium/blob/153.0.8010.36/components/policy/resources/templates/policy_definitions/Miscellaneous/DownloadRestrictions.yaml).

@@ -13,6 +13,7 @@ import time
 
 BASE = Path('/tmp/scout-network-fixture')
 COUNTS = Counter()
+NAVIGATIONS = Counter()
 LOCK = threading.Lock()
 
 
@@ -21,6 +22,44 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
     def do_GET(self):
+        resources = {'/inactivity-replay/slow-script.js': 36, '/inactivity-replay/final-script.js': 6}
+        if self.path in resources:
+            chunks = resources[self.path]
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/javascript')
+            self.send_header('Content-Length', str(chunks * 2))
+            self.end_headers()
+            try:
+                for _ in range(chunks):
+                    self.wfile.write(b' \n')
+                    self.wfile.flush()
+                    time.sleep(2)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+            return
+        if self.path.startswith('/inactivity-replay/'):
+            script = {'/inactivity-replay/slow': 'slow', '/inactivity-replay/final': 'final'}.get(self.path)
+            body = ('<html><body style="height:2400px"><h1>Controlled inactivity replay</h1>'
+                    '<a href="/inactivity-replay/final">Observed final source</a>'
+                    + (f'<script src="/inactivity-replay/{script}-script.js"></script>' if script else '')
+                    + '<script>window.fixtureReady=true</script></body></html>').encode()
+            self.send_response(200)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if self.path == '/navigation-empty404':
+            self.send_response(404)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
+        if self.path.startswith('/navigation-resource/'):
+            time.sleep(20)
+            self.send_response(200)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
         if self.path == '/rebind':
             records = json.loads((BASE / 'records.json').read_text())
             records['rebind.test'] = ['172.30.242.2']
@@ -34,7 +73,25 @@ class Handler(BaseHTTPRequestHandler):
             return
         content_type = 'text/html'
         body = b'<html><body>public fixture survives<script>window.fixtureReady=true</script></body></html>'
-        if self.path.startswith('/attachment/'):
+        if self.path == '/cli-mission':
+            body = b'<html><body><h1>Controlled research source</h1><button onclick="fetch(\'/cli-effect\')">Inspect source</button></body></html>'
+        elif self.path == '/cli-effect':
+            with LOCK:
+                COUNTS['cli-effects'] += 1
+                (BASE / 'counts.next').write_text(json.dumps(COUNTS))
+                (BASE / 'counts.next').replace(BASE / 'counts.json')
+        elif self.path.startswith('/navigation/'):
+            with LOCK:
+                NAVIGATIONS[self.path] += 1
+                attempt = NAVIGATIONS[self.path]
+            token = self.path.rsplit('/', 1)[1]
+            blocked = '/always/' in self.path or attempt == 1
+            body = (f'<html><body><h1>Navigation attempt {attempt}</h1>'
+                    + (f'<img src="/navigation-resource/{token}">' if blocked else '')
+                    + '<script>window.fixtureReady=true</script></body></html>').encode()
+        elif self.path == '/navigation404':
+            body = b'<html><body><h1>Loaded 404 fixture</h1></body></html>'
+        elif self.path.startswith('/attachment/'):
             body = b'download fixture must never be saved'
             content_type = 'application/octet-stream'
         elif self.path == '/media/image.png':
@@ -115,7 +172,7 @@ class Handler(BaseHTTPRequestHandler):
                 window.fixtureReady=false;
                 addEventListener('load',()=>window.fixtureReady=true);
               </script></body></html>'''
-        self.send_response(200)
+        self.send_response(404 if self.path == '/navigation404' else 200)
         self.send_header('Content-Length', str(len(body)))
         self.send_header('Content-Type', content_type)
         if self.path.startswith('/attachment/'):

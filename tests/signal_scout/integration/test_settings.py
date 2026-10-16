@@ -20,7 +20,7 @@ def test_BT_004_defaults_and_supplied_file_settings(tmp_path):
     assert config['model'] == {'provider':'openai-codex', 'default':'gpt-5.6-luna'}
     assert config['agent']['reasoning_effort'] == 'low'
     assert config['logging'] == {'level':'INFO', 'max_size_mb':5, 'backup_count':3}
-    assert config['browser']['command_timeout'] == 30
+    assert config['browser']['command_timeout'] == yaml.safe_load(CONFIG.read_text())['browser']['command_timeout']
     assert config['browser']['scroll_pixels'] == 500
     assert all(config['browser']['action_permissions'][action] == 'review_required'
                for action in ('click','navigate','type','keypress'))
@@ -31,6 +31,7 @@ def test_BT_004_defaults_and_supplied_file_settings(tmp_path):
                                          'shutdown_timeout':5, 'smoke_timeout':120}
     config['logging'] = {'level':'DEBUG', 'max_size_mb':1, 'backup_count':2}
     config['browser']['command_timeout'] = 12
+    config['browser']['navigation_retries'] = 4
     config['browser']['scroll_pixels'] = 321
     config['browser']['action_permissions']['click'] = 'blocked'
     config['browser']['action_permissions']['snapshot'] = 'review_required'
@@ -49,6 +50,8 @@ def test_BT_004_defaults_and_supplied_file_settings(tmp_path):
     ('logging','max_size_mb',0), ('logging','max_size_mb',True), ('logging','max_size_mb',1.5),
     ('logging','backup_count',0), ('logging','backup_count',21), ('logging','level','secret-invalid'),
     ('logging','redact',False), ('browser','command_timeout',0), ('browser','command_timeout',121),
+    ('browser','navigation_retries',-1), ('browser','navigation_retries',True),
+    ('browser','navigation_retries',1.5), ('browser','navigation_retries','1'),
     ('browser','use_real_profile',True), ('browser','use_real_profile',0),
     ('browser','cloud_provider','browserbase'), ('browser','cdp_url','http://127.0.0.1:9222'),
     ('browser','sandbox',False), ('scout_proxy','dns_timeout',0), ('scout_proxy','idle_timeout',301),
@@ -125,6 +128,8 @@ def test_BT_004_SR_005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_path)
     run = lifecycle.BrowserRun.__new__(lifecycle.BrowserRun)
     run.config, run.compose, run.project = config, ['docker', 'compose'], 'scout-bound-test'
     run.run, run.container, run.endpoint, run.lock = 'b' * 32, 'a' * 64, endpoint, None
+    run._helper_state = None
+    run.restore_helpers = False
     monkeypatch.setattr(run, 'inspect_owned', lambda: {'State': {'Running': True}})
     assert run.scout_environment() == {'SCOUT_BROWSER_RUN': run.run,
                                       'SCOUT_BROWSER_CONTAINER': run.container, 'BROWSER_CDP_URL': endpoint}

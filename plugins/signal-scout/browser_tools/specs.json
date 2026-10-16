@@ -21,10 +21,12 @@
       "id": "BR_002",
       "subfeature": "native-browser-routing",
       "title": "Faithful proposals and ordinary gate feedback",
-      "contract": "The browser_scout handler forwards the same action, exact args and optional activity to its captured BrowserActionGate without semantic rewriting, extra review or another LLM. Browser identity, reviewer, permissions and callback are trusted binding inputs, never model arguments. Native dispatch returns the gate's success/rejected/fatal status, sanitized reason, truthful execution_started and appropriate data through JSON text feedback. Gate-owned fresh compact snapshots and explicit target IDs reach the main conversation; the adapter does not perform another observation or silently retry a rejection.",
+      "contract": "The browser_scout handler forwards the same action, exact args and optional activity to its captured BrowserActionGate without semantic rewriting, extra review or another LLM. Browser identity, reviewer, permissions and callback are trusted binding inputs, never model arguments. Native dispatch returns the gate's status, including AG_008's nonfatal incomplete navigation outcome, sanitized reason, truthful execution_started and appropriate data through JSON text feedback. Gate-owned fresh compact snapshots and explicit target IDs reach the main conversation; the adapter does not perform another observation or silently retry a rejection.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
         {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_BR_002_native_forwarding_preserves_proposed_request_and_gate_result"},
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_BR_002_incomplete_result_forwards_without_stop_or_redispatch"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_AG_008_BR_002_native_incomplete_navigation_continues_same_browser_and_prompt"},
         {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_BR_002_BR_005_native_screenshot_envelope_keeps_bytes_out_of_text"},
         {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_BR_001_BR_002_BR_004_BR_005_native_model_approved_effects_images_and_no_bypass"},
         {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_BR_002_BR_004_native_model_rejection_leaves_healthy_browser"},

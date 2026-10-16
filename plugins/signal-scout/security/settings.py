@@ -32,6 +32,8 @@ def load_settings(path=CONFIG):
                 or any(not isinstance(mode, str) or mode not in _ACTION_MODES for mode in permissions.values())
                 or type(browser["scroll_pixels"]) is not int or browser["scroll_pixels"] <= 0):
             raise ValueError
+        if type(browser["navigation_retries"]) is not int or browser["navigation_retries"] < 0:
+            raise ValueError
         viewport = browser["viewport"]
         proxy = config["scout_proxy"]
         lifecycle = config["scout_lifecycle"]
@@ -77,6 +79,7 @@ def load_settings(path=CONFIG):
         if browser != {"cloud_provider": "local", "engine": "chrome", "use_real_profile": False,
                        "mode": browser["mode"], "viewer": browser["viewer"],
                        "auto_local_for_private_urls": False, "command_timeout": browser["command_timeout"],
+                       "navigation_retries": browser["navigation_retries"],
                        "viewport": viewport, "action_permissions": permissions,
                        "scroll_pixels": browser["scroll_pixels"]}:
             raise ValueError

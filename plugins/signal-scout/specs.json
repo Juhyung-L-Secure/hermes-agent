@@ -99,6 +99,19 @@
       "blocker": ""
     },
     {
+      "id": "BT_005",
+      "subfeature": "model-reliability",
+      "title": "Native main-model request retry",
+      "contract": "Scout configures Hermes's existing application-level model-request attempt budget through agent.api_max_retries, initially 2 total attempts, allowing one ordinary retry rather than the former single attempt. Transient ReadError/Broken pipe and connection failures use native retry classification and backoff. The pending request retains existing conversation, completed tool results, tool schema and system prompt; retry does not restart a mission, replay a completed browser action or bypass its gate. Exhausted ordinary attempts return model failure, while non-retryable authentication errors retain native fail-fast behavior. Native SDK and separate primary-transport recovery paths remain unchanged, so this is not a strict universal wire-request cap. Reviewer retries and browser navigation recovery are separate and unchanged. Tests exercise native Hermes dispatch and real owned Chromium with external model transport doubled; no live provider availability or complete research-mission guarantee is claimed.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer":"unit","file":"tests/signal_scout/integration/test_model_retries.py","test":"test_BT_005_native_model_retry_preserves_completed_action"},
+        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_BT_005_native_model_retry_does_not_repeat_browser_effect"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
       "id": "BT_003",
       "subfeature": "bootstrap",
       "title": "Subscription model status conversation",
