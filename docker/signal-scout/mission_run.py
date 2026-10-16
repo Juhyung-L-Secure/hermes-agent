@@ -43,7 +43,7 @@ class MissionRun:
 
     def __init__(self, request, *, verbose=False, compose_files=(COMPOSE,), config_path=CONFIG):
         self.request, self.verbose = request, verbose
-        self.browser = BrowserRun(compose_files, config_path, restore_helpers=True)
+        self.browser = BrowserRun(compose_files, config_path, restore_helpers=True, verbose=verbose)
         self.child = self.viewer = None
         self.name = self.browser.project + "-mission-" + self.browser.run
 

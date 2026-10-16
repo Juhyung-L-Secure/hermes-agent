@@ -12,12 +12,14 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 
 from websockets.asyncio.client import connect
 
 from .control import discover, validate_endpoint
 from .settings import load_settings, settings_digest
 from .viewer import DISPLAY, HeadedDisplay
+from .process_output import Lines, ProcessOutput
 
 CHROME = "/opt/scout/chrome-linux64/chrome"
 READY = Path("/tmp/browser-ready.json")
@@ -150,12 +152,37 @@ async def initialize_safeguards(connection, config):
     await command("Target.detachFromTarget", {"sessionId": session})
 
 
+async def _relay_copy(reader, writer, output, identifier, direction, cancellation):
+    try:
+        while data := await reader.read(65536):
+            writer.write(data)
+            await writer.drain()
+        output.emit('relay', 'relay_eof', connection=identifier, direction=direction)
+    except asyncio.CancelledError:
+        output.emit('relay', 'relay_cancelled', 'DEBUG', connection=identifier, direction=direction, reason=cancellation['reason'])
+        raise
+    except (OSError, TimeoutError) as error:
+        output.emit('relay', 'relay_error', 'WARNING', str(error), connection=identifier, direction=direction, error_type=type(error).__name__)
+
+
+async def _finish_relay(copies):
+    for copy in copies:
+        if not copy.done():
+            copy.cancel()
+    await asyncio.gather(*copies, return_exceptions=True)
+
+
 async def run_child(config, run):
     """Publish only verified owned Chromium; child exit closes its relay."""
     network, bounds = config["scout_network"], config["scout_lifecycle"]
     child, server = None, None
+    output = ProcessOutput(config['scout_diagnostics'])
+    drains, transports = [], []
+    shutdown_reason = None
     published = False
     connections = set()
+    connection_id = 0
+    output.emit('launcher', 'launcher_start')
     with tempfile.TemporaryDirectory(prefix="scout-chrome-", dir="/tmp") as profile, ExitStack() as display:
         try:
             # A stale listener is a failed start, never an attachment candidate.
@@ -169,10 +196,41 @@ async def run_child(config, run):
                 display.enter_context(HeadedDisplay(config, profile))
                 environment["DISPLAY"] = DISPLAY
             child = subprocess.Popen(launch_args(profile, network, config["browser"]["viewport"], config["browser"]["mode"]), env=environment,
-                                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                     stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             loop = asyncio.get_running_loop()
+            output.emit('chromium', 'child_start', pid=child.pid)
+
+            async def drain(pipe, component):
+                reader = asyncio.StreamReader(limit=8192)
+                transport, _ = await loop.connect_read_pipe(lambda: asyncio.StreamReaderProtocol(reader), pipe)
+                transports.append(transport)
+                lines = Lines(output.limit)
+                def emit(line):
+                    if line is None:
+                        output.emit('launcher', 'diagnostic_loss', 'WARNING', 'Oversized browser diagnostic line dropped.')
+                    else:
+                        output.emit(component, 'native_output', text=line.decode('utf-8', 'replace'))
+                try:
+                    while data := await reader.read(8192):
+                        for line in lines.feed(data):
+                            emit(line)
+                    for line in lines.feed(b'', final=True):
+                        emit(line)
+                finally:
+                    transport.close()
+
+            drains = [asyncio.create_task(drain(child.stdout, 'stdout')), asyncio.create_task(drain(child.stderr, 'stderr'))]
+
+            def received(sig):
+                nonlocal shutdown_reason
+                output.emit('launcher', 'signal_received', received_signal=int(sig))
+                if child.poll() is None:
+                    shutdown_reason = 'launcher_signal'
+                    output.emit('chromium', 'child_signal', requested_signal=int(signal.SIGTERM), reason=shutdown_reason, pid=child.pid)
+                    child.terminate()
+
             for sig in (signal.SIGTERM, signal.SIGINT):
-                loop.add_signal_handler(sig, lambda: child.terminate() if child.poll() is None else None)
+                loop.add_signal_handler(sig, received, sig)
             deadline = time.monotonic() + bounds["startup_timeout"]
             while not owns_control_socket(child.pid, network["control_port"]):
                 if child.poll() is not None or time.monotonic() >= deadline:
@@ -183,28 +241,32 @@ async def run_child(config, run):
                                close_timeout=bounds["control_connect_timeout"], ping_interval=None) as startup:
                 await initialize_safeguards(startup, config)
 
-            async def forward(reader, writer):
-                while data := await reader.read(65536):
-                    writer.write(data)
-                    await writer.drain()
-
             async def accept(reader, writer):
+                nonlocal connection_id
+                connection_id += 1
+                identifier = connection_id
                 task = asyncio.current_task()
                 connections.add(task)
                 upstream, copies = None, []
+                cancellation = {'reason': 'peer_finished'}
                 try:
                     if writer.get_extra_info("peername")[0] != network["scout_address"] or child.poll() is not None:
                         return
                     remote, upstream = await asyncio.wait_for(
                         asyncio.open_connection("127.0.0.1", network["control_port"]), bounds["control_connect_timeout"])
-                    copies = [asyncio.create_task(forward(reader, upstream)), asyncio.create_task(forward(remote, writer))]
+                    output.emit('relay', 'relay_open', connection=identifier,
+                                peer=writer.get_extra_info('peername'), local=writer.get_extra_info('sockname'))
+                    copies = [asyncio.create_task(_relay_copy(reader, upstream, output, identifier, 'client_to_chromium', cancellation)),
+                              asyncio.create_task(_relay_copy(remote, writer, output, identifier, 'chromium_to_client', cancellation))]
                     await asyncio.wait(copies, return_when=asyncio.FIRST_COMPLETED)
-                except (OSError, TimeoutError):
-                    pass
+                except asyncio.CancelledError:
+                    cancellation['reason'] = 'launcher_shutdown'
+                    raise
+                except (OSError, TimeoutError) as error:
+                    output.emit('relay', 'relay_error', 'WARNING', str(error), connection=identifier,
+                                direction='connect', error_type=type(error).__name__)
                 finally:
-                    for copy in copies:
-                        copy.cancel()
-                    await asyncio.gather(*copies, return_exceptions=True)
+                    await _finish_relay(copies)
                     if upstream is not None:
                         upstream.close()
                     writer.close()
@@ -216,7 +278,11 @@ async def run_child(config, run):
             READY.write_text(json.dumps({"run": run, "pid": child.pid, "settings": settings_digest(config), "endpoint": endpoint.replace(
                 f"127.0.0.1:{network['control_port']}", f"{network['browser_address']}:{network['relay_port']}", 1)}))
             published = True
+            output.emit('launcher', 'launcher_ready', pid=child.pid)
             return await asyncio.to_thread(child.wait)
+        except Exception:
+            output.emit('launcher', 'launcher_error', 'ERROR', traceback.format_exc())
+            raise
         finally:
             if published:
                 READY.unlink(missing_ok=True)
@@ -227,12 +293,28 @@ async def run_child(config, run):
                 task.cancel()
             await asyncio.gather(*list(connections), return_exceptions=True)
             if child is not None and child.poll() is None:
+                shutdown_reason = shutdown_reason or 'launcher_cleanup'
+                output.emit('chromium', 'child_signal', requested_signal=int(signal.SIGTERM), reason='launcher_cleanup', pid=child.pid)
                 child.terminate()
                 try:
                     child.wait(timeout=bounds["shutdown_timeout"])
                 except subprocess.TimeoutExpired:
+                    output.emit('chromium', 'child_signal', 'WARNING', requested_signal=int(signal.SIGKILL), reason='cleanup_timeout', pid=child.pid)
                     child.kill()
                     child.wait()
+            if child is not None:
+                code = child.poll()
+                output.emit('chromium', 'child_exit', 'INFO' if shutdown_reason or code == 0 else 'ERROR',
+                            pid=child.pid, returncode=code, signal=-code if code is not None and code < 0 else None,
+                            reason=shutdown_reason or 'observed_exit')
+            if drains:
+                done, pending = await asyncio.wait(drains, timeout=bounds['shutdown_timeout'])
+                for task in pending:
+                    task.cancel()
+                await asyncio.gather(*drains, return_exceptions=True)
+            for transport in transports:
+                transport.close()
+            output.close(bounds['shutdown_timeout'])
 
 
 def main():

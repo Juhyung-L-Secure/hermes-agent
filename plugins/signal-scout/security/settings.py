@@ -23,6 +23,13 @@ def load_settings(path=CONFIG):
     try:
         config = yaml.safe_load(Path(path).read_text())
         logging = config["logging"]
+        diagnostics = config["scout_diagnostics"]
+        if (set(diagnostics) != {"max_record_bytes", "max_pending_bytes"}
+                or type(diagnostics["max_record_bytes"]) is not int
+                or not 1024 <= diagnostics["max_record_bytes"] <= 1024 ** 2
+                or type(diagnostics["max_pending_bytes"]) is not int
+                or not 2 * diagnostics["max_record_bytes"] <= diagnostics["max_pending_bytes"] <= 16 * 1024 ** 2):
+            raise ValueError
         browser = config["browser"]
         if (browser["mode"] not in {"headless", "headed"} or type(browser["viewer"]) is not bool
                 or browser["viewer"] and browser["mode"] != "headed"):

@@ -4,6 +4,7 @@ import copy
 import importlib
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 import yaml
@@ -130,6 +131,7 @@ def test_BT_004_SR_005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_path)
     run.run, run.container, run.endpoint, run.lock = 'b' * 32, 'a' * 64, endpoint, None
     run._helper_state = None
     run.restore_helpers = False
+    run._diagnostics = Mock()
     monkeypatch.setattr(run, 'inspect_owned', lambda: {'State': {'Running': True}})
     assert run.scout_environment() == {'SCOUT_BROWSER_RUN': run.run,
                                       'SCOUT_BROWSER_CONTAINER': run.container, 'BROWSER_CDP_URL': endpoint}

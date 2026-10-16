@@ -4,7 +4,7 @@
 
 Preserve evidence explaining why Scout's browser-control connection ended. Original failure was `ConnectionClosedError: no close frame received or sent` during `Page.navigate`, about7.2 seconds after dispatch. Existing logs locate the broken Scout-to-relay-to-Chromium connection but do not identify which process or transport ended it. Two controlled integration replays reproduced native helper cleanup and a recoverable model-call stall, not the fatal disconnect. Both replay missions completed; their lifecycle assertions remain red. Diagnostic implementation must not be presented as reproduction or repair of that original failure.
 
-This brief completes saute-me requirements gathering. No new user question is needed. Runtime implementation, new Docker verification, live research, commit and push have not started in this planning step. Helper lifecycle/removal stays explicitly deferred.
+This brief records the settled requirements and the implemented collection boundary. The implementation uses a host observer, a private host native-redaction subprocess, bounded Docker output, and a fixed stdin-only writer in the existing verified proxy. Maintained checks live in `test_process_diagnostics_unit.py`, `test_process_diagnostics.py`, the existing isolation/start-failure files, and foreground CLI integration tests. Their actual execution receipts and independent assertion review determine verification status. Helper lifecycle/removal stays explicitly deferred. The original mission failure remains unexplained.
 
 ## Contracts and provenance
 
@@ -12,7 +12,7 @@ This brief completes saute-me requirements gathering. No new user question is ne
 - Existing decisions retain native Hermes diagnostics and secret redaction, configurable log levels/rotation, best-effort logging, protected shared log storage, sanitized model results, exact owned cleanup and no browser replacement. Browser must not gain shared auth/log mounts or Docker access.
 - Agent chooses reuse of the existing trusted host lifecycle and log volume, current-run correlation, continuous output draining, pre-stop state capture and offline reproducible verification. These are scoped engineering defaults, not answers attributed to the user. Exact collector placement, filenames and record implementation remain flexible.
 - Owning new contracts are `SR_023` and `SR_024` in `plugins/signal-scout/security/specs.json`. Existing `SR_003` reconciles browser output collection with the no-persistent-browser-mount boundary. Existing `MI_034` in `plugins/signal-scout/missions/specs.json` adds browser diagnostics to the established CLI behavior. Preserve `SR_005`, `SR_006`, `SR_010`, `SR_011`, `SR_012`, `SR_022` and `MI_035`.
-- New specs initially have empty automatic coverage. Existing `SR_003` and `MI_034` links retain their existing proof only; they do not establish the new behavior. Add real maintained tests and inspect their assertions before claiming completion.
+- New specs initially had empty automatic coverage. Their maintained links now identify process/relay, native-context redaction, bounded endpoint failure, state capture, and real foreground lifecycle assertions. Existing `SR_003` and `MI_034` links retain their earlier proof and add browser-specific coverage. A valid link still does not establish passing execution or adequate assertions.
 
 ## Source grounding
 

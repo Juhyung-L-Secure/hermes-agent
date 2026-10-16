@@ -27,6 +27,9 @@ logging:
   level: INFO
   max_size_mb: 5
   backup_count: 3
+scout_diagnostics:
+  max_record_bytes: 65536
+  max_pending_bytes: 1048576
 scout_reviewer:
   model: gpt-6-luna
   reasoning_effort: none

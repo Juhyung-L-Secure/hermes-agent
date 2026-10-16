@@ -16,10 +16,13 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from browser_diagnostics import BrowserDiagnostics
 settings = importlib.import_module("plugins.signal-scout.security.settings")
 control = importlib.import_module("plugins.signal-scout.security.control")
 CONFIG = Path(__file__).with_name("config.yaml")
@@ -76,7 +79,7 @@ class BrowserRun:
     apply explicit test/operator configurations; none is a fallback source.
     """
 
-    def __init__(self, compose_files=(COMPOSE,), config_path=CONFIG, *, restore_helpers=False):
+    def __init__(self, compose_files=(COMPOSE,), config_path=CONFIG, *, restore_helpers=False, verbose=False):
         self.config = settings.load_settings(config_path)
         self.compose = ["docker", "compose"]
         for path in compose_files:
@@ -90,6 +93,7 @@ class BrowserRun:
         self.lock = None
         self.restore_helpers = restore_helpers
         self._helper_state = None
+        self._diagnostics = BrowserDiagnostics(self, verbose)
 
     def inspect_helper(self, service):
         identifier = checked(self.compose + ["ps", "-a", "-q", service])
@@ -139,11 +143,11 @@ class BrowserRun:
             if actual != settings.settings_digest(self.config):
                 raise RuntimeError("Scout image configuration is stale; rebuild and recreate.")
 
-    def inspect_owned(self):
+    def inspect_owned(self, *, timeout=DOCKER_COMMAND_TIMEOUT):
         """Bind every readiness/cleanup operation to exact Docker ID and owner labels."""
         if not self.container or not re.fullmatch("[0-9a-f]{64}", self.container):
             raise RuntimeError("Browser ownership verification failed.")
-        info = json.loads(checked(["docker", "inspect", self.container]))[0]
+        info = json.loads(checked(["docker", "inspect", self.container], timeout=timeout))[0]
         labels = info["Config"]["Labels"]
         if (info["Id"] != self.container or labels.get("com.docker.compose.project") != self.project
                 or labels.get("com.docker.compose.service") != "browser" or labels.get(RUN_LABEL) != self.run):
@@ -188,7 +192,10 @@ class BrowserRun:
                     "--filter", "label=com.docker.compose.project=" + self.project,
                     "--filter", "label=com.docker.compose.service=browser",
                     "--filter", "label=" + RUN_LABEL + "=" + self.run]) or None
+                if self.container:
+                    self._diagnostics.start()
                 raise
+            self._diagnostics.start()
             deadline = time.monotonic() + self.config["scout_lifecycle"]["startup_timeout"]
             while time.monotonic() < deadline:
                 if not self.inspect_owned()["State"]["Running"]:
@@ -208,6 +215,7 @@ class BrowserRun:
                 time.sleep(0.05)
             raise RuntimeError("Browser startup timeout.")
         except BaseException:
+            self._diagnostics.capture('startup_failure', error=traceback.format_exc())
             self.close()
             raise
 
@@ -249,14 +257,24 @@ class BrowserRun:
         """Remove exact owned browser, optionally restore helpers; retain images/volumes."""
         try:
             if self.container is not None:
-                self.inspect_owned()
+                try:
+                    info = self.inspect_owned()
+                except Exception:
+                    self._diagnostics.capture('pre_stop')
+                    raise
+                self._diagnostics.capture('pre_stop', info)
                 grace = self.config["scout_lifecycle"]["shutdown_timeout"]
-                checked(["docker", "stop", "-t", str(grace), self.container],
-                        timeout=grace + DOCKER_COMMAND_TIMEOUT)
+                try:
+                    checked(["docker", "stop", "-t", str(grace), self.container],
+                            timeout=grace + DOCKER_COMMAND_TIMEOUT)
+                finally:
+                    self._diagnostics.capture('after_stop_attempt')
+                    self._diagnostics.close()
                 checked(["docker", "rm", self.container])
                 self.container = None
         finally:
             try:
+                self._diagnostics.close()
                 self._restore_helpers()
             finally:
                 if self.lock is not None:

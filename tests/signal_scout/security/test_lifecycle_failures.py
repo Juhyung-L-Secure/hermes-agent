@@ -5,6 +5,7 @@ import json
 import selectors
 import subprocess
 import time
+from unittest.mock import Mock
 
 import pytest
 import yaml
@@ -20,6 +21,8 @@ def docker(*args):
 
 @pytest.mark.parametrize('foreign_collision', [False, True])
 def test_SR_005_create_then_start_failure_removes_only_attempted_owner(scout_stack, tmp_path, monkeypatch, foreign_collision):
+    """SR_024"""
+    from tests.signal_scout.security.test_process_diagnostics import saved_run
     override = tmp_path / 'cannot-start.yaml'
     # Without Docker's init trampoline, absent executable fails OCI start itself.
     override.write_text(yaml.safe_dump({'services': {'browser': {'init': False, 'entrypoint': ['/missing-start-fixture']}}}))
@@ -48,6 +51,10 @@ def test_SR_005_create_then_start_failure_removes_only_attempted_owner(scout_sta
             assert observed[0]['State']['Error']  # Docker created it, then real OCI start failed.
             assert observed[0]['Config']['Labels'][lifecycle.RUN_LABEL] == run.run
             assert subprocess.run(['docker', 'inspect', observed[0]['Id']], capture_output=True).returncode != 0
+            saved = saved_run(scout_stack, run.run)
+            assert 'phase=pre_stop' in saved and 'phase=after_stop_attempt' in saved
+            assert '"Status": "created"' in saved and 'missing-start-fixture' in saved
+            assert 'event=child_start' not in saved and 'event=child_exit' not in saved
     finally:
         # Fixture cleanup also handles the intentionally failing pre-fix test.
         attempted = docker('ps', '-aq', '--no-trunc', '--filter', 'label=' + lifecycle.RUN_LABEL + '=' + run.run)
@@ -198,6 +205,8 @@ def test_SR_005_shutdown_deadline_includes_supported_grace(monkeypatch, grace):
     run.config = lifecycle.settings.load_settings(lifecycle.CONFIG)
     run.config['scout_lifecycle']['shutdown_timeout'] = grace
     run.container, run.lock = 'a' * 64, None
+    run._helper_state = None
+    run._diagnostics = Mock()
     monkeypatch.setattr(run, 'inspect_owned', lambda: None)
     calls = []
     monkeypatch.setattr(lifecycle, 'checked', lambda command, **kwargs: calls.append((command, kwargs)))

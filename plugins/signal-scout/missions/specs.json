@@ -45,11 +45,15 @@
       "contract": "The CLI's --verbose flag adds real-time Hermes, proxy, firewall and collected browser-process/relay diagnostics to terminal progress, including native exception/stack details when emitted at the configured logging level. It does not rewrite native messages, weaken native secret redaction, increase persistent logging level or create a second persistent log system. Following a rotating configured log continues into its replacement file without replaying prior-run history; browser diagnostics emitted during startup are associated with the current run rather than silently skipped when the Scout container starts later. Normal nonverbose mode keeps concise mission progress and relevant warnings/errors instead of streaming routine browser diagnostics. Reader/observer processes stop with the foreground mission and diagnostics failure remains visible without changing browser safety decisions.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_003_SR_023_MI_034_native_redaction_configured_levels_and_bounded_delivery"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_023_MI_034_blocked_endpoint_does_not_block_source_or_bounded_close"},
         {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_034_native_console_preserves_saved_handlers_levels_redaction_and_traceback"},
         {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_034_network_cursor_current_only_append_replace_truncate_and_late_create"},
         {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_034_file_observer_failure_is_visible_and_stops_without_changing_review"},
         {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose"},
-        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_headed.py", "test": "test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotation"}
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_headed.py", "test": "test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotation"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_033_MI_035_actual_cli_failed_native_outcome_and_denial"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_035_actual_sigint_and_rejected_second_cli_preserve_active_owner"}
       ],
       "otherCoverage": [],
       "blocker": ""

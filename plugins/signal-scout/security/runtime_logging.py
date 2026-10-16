@@ -2,7 +2,11 @@ import logging
 import json
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+import os
+import re
+import signal
 import sys
+import time
 
 EVENTS = frozenset({
     "started", "closed", "status", "invalid_url", "navigation_allowed", "navigation_failed",
@@ -20,6 +24,13 @@ def diagnostic():
         print("scout logging write failed", file=sys.stderr)
     except OSError:
         pass
+
+
+def _rotating_handler(component, config, *, directory=None):
+    settings = config['logging']
+    directory = Path('/var/log/scout') if directory is None else directory
+    return RotatingFileHandler(directory / (component + '.log'),
+        maxBytes=settings['max_size_mb'] * 1024 ** 2, backupCount=settings['backup_count'], encoding='utf-8')
 
 
 def configure_logging(component, config):
@@ -56,9 +67,7 @@ def configure_logging(component, config):
             finally:
                 handlers = hermes_logging.rotating_file_handlers()
         else:
-            path = Path("/var/log/scout") / f"{component}.log"
-            handler = RotatingFileHandler(path, maxBytes=settings["max_size_mb"] * 1024 ** 2,
-                                          backupCount=settings["backup_count"], encoding="utf-8")
+            handler = _rotating_handler(component, config)
             handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
             root.addHandler(handler)
             handlers = [handler]
@@ -122,3 +131,87 @@ def review_attempt(action_type, attempts):
     logging.getLogger("signal_scout.scout").info(
         "event=review_attempt " + json.dumps(metadata, sort_keys=True),
         extra={"scout_component": "scout", "scout_event": "review_attempt", "scout_review": metadata})
+
+
+def _writer_path(run):
+    if not re.fullmatch('[0-9a-f]{32}', run):
+        raise ValueError('Invalid browser writer ownership.')
+    return Path('/tmp/scout-browser-writer-' + run + '.json')
+
+
+def _process_start(pid):
+    return Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[19]
+
+
+def stop_browser_writer(run, timeout):
+    path = _writer_path(run)
+    if not path.exists():
+        return True
+    record = json.loads(path.read_text())
+    pid = record['pid']
+    expected = [sys.executable, '-m', 'security.runtime_logging', '--browser-writer', run]
+    try:
+        actual = Path(f'/proc/{pid}/cmdline').read_bytes().rstrip(b'\0').decode().split('\0')
+        if actual != expected or _process_start(pid) != record['start']:
+            return False
+        os.kill(pid, signal.SIGKILL)
+        deadline = time.monotonic() + timeout
+        while Path(f'/proc/{pid}').exists():
+            state = Path(f'/proc/{pid}/stat').read_text().rsplit(')', 1)[1].split()[0]
+            if state == 'Z':
+                break
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.01)
+    except ProcessLookupError:
+        pass
+    except FileNotFoundError:
+        pass
+    path.unlink(missing_ok=True)
+    return True
+
+
+def browser_writer(run):
+    from .settings import load_settings
+    from .process_output import Lines
+
+    config = load_settings()
+    path = _writer_path(run)
+    handler = None
+    owned = False
+    try:
+        with path.open('x') as marker:
+            json.dump({'pid': os.getpid(), 'start': _process_start(os.getpid())}, marker)
+        owned = True
+        handler = _rotating_handler('browser', config)
+        handler.setFormatter(logging.Formatter('%(message)s'))
+        def failed(_record):
+            raise OSError('Browser diagnostic storage unavailable.')
+        handler.handleError = failed
+        lines = Lines(config['scout_diagnostics']['max_record_bytes'])
+        while data := os.read(0, 8192):
+            for payload in lines.feed(data):
+                if payload is None:
+                    raise ValueError('Oversized browser diagnostic record.')
+                line = json.loads(payload)
+                if (not isinstance(line, str) or any(char in line for char in '\r\n\0')
+                        or len(line.encode()) > config['scout_diagnostics']['max_record_bytes']):
+                    raise ValueError('Invalid browser diagnostic record.')
+                handler.handle(logging.LogRecord('signal_scout.browser', logging.INFO, '', 0, line, (), None))
+        if lines.pending or lines.discarding:
+            raise ValueError('Incomplete browser diagnostic record.')
+    finally:
+        if handler is not None:
+            handler.close()
+        if owned:
+            path.unlink(missing_ok=True)
+
+
+if __name__ == '__main__':
+    try:
+        if len(sys.argv) != 3 or sys.argv[1] != '--browser-writer':
+            raise ValueError('Invalid browser writer command.')
+        browser_writer(sys.argv[2])
+    except Exception:
+        diagnostic()
+        raise SystemExit(1) from None

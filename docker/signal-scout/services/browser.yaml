@@ -17,7 +17,12 @@ services:
     tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777"]
     restart: "no"
     logging:
-      driver: none
+      driver: local
+      options:
+        max-size: "1m"
+        max-file: "2"
+        mode: non-blocking
+        max-buffer-size: "1m"
     network_mode: service:firewall
     depends_on:
       firewall:

@@ -94,8 +94,9 @@ def _send(self, request, **kwargs):
             return httpx.Response(401, json={"error": {"message": "Offline fixture authentication failure", "type": "invalid_request_error"}}, request=request)
         logger = logging.getLogger("tools.cli_fixture")
         logger.debug("fixture-debug-must-stay-hidden")
+        detail = "fixture native multiline detail " + "glpat-" + "Zx9AbCdEfGhIjKlMnOpQ"
         try:
-            raise ValueError("fixture native multiline detail " + "glpat-" + "Zx9AbCdEfGhIjKlMnOpQ")
+            raise ValueError(detail)
         except ValueError:
             logger.exception("fixture native diagnostic")
         return _reply(request, body, [_tool("navigate", {"url": "http://public.test/cli-mission"}, "Read controlled research source")])

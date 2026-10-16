@@ -4,6 +4,7 @@ import copy
 import importlib
 import json
 import os
+import re
 from pathlib import Path
 import socket
 import subprocess
@@ -120,7 +121,12 @@ def test_SR_004_container_mount_pid_network_and_resource_separation(scout_stack)
             assert not host['CapAdd'] and not host['Privileged'] and not host['PortBindings']
             assert 'no-new-privileges:true' in host['SecurityOpt']
             assert any(option.startswith('seccomp=') for option in host['SecurityOpt'])
-            assert host['LogConfig']['Type'] == 'none'
+            assert host['LogConfig']['Type'] == 'local'
+            transport = run.model['services']['browser']['logging']['options']
+            assert host['LogConfig']['Config'] == transport
+            assert transport['mode'] == 'non-blocking' and int(transport['max-file']) > 0
+            assert all(re.fullmatch(r'[1-9][0-9]*[kmg]?', transport[key])
+                       for key in ('max-size','max-buffer-size'))
             assert host['NetworkMode'] != hermes['HostConfig']['NetworkMode']
             assert not host['PidMode'] and not host['VolumesFrom']
             assert all(mount['Type'] == 'tmpfs' for mount in browser['Mounts'])
@@ -352,6 +358,8 @@ with Browser() as browser:
 
 
 def test_SR_005_unavailable_relay_cleans_new_child_only(scout_stack):
+    """SR_023 SR_024"""
+    from tests.signal_scout.security.test_process_diagnostics import saved_run
     scout_stack.compose('exec', '-T', '-d', '-u', '10000', 'firewall', 'python3', '-c', """
 import os,socket,time
 from pathlib import Path
@@ -373,6 +381,9 @@ with socket.socket() as fixture:
             with run:
                 pytest.fail('Unavailable relay accepted')
         assert run.container is None
+        saved = saved_run(scout_stack, run.run)
+        assert 'event=launcher_error' in saved and 'address already in use' in saved.lower()
+        assert 'event=child_exit' in saved and 'phase=pre_stop' in saved and 'phase=after_stop_attempt' in saved
         scout_stack.probe("import socket; s=socket.create_connection(('172.30.242.4',9223),timeout=2); s.close()")
     finally:
         scout_stack.compose('exec', '-T', '-u', '10000', 'firewall', 'python3', '-c', "import os,signal; from pathlib import Path; p=Path('/tmp/relay-fixture.pid'); os.kill(int(p.read_text()),signal.SIGTERM); p.unlink()")

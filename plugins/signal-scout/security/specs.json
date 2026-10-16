@@ -146,7 +146,10 @@
         {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_proxy_firewall_events_persist_after_replacement"},
         {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_scout_attached_output_is_not_retained_in_docker_logs"},
         {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_helper_rotation_uses_supplied_file_limits"},
-        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_proxy_write_failure_does_not_disable_public_access_or_private_denial"}
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_logging.py", "test": "test_SR_003_proxy_write_failure_does_not_disable_public_access_or_private_denial"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_003_SR_023_native_context_redacts_before_single_line_encoding"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_process_diagnostics.py", "test": "test_SR_003_SR_023_real_child_pipes_redact_and_persist_without_verbose"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_process_diagnostics.py", "test": "test_SR_003_SR_023_actual_proxy_writer_honors_validated_rotation_and_data_only"}
       ],
       "otherCoverage": [],
       "blocker": ""
@@ -700,7 +703,29 @@
       "title": "Persistent browser-process and relay diagnostics",
       "contract": "During an owned browser run, Chromium diagnostic output, launcher exceptions and observed child termination, and CDP relay connection failures or endings are collected through the trusted host and retained in the existing diagnostic log volume under configured verbosity, size and backup limits and native secret redaction. Records identify the run and component; relay records distinguish connections and direction with observed EOF, error or cancellation, and child records distinguish observed exit code or signal from requested shutdown. Browser output is drained during execution rather than only after failure so the diagnostic mechanism does not fill a pipe and stall Chromium. Bounded browser-output transport is permitted; the browser receives no persistent log/auth mount, Docker socket, added network permission or new model tool. Diagnostics preserve useful native error detail without adding bulk CDP/HTTP payload, screenshot, page-body, cookie, credential or reviewer-packet dumps. Native redaction is not universal removal of sensitive content. A broken diagnostic stream or sink attempts a visible diagnostic but does not replace the mission result, authorize an action or prevent existing owned cleanup. Collection is best effort, not a guarantee against host death, forced process kill, transport-buffer eviction or Docker unavailability. Browser actions, reviewer decisions, helper inactivity/reconnect behavior, existing timeouts and retries, browser/network/download protections and mission lifecycle outcomes remain unchanged.",
       "requiredCoverage": ["unit", "e2e"],
-      "coverage": [],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_023_complete_lines_drop_whole_oversized_records_and_keep_next"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_023_actual_child_pipes_and_received_vs_requested_signal"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_023_late_launcher_signal_keeps_observed_unexpected_child_exit"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_023_browser_boundary_rejects_host_state_and_malformed_records"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_003_SR_023_MI_034_native_redaction_configured_levels_and_bounded_delivery"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_003_SR_023_native_context_redacts_before_single_line_encoding"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_023_relay_outcomes_keep_complete_sibling_and_cancel_only_pending"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_023_MI_034_blocked_endpoint_does_not_block_source_or_bounded_close"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_023_missing_native_formatter_has_no_raw_fallback"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_023_SR_024_host_startup_error_precedes_unavailable_state_and_redacts"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_023_diagnostic_limits_validate_at_config_boundary"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_process_diagnostics.py", "test": "test_SR_023_SR_024_real_child_exit_survives_owned_removal"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_process_diagnostics.py", "test": "test_SR_023_SR_024_host_startup_exception_persists_before_cleanup"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_process_diagnostics.py", "test": "test_SR_023_SR_024_real_relay_eof_while_chromium_alive_and_final_stop"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_process_diagnostics.py", "test": "test_SR_003_SR_023_real_child_pipes_redact_and_persist_without_verbose"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_process_diagnostics.py", "test": "test_SR_023_broken_proxy_writer_preserves_browser_and_reaps_real_remote_process"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_process_diagnostics.py", "test": "test_SR_003_SR_023_actual_proxy_writer_honors_validated_rotation_and_data_only"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_isolation.py", "test": "test_SR_005_unavailable_relay_cleans_new_child_only"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_033_MI_035_actual_cli_failed_native_outcome_and_denial"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_035_actual_sigint_and_rejected_second_cli_preserve_active_owner"}
+      ],
       "otherCoverage": [],
       "blocker": ""
     },
@@ -710,7 +735,20 @@
       "title": "Owned browser failure state survives ordinary teardown",
       "contract": "Before the trusted owner intentionally stops or removes its exact browser container on normal completion, handled failure, startup failure or cancellation, it attempts to persist a timestamped pre-teardown state observation identifying the run and verified full container ID and available Docker running/status, exit-code, OOMKilled and error fields. Observation before intentional stop remains distinguishable from post-stop state so cleanup-induced termination is not presented as the original failure. Already-exited containers are observed before removal when still inspectable; missing containers, unavailable process observations or failed inspection are reported as unavailable rather than invented crash causes. Chromium child status and Docker container status are separate observations; exit code 137 or SIGKILL alone is not labeled proof of OOM. Only relevant state fields are retained, not complete Docker inspection documents, environment, authentication or viewer secrets. State capture and final diagnostic collection are attempted while resources remain available but their failure does not block ordinary exact-owned cleanup or alter the mission outcome. Foreign containers and existing auth/log volumes remain untouched. No watchdog, restart, orphan adoption, retained crashed container or guarantee after host death is introduced, and observations do not assert the original mission failure has been diagnosed.",
       "requiredCoverage": ["unit", "e2e"],
-      "coverage": [],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_024_host_state_has_truthful_phases_and_unavailable_fields"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_023_SR_024_host_startup_error_precedes_unavailable_state_and_redacts"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_process_diagnostics_unit.py", "test": "test_SR_024_stop_failure_still_attempts_after_state_before_unlock"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_process_diagnostics.py", "test": "test_SR_023_SR_024_real_child_exit_survives_owned_removal"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_process_diagnostics.py", "test": "test_SR_023_SR_024_real_relay_eof_while_chromium_alive_and_final_stop"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_process_diagnostics.py", "test": "test_SR_023_SR_024_host_startup_exception_persists_before_cleanup"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_process_diagnostics.py", "test": "test_SR_023_SR_024_diagnostic_inspection_failure_keeps_actual_browser_outcome_and_cleanup"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_isolation.py", "test": "test_SR_005_unavailable_relay_cleans_new_child_only"},
+        {"layer": "e2e", "file": "tests/signal_scout/security/test_lifecycle_failures.py", "test": "test_SR_005_create_then_start_failure_removes_only_attempted_owner"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_033_MI_035_actual_cli_failed_native_outcome_and_denial"},
+        {"layer": "e2e", "file": "tests/signal_scout/missions/test_cli_integration.py", "test": "test_MI_035_actual_sigint_and_rejected_second_cli_preserve_active_owner"}
+      ],
       "otherCoverage": [],
       "blocker": ""
     }

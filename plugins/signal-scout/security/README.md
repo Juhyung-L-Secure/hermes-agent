@@ -14,6 +14,7 @@ Mission control remains unimplemented. Download denial and window sizing persist
 | `network_proxy.py` | Approved clients, fresh DNS, every-answer classification, numeric connect, actual-peer check |
 | `firewall.py` | Browser namespace default-deny rules and payload-free NFLOG |
 | `chromium.py` | Owned child/profile/listener, native policy attestation, main-window sizing, relay |
+| `process_output.py` | Bounded child-line assembly and nonblocking diagnostic output |
 | `viewer.py` | Isolated Xvfb/VNC lifetime and authenticated packaged noVNC transport |
 | `../../../docker/signal-scout/chrome-policy.json` | Image-owned mandatory `DownloadRestrictions: 3` |
 | `control.py` | Strict owned endpoint shape and non-redirecting discovery |
@@ -22,6 +23,7 @@ Mission control remains unimplemented. Download denial and window sizing persist
 | `settings.py` | Validated image-owned values and host/image consistency digest |
 | `reviewer.py` | Fresh safety-only request, native subscription adapter, strict binary verdict/deadline/retry boundary |
 | `../../../docker/signal-scout/browser_run.py` | Trusted host ownership, single-run lock, container creation/removal, bounded smoke |
+| `../../../docker/signal-scout/browser_diagnostics.py` | Current-run collection, native redaction worker, console delivery, and selected container state |
 | `evidence.py` / `_cdp.py` | Compact exact refs, preparation, viewport capture and recheck |
 | `gate.py` | Trusted run binding, explicit permissions, exact guarded execution and fatal closure |
 | `reviewer-policy.md` | Single authoritative read-only reviewer instructions |
@@ -109,7 +111,9 @@ Scout protection events retain timestamp, level, component, and fixed event clas
 
 Hermes writes `agent.log` and `errors.log` at `/var/lib/scout/logs`. Proxy and browser firewall write `proxy.log` and `firewall.log` at `/var/log/scout`. All three services share the writable `scout-logs` volume and can access its files. Browser has no log-volume mount. Renamed firewall appends to `firewall.log`, which can retain older Hermes-firewall events. Historical `browser-firewall.log` and backups remain untouched, with no migration or wiping.
 
-Scout/browser Docker log driver is `none`; helper diagnostics stay bounded. Native temporary command files are not persistent logs. Default rotation is 5 MiB with three backups. Validated settings apply to the single firewall writer. Failed opens/writes/rotation attempt fixed diagnostics without changing enforcement; no durability guarantee.
+Scout Docker log driver remains `none`. Browser uses bounded temporary Docker output without a persistent mount. BrowserRun owns continuous collection through final browser teardown, including when Scout has exited. A private host worker applies native `RedactingFormatter` to complete raw text before single-line encoding, and a fixed stdin-only writer in the existing verified proxy rotates `browser.log` on the shared volume. Native temporary command files are not persistent logs. Default rotation is 5 MiB with three backups. Validated logging settings also control browser persistence. Failed opens/writes/rotation attempt fixed diagnostics without changing enforcement; no durability guarantee.
+
+Browser observations separate stdout/stderr, launcher exceptions, child status, received signals, requested child termination, and directional relay EOF/error/cancellation with run-local connection IDs. Socket metadata does not identify a native helper or private action client. The host records initiating startup exceptions before cleanup when the owned stream exists, separately from selected Docker `pre_stop` and `after_stop_attempt` state or unavailable observation. Child status differs from container status; 137/SIGKILL alone is not OOM evidence. Unredacted temporary Docker output is finite and can be lost or evicted. Configured complete-record and pending-payload caps, continuous source drain, and bounded observer close prevent diagnostic endpoints from controlling mission outcomes. The original mission disconnect remains unexplained.
 
 [Docker guide](../../../docker/signal-scout/README.md) owns operations/resources/
 rebuild/recreate/cleanup. Tests use same host lifecycle/Compose, controlled HTTP/

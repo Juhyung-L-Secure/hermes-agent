@@ -9,6 +9,7 @@ import sys
 import tempfile
 import threading
 import uuid
+from unittest.mock import Mock
 
 import pytest
 import yaml
@@ -164,6 +165,7 @@ def bare_run():
     run.compose = ["docker", "compose", "-p", run.project]
     run.container = run.endpoint = run.lock = run._helper_state = None
     run.restore_helpers = True
+    run._diagnostics = Mock()
     return run
 
 
