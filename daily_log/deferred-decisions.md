@@ -4,11 +4,11 @@
 
 ### Diagnostic logging design
 
-**Decision needed:** Choose debugging events and context, correlation identifiers, error detail, retention and privacy rules separately from user-facing research progress updates.
+**Decision needed:** Choose any additional diagnostic events, context and correlation identifiers beyond restored native logging, separately from user-facing research progress updates.
 
-**Current boundary:** User explicitly puts logging implementation after finishing headed mode. Preserve existing safety/runtime logging; do not add a new diagnostic logging system or Discord progress pipeline during headed completion. Temporary controlled-test diagnostics and verification receipts are not a new production logging feature. No raw credentials, viewer passwords or private review packets are authorized for persisted debug output.
+**Current boundary:** Headed mode is verified. User authorizes removing Scout's blanket rewriting and accepts native diagnostic detail in the shared Hermes/proxy/firewall log volume, which browser does not mount. Preserve native secret redaction, configured rotation and fixed protection/reviewer completion metadata. Do not add reviewer-specific suppression; native DEBUG paths may retain reviewer request/evidence/provider details and native redaction is not universal content removal. No separate screenshot/transcript archive, viewer-password logging, new diagnostic event/correlation system or Discord progress pipeline is authorized by this restoration.
 
-**Revisit when:** Headed/headless mode is verified and the user resumes the logging phase. Later possible removal of headed mode is not authorized now.
+**Revisit when:** User starts richer diagnostics or Discord progress work, or retained native diagnostics expose a concrete missing observation. Native retention and shared-volume access are already decided. Later possible removal of headed mode is not authorized now.
 
 **Source:** `daily_log/2026-10-15.md`
 

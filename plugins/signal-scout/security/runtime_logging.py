@@ -1,5 +1,3 @@
-"""Bounded, metadata-only operational events; logging failures never weaken policy."""
-
 import logging
 import json
 from logging.handlers import RotatingFileHandler
@@ -24,30 +22,13 @@ def diagnostic():
         pass
 
 
-class MetadataOnly(logging.Filter):
-    """Keep only allowlisted event codes; replace native messages and tracebacks."""
-
-    def filter(self, record):
-        component = getattr(record, "scout_component", "scout")
-        code = getattr(record, "scout_event", "native_event")
-        record.name = "signal_scout." + (component if isinstance(component, str) and component in COMPONENTS else "scout")
-        record.msg = "event=" + (code if isinstance(code, str) and code in EVENTS else "native_event")
-        if code == "review_completed":
-            record.scout_review = _review_metadata(getattr(record, "scout_review", {}))
-            record.msg += " " + json.dumps(record.scout_review, sort_keys=True)
-        record.args = ()
-        record.session_tag = ""
-        record.exc_info = record.exc_text = record.stack_info = None
-        return True
-
-
 def configure_logging(component, config):
     """Reuse Hermes queue/rotation for Scout; use stdlib rotation for network helpers.
 
-Native diagnostics are collapsed to event class because native redaction alone
-does not remove every URL or body. Open/rotation/write failures report a fixed
-stderr diagnostic and leave security enforcement independent of log delivery.
-"""
+    Native diagnostics retain their context under Hermes secret redaction.
+    Open/rotation/write failures report a fixed stderr diagnostic and leave
+    security enforcement independent of log delivery.
+    """
     if component not in COMPONENTS:
         raise ValueError("Invalid logging component.")
     settings = config["logging"]
@@ -57,7 +38,10 @@ stderr diagnostic and leave security enforcement independent of log delivery.
         console = logging.StreamHandler()
         console._scout_console = True
         console.setLevel(logging.WARNING)
-        console.addFilter(MetadataOnly())
+        if component == "scout":
+            from agent.redact import RedactingFormatter
+
+            console.setFormatter(RedactingFormatter())
         console.handleError = lambda _record: diagnostic()
         root.addHandler(console)
     handlers = []
@@ -89,10 +73,7 @@ stderr diagnostic and leave security enforcement independent of log delivery.
             if Path(handler.baseFilename).name == "errors.log":
                 level = max(logging.WARNING, level)
             handler.setLevel(level)
-            handler.addFilter(MetadataOnly())
             handler.handleError = lambda _record: diagnostic()
-        for handler in root.handlers:
-            handler.addFilter(MetadataOnly())
 
 
 def event(component, code, level="INFO"):
@@ -124,12 +105,12 @@ def _review_metadata(value):
 def review_event(action_type, verdict, failure, duration_ms, attempts, usage):
     """Persist only validated verdict/action/timing/attempt/token metadata.
 
-    Provider errors and raw evidence never become log fields. The filter repeats
-    validation before native queue/rotation; logging delivery remains best effort.
+    Provider errors and raw evidence never become fields of this event.
+    Validation precedes native queue/rotation; delivery remains best effort.
     """
     metadata = _review_metadata({**usage, "action_type": action_type,
         "verdict": "technical_failure" if failure else verdict,
         "duration_ms": duration_ms, "attempts": attempts})
     logging.getLogger("signal_scout.scout").log(logging.WARNING if failure else logging.INFO,
-        "event=review_completed", extra={"scout_component": "scout",
+        "event=review_completed " + json.dumps(metadata, sort_keys=True), extra={"scout_component": "scout",
                                         "scout_event": "review_completed", "scout_review": metadata})

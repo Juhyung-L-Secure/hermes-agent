@@ -157,16 +157,11 @@ Packaged noVNC supports trusted clicks/typing without LLM review. Scout actions 
 Xvfb and VNC use container-local UNIX sockets, without host display/device/socket mounts. Websockify requires authentication for HTTP and WebSocket plus local Host/Origin. Dedicated viewer bridge joins only existing firewall/browser namespace: Docker cannot publish an internal-only bridge. Existing restricted bridge stays internal; firewall permits only viewer bridge's host gateway to viewer port/established replies and denies all other traffic on both interfaces. Docker mapping binds 127.0.0.1 only; no LAN/public/CDP exposure. Disabled configuration starts no listener/credentials even though localhost transport remains. Changing viewer subnet/address/port requires matching Compose bridge/address/localhost mapping; topology mismatch fails.
 Pairing: `security/viewer.py` ↔ mode/settings/launcher/firewall ↔ SR_011–SR_013 and real `test_browser_modes.py` checks.
 
-Active persistent logs are `agent.log`, `errors.log`, `proxy.log`, and
-`firewall.log`. Renamed browser firewall appends to existing `firewall.log`, which
-can contain historical Hermes-firewall events. Historical `browser-firewall.log`
-and backups stay untouched; no migration or wiping. Each active file rotates
-independently: 5 MiB/current file and three backups by default. One firewall
-writer remains. Events retain timestamp/level/component/fixed event class; reviewer completion adds only
-sanitized verdict/action type/timing/attempts/available token counts. Native messages/tracebacks collapse
-to metadata. Logging failure is best effort and never weakens enforcement.
-Scout/browser Docker logging is `none`; helper diagnostics remain bounded.
-No raw page/CDP/screenshots/credentials/URLs are persisted in logs.
+Active persistent logs are `agent.log`, `errors.log`, `proxy.log`, and `firewall.log` in the shared `scout-logs` volume. Hermes mounts it at `/var/lib/scout/logs`; proxy and firewall mount it at `/var/log/scout`. All three services have writable access to the same files. Browser has no log-volume mount. Renamed browser firewall appends to existing `firewall.log`, which can contain historical Hermes-firewall events. Historical `browser-firewall.log` and backups stay untouched; no migration or wiping.
+
+Each active file rotates independently, with 5 MiB per current file and three backups by default. One firewall writer remains. Protection events retain timestamp/level/component/fixed event class. Reviewer completion adds only validated verdict/action type/timing/attempts/available token counts, with unknown fields and invalid types removed before queueing. These event producers omit raw browser/CDP arguments/results, screenshots, bodies, cookies, credentials, secret configuration, and provider exceptions.
+
+Native Hermes diagnostics preserve logger names, formatted messages, session context, exceptions, and stacks under native secret redaction. Scout's WARNING console uses the native redactor too. Native/backend diagnostics may retain URLs, request/evidence/response content, and provider errors, including SDK DEBUG records. Native redaction does not guarantee removal of all sensitive content. Reviewer creates no separate screenshot/transcript archive. Logging failure is best effort and never weakens enforcement. Scout/browser Docker logging is `none`; helper diagnostics remain bounded.
 
 ## Existing subscription interfaces
 

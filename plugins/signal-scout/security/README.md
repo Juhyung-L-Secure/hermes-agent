@@ -18,7 +18,7 @@ Mission control remains unimplemented. Download denial and window sizing persist
 | `../../../docker/signal-scout/chrome-policy.json` | Image-owned mandatory `DownloadRestrictions: 3` |
 | `control.py` | Strict owned endpoint shape and non-redirecting discovery |
 | `browser.py` | Existing native Hermes remote-CDP path and actual sandbox attestation |
-| `runtime_logging.py` | Metadata-only native/helper events, rotation, best-effort diagnostics |
+| `runtime_logging.py` | Native diagnostics, fixed protection events, rotation, best-effort delivery |
 | `settings.py` | Validated image-owned values and host/image consistency digest |
 | `reviewer.py` | Fresh safety-only request, native subscription adapter, strict binary verdict/deadline/retry boundary |
 | `../../../docker/signal-scout/browser_run.py` | Trusted host ownership, single-run lock, container creation/removal, bounded smoke |
@@ -101,15 +101,13 @@ Launcher/Hermes/host loss has **no independent teardown guarantee**. No watchdog
 recovery/scavenging/restart or crash-recovery passing test. Operator must inspect
 ownership and deliberately clean before another run.
 
-Logging retains timestamp, level, component, event class only; no URL, raw browser/CDP result, screenshot, cookie, credential or unsanitized exception. Reviewer completion events additionally retain validated verdict, action type, duration in milliseconds, attempt count, and available adapter token counts.
-Hermes sanitized events reuse native logging. Proxy and browser firewall use
-`proxy.log` and `firewall.log` in existing log volume. Renamed firewall appends
-to `firewall.log`, which can retain older Hermes-firewall events. Historical
-`browser-firewall.log` and backups remain untouched, with no migration or wiping.
-Scout/browser Docker log driver is `none`; helper diagnostics stay bounded.
-Native temporary command files are not persistent logs. Default rotation: 5 MiB/three backups.
-Validated settings apply to single firewall writer. Failed opens/writes/rotation
-attempt fixed diagnostics without changing enforcement; no durability guarantee.
+Hermes diagnostics preserve logger names, formatted messages, session context, exceptions, and stacks under native secret redaction. The Scout-owned WARNING console uses the same native redactor. Other handlers keep their own formatters. Native diagnostics may retain URLs, request/evidence/response content, and provider errors, including SDK DEBUG records. Native secret redaction does not remove all sensitive content.
+
+Scout protection events retain timestamp, level, component, and fixed event class. Reviewer completion events add only validated verdict, action type, duration in milliseconds, attempt count, and available adapter token counts. These producers do not interpolate raw browser/CDP arguments/results, screenshots, bodies, cookies, credentials, secret configuration, or provider exceptions. Unknown review fields and invalid types are removed before queueing.
+
+Hermes writes `agent.log` and `errors.log` at `/var/lib/scout/logs`. Proxy and browser firewall write `proxy.log` and `firewall.log` at `/var/log/scout`. All three services share the writable `scout-logs` volume and can access its files. Browser has no log-volume mount. Renamed firewall appends to `firewall.log`, which can retain older Hermes-firewall events. Historical `browser-firewall.log` and backups remain untouched, with no migration or wiping.
+
+Scout/browser Docker log driver is `none`; helper diagnostics stay bounded. Native temporary command files are not persistent logs. Default rotation is 5 MiB with three backups. Validated settings apply to the single firewall writer. Failed opens/writes/rotation attempt fixed diagnostics without changing enforcement; no durability guarantee.
 
 [Docker guide](../../../docker/signal-scout/README.md) owns operations/resources/
 rebuild/recreate/cleanup. Tests use same host lifecycle/Compose, controlled HTTP/
@@ -156,8 +154,7 @@ invent no target; navigation never visits destination. Packet holds action plus
 page/target/AX/link/form/focus/submitter overrides, point and raw viewport PNG.
 Viewport × scale must match dimensions; popup stays native. Private binding/
 baseline separate. No new caps/truncation/crop/shrink/secret masking. Relevant
-secrets may reach provider, never unrelated cookies/auth stores. Evidence remains
-in memory, omitted from repr/files/logs/archives.
+secrets may reach provider, never unrelated cookies/auth stores. Preparation keeps evidence in memory and omits it from repr, emitted events, and separate files/archives. Native backend diagnostics follow the logging boundary above.
 
 Recheck requires same action and original preparation. Original tab/frame/
 document/node, relevant semantics/destination/form/active descendant and actual keyboard focus must match.
@@ -183,9 +180,7 @@ Fresh native `openai-codex` → completed Responses → strict single approve/de
 → sanitized `ReviewResult`. Tools/duplicates/extra fields/failed/incomplete/truncated
 responses fail technically. Defaults remain gpt-6-luna/none/180 seconds per attempt/
 one technical retry; deny never retries. Wrong route/model/SDK retries/effort clamp
-fail. Late results cannot approve. No raw request/transcript/tracing/history retained;
-known token metadata retained. Hung daemon may finish late; no memory-erasure/
-provider-retention/live-quality guarantee. Final failure closes gate/owned Browser.
+fail. Late results cannot approve. Returned results and main-agent history contain sanitized outcomes and known token metadata. Reviewer creates no separate request/transcript archive, saved review session, or tracing callback. Native backend diagnostics can retain review content under the logging boundary above. Hung daemon may finish late; no memory-erasure/provider-retention/live-quality guarantee. Final failure closes gate/owned Browser.
 
 Pairings: reviewer ↔ RV_001–R007 ↔ reviewer/logging tests; gate/settings ↔
 AG_001–G007 ↔ gate tests; evidence/browser/CDP ↔ AE_001–E006 ↔ evidence tests;

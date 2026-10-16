@@ -1,5 +1,3 @@
-"""SR_003: metadata-only native/helper logging, rotation, persistence, best effort."""
-
 import json
 from pathlib import Path
 import subprocess
@@ -24,25 +22,48 @@ def isolated(tmp_path, code):
     return result
 
 
-def test_SR_003_native_events_sanitize_rotate_and_honor_settings(tmp_path):
+def test_SR_003_native_diagnostics_redact_rotate_and_honor_settings(tmp_path):
     result = isolated(tmp_path, """
-        import importlib, logging, os, yaml
+        import importlib, io, logging, os, sys, yaml
         from pathlib import Path
         runtime = importlib.import_module('plugins.signal-scout.security.runtime_logging')
         config = yaml.safe_load((Path(os.environ['HERMES_HOME']) / 'config.yaml').read_text())
+        foreign = logging.StreamHandler(io.StringIO())
+        formatter = logging.Formatter('%(name)s %(message)s')
+        foreign.setFormatter(formatter)
+        logging.getLogger().addHandler(foreign)
         runtime.configure_logging('scout', config)
+        runtime.configure_logging('scout', config)
+        assert foreign.formatter is formatter and foreign.filters == []
+        assert sum(bool(getattr(h, '_scout_console', False)) for h in logging.getLogger().handlers) == 1
         import hermes_logging
-        hermes_logging.set_session_context('secret-session-poison')
+        hermes_logging.set_session_context('research-session')
+        token = 'glpat-' + 'Zx9AbCdEfGhIjKlMnOpQ'
+        message = 'Provider request %s count=%d credential=%s'
+        args = ('https://example.test/research?q=bacon', 7, token)
         try:
-            raise ValueError('secret-error-poison https://secret.test/path?credential=poison')
+            raise ValueError('native-error-context ' + token)
         except ValueError:
-            logging.getLogger('tools.secret-name-poison').exception(
-                'secret-body-poison cookie=secret-cookie-poison arguments=%r', {'secret':'argument-poison'})
+            exception = sys.exc_info()
+            logger = logging.getLogger('tools.native_probe')
+            record = logger.makeRecord(logger.name, logging.ERROR, 'native-probe.py', 1,
+                message, args, exception, sinfo='Stack (most recent call last): native-stack-context')
+            logger.handle(record)
+            assert record.name == 'tools.native_probe' and record.msg == message and record.args == args
+            assert record.session_tag == ' [research-session]' and record.exc_info is exception
+            assert record.stack_info == 'Stack (most recent call last): native-stack-context'
         hermes_logging.flush_log_queue()  # Deterministic test read, not runtime acknowledgment.
         handlers = hermes_logging.rotating_file_handlers()
         assert all(h.maxBytes == 1024**2 and h.backupCount == 2 for h in handlers)
         assert all('Rotating' in type(h).__name__ for h in handlers)
-        assert all('poison' not in Path(h.baseFilename).read_text() for h in handlers)
+        assert {Path(h.baseFilename).name: h.level for h in handlers} == {
+            'agent.log': logging.INFO, 'errors.log': logging.WARNING}
+        for handler in handlers:
+            text = Path(handler.baseFilename).read_text()
+            assert 'ERROR [research-session] tools.native_probe:' in text
+            assert 'Provider request https://example.test/research?q=bacon count=7 credential=' in text
+            assert 'Traceback (most recent call last):' in text and 'ValueError: native-error-context' in text
+            assert 'native-stack-context' in text and 'Zx9AbCdEfGhIjKlMnOpQ' not in text
         # Seed near real configured limit; three native events trigger real
         # rollovers/oldest-backup eviction without a 45,000-record queue drain.
         for _ in range(3):
@@ -61,11 +82,13 @@ def test_SR_003_native_events_sanitize_rotate_and_honor_settings(tmp_path):
     assert all(0 < path.stat().st_size <= 1024 ** 2 for path in files)
     output = result.stdout + result.stderr + ''.join(path.read_text() for path in files)
     assert 'event=started' in output
-    assert 'poison' not in output and 'https://' not in output
+    assert 'Provider request https://example.test/research?q=bacon count=7 credential=' in result.stderr
+    assert 'ValueError: native-error-context' in result.stderr and 'native-stack-context' in result.stderr
+    assert 'Zx9AbCdEfGhIjKlMnOpQ' not in output
     assert 'connection_allowed' not in output  # INFO suppresses DEBUG.
 
 
-def test_SR_003_RV_006_reviewer_metadata_rotates_without_raw_retention(tmp_path):
+def test_SR_003_RV_006_reviewer_events_validate_metadata_and_preserve_native_diagnostics(tmp_path):
     result = isolated(tmp_path, """
         import importlib, json, logging, os, httpx
         from pathlib import Path
@@ -77,7 +100,6 @@ def test_SR_003_RV_006_reviewer_metadata_rotates_without_raw_retention(tmp_path)
         modes = iter(('approve', 'deny', 'malformed', 'provider_error'))
         def handle(request):
             mode = next(modes)
-            logging.getLogger('openai.transport-poison').debug('request poison %r', request.content)
             if mode == 'provider_error':
                 raise httpx.ConnectError('provider exception poison')
             text = '{"verdict":"' + mode + '"}' if mode != 'malformed' else 'transcript poison'
@@ -100,6 +122,7 @@ def test_SR_003_RV_006_reviewer_metadata_rotates_without_raw_retention(tmp_path)
              patch.object(auxiliary, '_read_codex_access_token', return_value='offline-poison-token'), \\
              patch.object(auxiliary, '_openai_http_client_kwargs', side_effect=http_client):
             client = reviewer.SafetyReviewer(settings_path=config_path)
+            logging.getLogger('openai._base_client').setLevel(logging.DEBUG)
             outcomes = []
             for _ in range(4):
                 outcomes.append(client.review(screenshot=b'screenshot-poison', screenshot_mime='image/png',
@@ -117,12 +140,30 @@ def test_SR_003_RV_006_reviewer_metadata_rotates_without_raw_retention(tmp_path)
         assert '"verdict": "technical_failure"' in combined
         assert '"action_type": "type"' in combined and '"attempts": 1' in combined
         assert '"prompt_tokens": 9' in combined and '"duration_ms":' in combined
-        # Guard sanitization at the queue boundary even for poisoned extras.
-        logging.getLogger('signal_scout.scout').warning('raw message poison', extra={
-            'scout_event':'review_completed', 'scout_review':{
-                'verdict':'approve', 'action_type':'typed secret poison', 'attempts':True,
-                'duration_ms':'time poison', 'prompt_tokens':{'text':'poison'},
-                'raw':'page poison', 'total_tokens':3}})
+        assert 'openai._base_client:' in combined and 'activity poison' in combined
+        assert 'provider exception poison' in combined and 'Traceback (most recent call last):' in combined
+        review_lines = [line for line in (directory / 'logs/agent.log').read_text().splitlines()
+                        if ' signal_scout.scout: event=review_completed ' in line]
+        assert len(review_lines) == 4 and all('poison' not in line for line in review_lines)
+        captured = []
+        capture = logging.Handler()
+        capture.emit = captured.append
+        logging.getLogger().addHandler(capture)
+        def poisoned_event():
+            runtime.review_event({'text':'poison'}, 'verdict poison', None, 'time poison', True,
+                {'prompt_tokens':{'text':'poison'}, 'completion_tokens':'2', 'total_tokens':3,
+                 'raw':'page poison', 'action_type':'type', 'duration_ms':1})
+        poisoned_event()
+        record = captured[-1]
+        assert record.getMessage() == 'event=review_completed {"total_tokens": 3}'
+        assert record.scout_review == {'total_tokens':3}
+        assert record.scout_component == 'scout' and record.scout_event == 'review_completed'
+        assert record.levelno == logging.INFO
+        runtime.review_event('click', 'approve', 'provider exception poison', False, -1,
+            {'prompt_tokens':True, 'completion_tokens':-1, 'total_tokens':False})
+        record = captured[-1]
+        assert record.getMessage() == 'event=review_completed {"action_type": "click", "verdict": "technical_failure"}'
+        assert record.levelno == logging.WARNING
         hermes_logging.flush_log_queue()
         for _ in range(3):
             for handler in hermes_logging.rotating_file_handlers():
@@ -130,18 +171,21 @@ def test_SR_003_RV_006_reviewer_metadata_rotates_without_raw_retention(tmp_path)
                 with path.open('ab') as stream:
                     stream.write(b' ' * (handler.maxBytes - 1 - path.stat().st_size))
             runtime.review_event('click', 'deny', None, 12, 1, {'total_tokens':3})
+            poisoned_event()
             runtime.event('scout', 'started', 'WARNING')
             hermes_logging.flush_log_queue()
         artifacts = {p.relative_to(directory).as_posix() for p in directory.rglob('*') if p.is_file()}
         assert artifacts == {'config.yaml', 'SOUL.md',
             *(f'logs/{name}.log{suffix}' for name in ('agent', 'errors') for suffix in ('', '.1', '.2'))}, artifacts
         assert 'poison' not in (directory / 'SOUL.md').read_text()
-        print('sanitized reviewer metadata verified')
+        print('reviewer events and native diagnostics verified')
     """)
     files = sorted((tmp_path / 'logs').glob('*.log*'))
     output = result.stdout + result.stderr + ''.join(path.read_text() for path in files)
-    assert 'poison' not in output and 'https://' not in output
     assert 'event=review_completed' in output and '"verdict": "deny"' in output
+    review_lines = [line for line in output.splitlines() if 'event=review_completed ' in line]
+    assert all('poison' not in line for line in review_lines)
+    assert 'event=review_completed {"total_tokens": 3}' in output
     assert len(files) == 6 and all(0 < path.stat().st_size <= 1024 ** 2 for path in files)
 
 
@@ -158,17 +202,18 @@ def test_SR_003_native_write_failure_has_fixed_diagnostic_and_keeps_events_safe(
                 raise OSError('secret-error-poison')
             handler.doRollover = fail
             handler.shouldRollover = lambda _: True
-        logging.getLogger('tools.native').error('secret-url-poison')
+        logging.getLogger('tools.native').error('Native request https://example.test/research')
         hermes_logging.flush_log_queue()
         assert not importlib.import_module('plugins.signal-scout.security.network_proxy').public_address('127.0.0.1')
         print('enforcement intact')
     """)
     assert 'scout logging write failed' in result.stderr
     assert 'poison' not in result.stderr + result.stdout
+    assert 'Native request https://example.test/research' in result.stderr
     assert result.stdout.strip() == 'enforcement intact'
 
 
-def test_SR_003_partial_native_log_open_failure_still_sanitizes(tmp_path):
+def test_SR_003_partial_native_log_open_failure_preserves_redacted_diagnostics(tmp_path):
     (tmp_path / 'logs/errors.log').mkdir(parents=True)
     result = isolated(tmp_path, """
         import importlib, logging, os, yaml
@@ -176,14 +221,20 @@ def test_SR_003_partial_native_log_open_failure_still_sanitizes(tmp_path):
         runtime = importlib.import_module('plugins.signal-scout.security.runtime_logging')
         config = yaml.safe_load((Path(os.environ['HERMES_HOME']) / 'config.yaml').read_text())
         runtime.configure_logging('scout', config)
-        logging.getLogger('tools.native-poison').warning('secret-url-poison')
+        token = 'glpat-' + 'Zx9AbCdEfGhIjKlMnOpQ'
+        logging.getLogger('tools.native').warning('Native request %s credential=%s',
+            'https://example.test/research', token)
         import hermes_logging
         hermes_logging.flush_log_queue()
+        handler, = hermes_logging.rotating_file_handlers()
+        assert handler.maxBytes == 1024**2 and handler.backupCount == 2
+        assert handler.level == logging.INFO
     """)
     text = (tmp_path / 'logs/agent.log').read_text()
-    assert 'event=native_event' in text
+    assert 'tools.native: Native request https://example.test/research credential=' in text
     assert 'scout logging write failed' in result.stderr
-    assert 'poison' not in text + result.stderr + result.stdout
+    assert 'Native request https://example.test/research credential=' in result.stderr
+    assert 'Zx9AbCdEfGhIjKlMnOpQ' not in text + result.stderr + result.stdout
 
 
 def test_SR_003_proxy_firewall_events_persist_after_replacement(scout_stack):
