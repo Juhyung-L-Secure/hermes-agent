@@ -1,5 +1,7 @@
 # Browser-container isolation: fix round 1 checkpoint
 
+Historical verification record. Embedded checker paths, selected-ID commands, and checker counts below describe the retired implementation. Use the [standalone checker workflow](../README.md#validate-spec-links) for current setup and validation commands. Past results remain historical evidence.
+
 ## Final handoff — 2026-09-18
 
 **Complete — reviewer DONE / APPROVED.** Implementer returned

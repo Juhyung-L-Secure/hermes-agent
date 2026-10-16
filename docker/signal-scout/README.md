@@ -31,10 +31,10 @@ Smoke creates fresh browser, attests actual `chrome://sandbox`, navigates operat
 Tests use same host lifecycle/stack, serialize helpers, restore prior running/stopped state, and preserve auth/log volumes/history. Controlled HTTP/TLS/DNS fixtures attach public-classified `11.203.247.0/29` and `2606:4700:ffff:fffe::/64` to existing proxy after route-conflict checks. Host `openssl`, `ip`, and `google-chrome` are test prerequisites; host Chrome uses a temporary profile solely to exercise local noVNC.
 One worker serializes shared-stack fixtures; existing 600-second per-file allowance changes no runtime deadline or test selection.
 
-Required link gate (does not execute tests or assess assertions):
+Run standalone link validation separately from test execution using the [plugin checker guide](../../plugins/signal-scout/README.md#validate-spec-links). This checks all promises, including uncovered work, without executing test bodies or assessing assertions; current missing coverage produces exit `1`:
 
 ```bash
-.venv/bin/python plugins/signal-scout/spec_checks/check.py --require BT_001 --require BT_002 --require BT_004 --require SR_019 --require SR_001 --require SR_002 --require SR_003 --require SR_004 --require SR_005 --require SR_006 --require SR_007 --require SR_008 --require SR_009 --require SR_010 --require SR_011 --require SR_012 --require SR_013 --require SC_001 --require SC_002 --require SC_003 --require SC_004 --require SC_005 --require SC_006 --require RV_001 --require RV_002 --require RV_003 --require RV_004 --require RV_005 --require RV_006 --require RV_007 --require AE_001 --require AE_002 --require AE_003 --require AE_004 --require AE_005 --require AE_006 --require AG_001 --require AG_002 --require AG_003 --require AG_004 --require AG_005 --require AG_006 --require AG_007 --require BR_001 --require BR_002 --require BR_003 --require BR_004 --require BR_005
+spec-checker . --json
 ```
 
 ## Ownership and lifetime
@@ -190,6 +190,6 @@ network boundary and current feature-owned specs.
 Open work: independent crash cleanup, supervisor failure policy, selected-tab closure,
 live browsing activation, mission/model-driven research, and broader IN_001,
 SR_015/SR_016 remain incomplete. [Security ownership](../../plugins/signal-scout/security/README.md)
-and [spec gate](../../plugins/signal-scout/spec_checks/README.md) distinguish test execution from link validation. AG_001–AG_007 own gate permissions/execution; BR_001–BR_005 own native routing, hard interrupt and text/image feedback. Browser action modes are image-owned: click/navigate/type/keypress require review; other implemented actions initially skip review, not protections. Standalone RV_001–RV_007 retains native `openai-codex` and read-only `reviewer-policy.md`; live reviewer quality/account and main-agent image support remain unverified.
+and [spec validation](../../plugins/signal-scout/README.md#validate-spec-links) distinguish test execution from link validation. AG_001–AG_007 own gate permissions/execution; BR_001–BR_005 own native routing, hard interrupt and text/image feedback. Browser action modes are image-owned: click/navigate/type/keypress require review; other implemented actions initially skip review, not protections. Standalone RV_001–RV_007 retains native `openai-codex` and read-only `reviewer-policy.md`; live reviewer quality/account and main-agent image support remain unverified.
 
 References: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/), [service constraints](https://docs.docker.com/reference/compose-file/services/), [pinned native CDP](https://github.com/vercel-labs/agent-browser/blob/v0.26.0/cli/src/native/browser.rs), [pinned native policy path](https://github.com/chromium/chromium/blob/153.0.8010.36/docs/enterprise/policies.md), [DownloadRestrictions scope](https://github.com/chromium/chromium/blob/153.0.8010.36/components/policy/resources/templates/policy_definitions/Miscellaneous/DownloadRestrictions.yaml).

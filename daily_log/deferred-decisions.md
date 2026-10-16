@@ -2,6 +2,16 @@
 
 ## Signal Scout
 
+### Diagnostic logging design
+
+**Decision needed:** Choose debugging events and context, correlation identifiers, error detail, retention and privacy rules separately from user-facing research progress updates.
+
+**Current boundary:** User explicitly puts logging implementation after finishing headed mode. Preserve existing safety/runtime logging; do not add a new diagnostic logging system or Discord progress pipeline during headed completion. Temporary controlled-test diagnostics and verification receipts are not a new production logging feature. No raw credentials, viewer passwords or private review packets are authorized for persisted debug output.
+
+**Revisit when:** Headed/headless mode is verified and the user resumes the logging phase. Later possible removal of headed mode is not authorized now.
+
+**Source:** `daily_log/2026-10-15.md`
+
 ### Screenshot-on-every-review policy
 
 **Decision needed:** Keep a full-viewport screenshot on every browser-action

@@ -30,18 +30,15 @@ does not authorize the older full mission-control scope below.
 | --- | --- |
 | `specs.json` | IN_001, BT_001–BT_004 |
 | `missions/specs.json` | MI_002, MI_003, MI_028, MI_029, MI_031 |
-| `security/specs.json` | SR_015–SR_021, SR_001–SR_005 |
+| `security/specs.json` | SR_001–SR_013, SR_015–SR_021, RV_001–RV_007, AE_001–AE_006, AG_001–AG_007 |
+| `browser_tools/specs.json` | BR_001–BR_005 |
 | `evidence/specs.json` | EV_010–EV_013 |
 | `media/specs.json` | MD_022–MD_025 |
 | `budget/specs.json` | BU_026, BU_027 |
 | `reporting/specs.json` | RP_030, RP_032 |
 | `research/specs.json` | RS_004–RS_009, RS_014 |
-| `spec_checks/specs.json` | SC_001–SC_006 |
 
-Future implementation and ownership README belong alongside each spec file;
-tests mirror those owners under `tests/signal_scout/`, with `integration/` for
-the native/bootstrap owner. Layers remain coverage metadata. Checker workflow:
-[`spec_checks/README.md`](../plugins/signal-scout/spec_checks/README.md).
+Implementation, ownership README and covered/uncovered contracts stay in the original feature owner. Tests mirror feature owners under `tests/signal_scout/`, with `integration/` for the native/bootstrap owner. Layers remain coverage metadata. [Standalone checker workflow](../plugins/signal-scout/README.md#validate-spec-links) owns setup and validation; full discovery retains all promises and their missing coverage.
 
 ## Bootstrap — Isolated Status Conversation
 
@@ -148,7 +145,6 @@ plugins/signal-scout/
 ├── media/                      # specs; future Milestone 2 analyzers
 ├── budget/                     # specs; future Milestone 3 measurement/enforcement
 ├── research/                   # specs; future research instructions
-├── spec_checks/                # implemented development checker/specs/README
 ├── control_tool.py             # signal_scout schema and action dispatcher
 ├── cli.py                      # validate/status/stop/report operator commands
 └── skills/research/SKILL.md    # minimal safe mission protocol

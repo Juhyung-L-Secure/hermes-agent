@@ -13,7 +13,7 @@ for trusted, run-bound reviewed browsing; bootstrap does not select it.
 | `bootstrap.py` | Docker operator entrypoint: status, login, one chat, internal deterministic smoke |
 | `../../docker/signal-scout/` | Image, immutable config, network enforcement, startup |
 | `../../tests/signal_scout/integration/` | Real discovery/dispatch and container checks |
-| `specs.json` | Native integration IN_001 and bootstrap BT_001–BT_004 |
+| `specs.json` | Native integration and bootstrap contracts, including uncovered promises |
 | `missions/specs.json` | Mission execution, stop, checkpoint/resume |
 | `security/` | Browser/proxy/firewall/logging/settings and standalone safety reviewer; broader security specs |
 | `browser_tools/` | Native reviewed-browser registration, trusted binding, feedback and BR_001–BR_005 |
@@ -22,7 +22,6 @@ for trusted, run-bound reviewed browsing; bootstrap does not select it.
 | `budget/specs.json` | Usage measurement and enforcement |
 | `reporting/specs.json` | Terminal reports and audit trail |
 | `research/specs.json` | Discovery, competitor/demand analysis, synthesis |
-| `spec_checks/` | Spec/link checker, checker contracts, usage guide |
 
 Bootstrap flow: Hermes discovers the enabled manifest → `register(ctx)` registers
 separate toolsets → bootstrap selects only `signal_scout` → native dispatch validates the
@@ -50,17 +49,29 @@ browser-only proxy. Four services remain: `scout`, `browser`, `firewall`, `proxy
 The manifest version and returned version stay linked. The model and reasoning
 in `bootstrap.py` and the image config must agree.
 
-Each feature's `specs.json` is its behavioral source of truth. Future code and
-ownership README belong alongside that file; planned feature folders currently
-contain specs only. Tests mirror owners under `tests/signal_scout/<feature>/`;
-the native/bootstrap owner uses `integration/`. `unit` and `e2e` remain coverage
-metadata, not directories. [Milestones](../../stuff/milestones.md) own delivery
-order and implementation plans and reference these contracts by ID.
+Feature-owned `specs.json` files are the behavioral source of truth. Covered and uncovered promises stay together in their owning file; `requiredCoverage` and `coverage` show declared automatic coverage. Code and ownership README belong alongside those owners. Tests mirror owners under `tests/signal_scout/<feature>/`; the native/bootstrap owner uses `integration/`. `unit` and `e2e` remain coverage metadata, not directories. [Milestones](../../stuff/milestones.md) own delivery order and implementation plans and reference these contracts by ID.
 
-Run `HERMES_TEST_FILE_TIMEOUT=600 HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0` for Scout's
-automated tests, including its spec/link gate. [Checker usage](spec_checks/README.md)
-explains explicit required IDs and the distinction between links, gaps, manual
-evidence, current test results, and assertion review.
+Run `HERMES_TEST_FILE_TIMEOUT=600 HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0` for Scout's automated tests. This full suite needs the Docker and browser prerequisites in the [Docker guide](../../docker/signal-scout/README.md). Run standalone spec-link validation separately as described below.
+
+## Validate spec links
+
+Provision the standalone `spec-checker` executable using its package documentation, then expose it on `PATH` for link validation in development and CI. For an existing tool checkout, add its `.venv/bin` directory to `PATH`. Scout does not vendor or install the checker. Confirm setup with `command -v spec-checker`; missing tool means link validation cannot run. The target Python needs the existing project development dependencies. CLI calls select the project's `.venv` or `venv`; `--python` overrides that choice.
+
+Run commands from repository root. These checks need no Docker, browser startup, account, or model call. Pytest collection can execute project imports, configuration, parametrization, and hooks; collection is not a sandbox.
+
+```bash
+command -v spec-checker
+spec-checker . --json
+spec-checker . --spec plugins/signal-scout/security/specs.json --json
+```
+
+The bare CLI recursively checks every manifest, including uncovered promises in each feature. No repository selection config narrows that inventory. Full validation currently exits `1` for missing coverage. Repeated `--spec` selects whole files and replaces discovery, not individual IDs or covered records. The security file therefore reports gaps for SR_015–SR_018, SR_020 and SR_021 alongside its valid links; the integration/bootstrap file reports IN_001 and BT_003. Keep these records and their required layers in their original owners rather than separating them by coverage status. There is no delivered-only pytest gate or coverage waiver.
+
+Exit `0` means complete valid links for the selected scope. Exit `1` includes schema, collection, link, and missing-coverage errors. Exit `2` means CLI usage error. Preserve command, exit code, stdout, and stderr. Link validation does not run test bodies or assess assertions; execute relevant tests through `scripts/run_tests.sh` and review assertions separately. Manual `otherCoverage` never fills automatic layers. Unlinked legacy tests need no spec declarations; the external checker follows linked tests within project root without enforcing mirrored owner paths.
+
+Historical ID mapping remains recoverable from Git history at `plugins/signal-scout/spec_checks/id-migration.json`, including retired checker-only labels. Historical JSON receipts and daily logs retain their original bytes. The embedded checker, its SC_001–SC_006 contracts, and the one-off migration helper are retired; use the external CLI for current checks.
+
+## Current verification and open work
 
 BT_003 manual live smoke passed on 2026-09-10 after separate operator login:
 two API calls and one verified status result/explanation. Sanitized evidence:

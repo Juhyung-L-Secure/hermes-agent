@@ -4,6 +4,10 @@ Maintained recipes for Scout's Docker/operator and browser surfaces. Primary cur
 
 ## Baseline preconditions
 
+Spec traceability uses its recipe's existing checker and Python prerequisites. Docker, images, browser startup, and the doctor are not prerequisites for spec-only checks. Current setup and file selection live in the [plugin checker guide](../../../../plugins/signal-scout/README.md#validate-spec-links).
+
+Docker and browser routes require these prerequisites.
+
 - Use repository root, existing development virtual environment, current validated Compose, and built runtime/browser/network images.
 - Require Linux Docker and unused configured network ranges. Real fixture tests additionally require host `openssl` and `ip`; noVNC tests require host `google-chrome`.
 - Run the read-only doctor first. Refuse an active or leftover Scout/browser or a held run/test lock; never share a mission browser.
@@ -35,5 +39,5 @@ Each feature uses `Sub-features`, `How to get to it (user POV)`, `Driving it wit
 - [Runtime status](runtime-status.md) checks operator CLI and native status-tool dispatch without a model.
 - [Public browser smoke](browser-smoke.md) checks real owned browser navigation, observation, sandbox and teardown.
 - [Reviewed browser actions](reviewed-browser-actions.md) checks approved effects, rejected requests, and fatal cleanup through native Hermes dispatch using offline provider boundaries.
-- [Headed browser viewer](browser-viewer.md) checks local authenticated noVNC and trusted manual input; prior failed manual-input path remains unverified.
-- [Spec traceability](spec-traceability.md) checks operator validation, explicit required IDs, and the repository's automated link gate.
+- [Headed browser viewer](browser-viewer.md) checks local authenticated noVNC, trusted manual input, stale Scout approval rejection, and continued browser use after viewer closure.
+- [Spec traceability](spec-traceability.md) checks the external CLI, whole feature documents, and honest full-inventory gaps independently of test-body execution.

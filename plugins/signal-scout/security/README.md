@@ -25,7 +25,7 @@ Mission control remains unimplemented. Download denial and window sizing persist
 | `evidence.py` / `_cdp.py` | Compact exact refs, preparation, viewport capture and recheck |
 | `gate.py` | Trusted run binding, explicit permissions, exact guarded execution and fatal closure |
 | `reviewer-policy.md` | Single authoritative read-only reviewer instructions |
-| `specs.json` | SR_019, SR_001–S013, RV_001–R007, AE_001–E006, AG_001–G007 and unfinished missions |
+| `specs.json` | Browser protection, reviewer, evidence and gate contracts plus uncovered mission security, media quarantine and authenticated-account promises |
 | `../../../tests/signal_scout/security/` | Policy/logging unit checks and real-container boundary/lifetime fixtures |
 
 ## Boundary and control
@@ -117,10 +117,7 @@ TLS/DNS fixtures, serialized Docker and prior helper restoration. Use
 `HERMES_TEST_WORKERS=1` to avoid deadline charges for shared-stack lock waits.
 Tests make no model calls or login changes.
 
-Required gate selects SR_001–S013, BT_001/B002/B004, SR_019, SC_001–C006,
-RV_001–R007, AE_001–E006, AG_001–G007. Links prove discovery, not quality/pass.
-Broader IN_001/015–018/020–021 remain incomplete: no mission/report attestation,
-whole-mission policy, evidence storage, media quarantine or authenticated browsing.
+Use the [standalone checker workflow](../README.md#validate-spec-links) for setup and full or feature-file validation. Covered and uncovered contracts stay in the same owning spec file. Links prove collection, not test success or assertion quality. Broader IN_001, SR_015–SR_018, SR_020, and SR_021 remain incomplete, including mission/report attestation, whole-mission policy, evidence storage, media quarantine, and authenticated browsing.
 
 ## Guarded actions, evidence and reviewer
 

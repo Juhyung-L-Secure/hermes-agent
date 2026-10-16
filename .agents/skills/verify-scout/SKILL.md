@@ -1,17 +1,21 @@
 ---
 name: verify-scout
-description: Verify Scout Docker/browser changes with real user paths.
+description: Verify Scout browser, runtime, and spec links.
 ---
 
 # Verify Scout Skill
 
-Verify Signal Scout through its Docker/operator CLI and existing real-browser harnesses. Reuse production ownership and cleanup; do not add a mission launcher or treat offline transports as proof of live model behavior.
+Verify Signal Scout through its Docker/operator CLI, existing real-browser harnesses, or standalone spec-link checks. Choose the affected route. Reuse production ownership and cleanup; do not add a mission launcher or treat offline transports as proof of live model behavior.
 
 ## When to Use
 
 Use `$verify-scout` after Scout runtime, browser, gate, viewer, or spec-link changes, or when asked to prove one of those features. Read [features/README.md](features/README.md) first, then the relevant feature recipe. This skill does not verify every interface of upstream Hermes.
 
 ## Prerequisites
+
+Spec-traceability checks need existing development Python/pytest dependencies and standalone `spec-checker` on PATH. Follow [the spec recipe](features/spec-traceability.md); Docker, images, browser state, doctor, and model accounts are not prerequisites for that route.
+
+Runtime and browser routes require the following:
 
 - Linux, including Ubuntu on WSL2, with Docker Engine reachable and Docker Compose supporting native `include`.
 - Run documented commands from repository root. Use existing `.venv/bin/python`; if checkout uses `venv`, substitute `venv/bin/python` consistently.
@@ -21,6 +25,8 @@ Use `$verify-scout` after Scout runtime, browser, gate, viewer, or spec-link cha
 - No model credentials needed for status, deterministic smoke, spec checks, or mapped offline integration tests. Do not run `login` or `chat` as a setup shortcut.
 
 ## How to Run
+
+For spec-only changes, run [spec-traceability.md](features/spec-traceability.md) instead of the Docker helper. The launch, doctor, smoke, and container cleanup procedures below apply to runtime/browser routes.
 
 From repository root, run these through the available terminal tool. The helper resolves its own checkout and writes receipts outside the repository.
 
@@ -106,11 +112,11 @@ The executable [scripts/verify.py](scripts/verify.py) supports `doctor`, `status
 - Changing image-owned YAML without rebuilding/recreating produces stale-image failures. Report them; do not weaken digest checks.
 - Status still returns `research` and `research_security` as `not_implemented`. Do not interpret `status: ready` as mission readiness.
 - Live subscription `chat` is status-only and consumes usage; none of these baseline checks starts it.
-- Viewer/manual-input verification has a prior unresolved failure. Selecting another test does not resolve it; see its feature's Gotchas.
+- Viewer connection and framebuffer readiness do not prove input readiness. The fixture waits until the canvas receives the hit test before sending real mouse input; see its feature's Gotchas.
 - Do not settle deferred recovery, selected-tab closure, evidence caps, messaging, or reviewer-provider choices while verifying.
 
 ## Verification
 
-Before claiming this skill works, execute launch/doctor/one mapped journey/cleanup and inspect its retained evidence. For this seed, use `verify.py smoke` and require successful behavior and cleanup checks. Run the available `skill-creator` frontmatter validator too; that checks packaging, not app behavior.
+For new or changed runtime/browser procedures, execute launch/doctor/one mapped journey/cleanup and inspect retained evidence before claiming that route works. The original seed uses `verify.py smoke` and requires successful behavior and cleanup checks. For the spec route, execute its standalone CLI checks and report missing coverage without claiming browser verification. Run the available `skill-creator` frontmatter validator too; that checks packaging, not app behavior.
 
 Map routes not exercised remain unverified. Seed proof uses existing local images and named auth/log volumes, not a fresh machine. It does not execute dependency/image installation, first-time volume initialization, fresh-VPS provisioning, remote Docker/network setup, remote viewer access, or live account/model availability. Track those setup steps separately when that target is authorized. Use `$maintain-verification-skill` to update this map as app changes; no maintenance scheduler is installed.

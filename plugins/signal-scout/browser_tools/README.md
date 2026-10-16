@@ -87,8 +87,7 @@ must stay paired with `security/gate.py`, while host cleanup stays paired with
 the existing lifecycle. Coverage rows name only tests that passed; collection
 checks prove links, not assertion quality or executed integration.
 
-Use canonical `scripts/run_tests.sh` with explicit files for development, then
-the full Scout suite documented in the [spec-check guide](../spec_checks/README.md).
+Use canonical `scripts/run_tests.sh` with explicit files for development, then the full Scout suite documented in the [plugin guide](../README.md). Use its [standalone checker workflow](../README.md#validate-spec-links) for setup and spec-link validation.
 Real integration uses the same serialized fixture and owned stack as security
 tests. Fake-only unit checks cannot establish real-gate completion.
 

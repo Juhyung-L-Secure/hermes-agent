@@ -1,5 +1,7 @@
 # Scout browser gate and Hermes adapter — implementation brief
 
+Historical checker instructions below are superseded by the [standalone checker workflow](README.md#validate-spec-links). Embedded checker paths, `REQUIRED_IDS` edits, and per-ID selectors describe the former implementation; use current whole-file CLI validation. Product runtime contracts remain in the owning feature specs.
+
 Status: user confirmed 2026-10-12; implement only assigned scope.
 This brief records the current contract; older action-review plans are historical.
 Confirmed amendment: the model-facing tool is `browser_scout`, not

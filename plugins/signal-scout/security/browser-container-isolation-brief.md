@@ -1,5 +1,7 @@
 # Slice 1: browser-container isolation — implementation brief
 
+Historical checker instructions below are superseded by the [standalone checker workflow](../README.md#validate-spec-links). Embedded checker paths and per-ID selectors describe the former implementation; use current whole-file CLI validation. This notice preserves the original implementation record without renewing its commands.
+
 Prepared: 2026-09-17. Status: user confirmed complete inline brief on 2026-09-17;
 implementation handoff authorized. This brief covers slice 1 only.
 

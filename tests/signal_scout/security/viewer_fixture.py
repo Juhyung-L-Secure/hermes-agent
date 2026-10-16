@@ -90,9 +90,16 @@ class ViewerClient:
 
     def click(self, desktop_x, desktop_y):
         """Click visible noVNC canvas coordinates through host Chrome mouse input."""
-        point = self.evaluate(f"""(() => {{
-            const canvas=document.querySelector('canvas'), r=canvas.getBoundingClientRect();
-            return {{x:r.x+{desktop_x}*r.width/canvas.width,y:r.y+{desktop_y}*r.height/canvas.height}};
+        point = self.evaluate(f"""(async () => {{
+            const {{default:UI}}=await import('/app/ui.js');
+            const deadline=Date.now()+15000;
+            while (true) {{
+                const canvas=UI.rfb._canvas, r=canvas.getBoundingClientRect();
+                const point={{x:r.x+{desktop_x}*r.width/canvas.width,y:r.y+{desktop_y}*r.height/canvas.height}};
+                if (document.elementFromPoint(point.x,point.y)===canvas) return point;
+                if (Date.now()>deadline) throw new Error('Viewer canvas did not accept input');
+                await new Promise(resolve=>requestAnimationFrame(resolve));
+            }}
         }})()""")
         self.command('Input.dispatchMouseEvent', {'type':'mouseMoved', **point})
         for kind in ('mousePressed', 'mouseReleased'):
