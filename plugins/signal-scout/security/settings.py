@@ -1,10 +1,10 @@
-"""Read immutable, image-owned Scout operating settings; never relax protections."""
-
 from pathlib import Path
 import ipaddress
 import hashlib
 import json
 import math
+import re
+import stat
 import yaml
 
 CONFIG = Path("/opt/scout/config.yaml")
@@ -14,14 +14,34 @@ _ACTION_MODES = frozenset({"blocked", "review_required", "allowed_without_review
 
 
 def settings_digest(config):
-    """Compare baked operating settings without transporting config contents."""
+    """Compare complete operating settings without transporting config contents."""
     return hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
 
 
-def load_settings(path=CONFIG):
-    """Validate supplied operating values without echoing config or invalid input."""
+def load_settings(path=None):
+    """Require a read-only runtime mount, or validate an explicit host source."""
     try:
-        config = yaml.safe_load(Path(path).read_text())
+        if path is None:
+            mounts = []
+            for line in Path('/proc/self/mountinfo').read_text().splitlines():
+                fields = line.split()
+                target = re.sub(r'\\([0-7]{3})', lambda match: chr(int(match[1], 8)), fields[4])
+                if target == str(CONFIG):
+                    mounts.append(fields[5].split(','))
+            if (len(mounts) != 1 or 'ro' not in mounts[0]
+                    or CONFIG.is_symlink() or not stat.S_ISREG(CONFIG.stat().st_mode)):
+                raise ValueError
+            path = CONFIG
+        if not stat.S_ISREG(Path(path).stat().st_mode):
+            raise ValueError
+        return _parse_settings(Path(path).read_bytes())
+    except (OSError, ValueError):
+        raise ValueError('Invalid Scout operating settings.') from None
+
+
+def _parse_settings(contents):
+    try:
+        config = yaml.safe_load(contents)
         logging = config["logging"]
         diagnostics = config["scout_diagnostics"]
         if (set(diagnostics) != {"max_record_bytes", "max_pending_bytes"}

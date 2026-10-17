@@ -248,7 +248,10 @@ def dns():
 
 
 if __name__ == '__main__':
-    (BASE / 'counts.json').write_text('{}')
+    if (BASE / 'counts.json').exists():
+        COUNTS.update(json.loads((BASE / 'counts.json').read_text()))
+    else:
+        (BASE / 'counts.json').write_text('{}')
     for cls, address in ((Server, '0.0.0.0'), (Server6, '::')):
         for port in (80, 443, 8080):
             instance = cls((address, port), Handler)

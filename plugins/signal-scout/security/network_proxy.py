@@ -150,13 +150,14 @@ async def serve_client(reader, writer, settings, network):
 
 async def main():
     """Run only existing proxy service; invalid configuration prevents startup."""
+    from .helper_ready import clear_ready, publish_ready
+    clear_ready('proxy')
     config = load_settings()
     configure_logging("proxy", config)
     network = config["scout_network"]
     server = await asyncio.start_server(lambda r, w: serve_client(r, w, config["scout_proxy"], network),
                                         network["proxy_address"], network["proxy_port"], limit=65536)
-    from pathlib import Path
-    Path("/tmp/proxy-ready").touch()
+    publish_ready('proxy', config)
     event("proxy", "started")
     async with server:
         await server.serve_forever()

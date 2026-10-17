@@ -33,7 +33,6 @@ COPY cron/ cron/
 COPY providers/ providers/
 COPY plugins/ plugins/
 COPY --chown=0:0 --chmod=0444 plugins/signal-scout/security/reviewer-policy.md /opt/hermes/plugins/signal-scout/security/reviewer-policy.md
-COPY docker/signal-scout/config.yaml /opt/scout/config.yaml
 RUN uv sync --frozen --no-dev && \
     chmod 0555 /usr/local/bin/agent-browser && \
     useradd --uid 10000 --create-home scout && \
@@ -65,7 +64,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb x11-utils x11vnc novnc websockify && rm -rf /var/lib/apt/lists/*
 COPY plugins/signal-scout/security/chromium.py plugins/signal-scout/security/control.py plugins/signal-scout/security/settings.py plugins/signal-scout/security/viewer.py plugins/signal-scout/security/process_output.py /opt/scout/security/
-COPY docker/signal-scout/config.yaml /opt/scout/config.yaml
 COPY --chown=0:0 --chmod=0444 docker/signal-scout/chrome-policy.json /etc/opt/chrome_for_testing/policies/managed/scout.json
 ENV PYTHONPATH=/opt/scout PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 USER 10000:10000
@@ -79,7 +77,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     useradd --uid 10000 --no-create-home scout && \
     install -d -o scout -g scout -m 0700 /var/log/scout
 COPY plugins/signal-scout/security/ /opt/scout/security/
-COPY docker/signal-scout/config.yaml /opt/scout/config.yaml
 ENV PYTHONPATH=/opt/scout PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 COPY --chmod=0555 docker/signal-scout/firewall.sh /usr/local/bin/scout-firewall
 COPY --chmod=0555 docker/signal-scout/proxy.sh /usr/local/bin/scout-proxy

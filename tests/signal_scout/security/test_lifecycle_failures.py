@@ -206,6 +206,7 @@ def test_SR_005_shutdown_deadline_includes_supported_grace(monkeypatch, grace):
     run.config['scout_lifecycle']['shutdown_timeout'] = grace
     run.container, run.lock = 'a' * 64, None
     run._helper_state = None
+    run._config_override = None
     run._diagnostics = Mock()
     monkeypatch.setattr(run, 'inspect_owned', lambda: None)
     calls = []

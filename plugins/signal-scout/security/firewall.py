@@ -89,6 +89,8 @@ def drop_privileges():
 
 def main():
     """Start enforcement and best-effort rejection logging in existing helper."""
+    from .helper_ready import clear_ready, publish_ready
+    clear_ready('firewall')
     os.umask(0o077)
     config = load_settings()
     if len(sys.argv) != 1:
@@ -97,7 +99,7 @@ def main():
     install_rules(config["scout_network"], config["browser"]["viewer"])
     drop_privileges()
     configure_logging("firewall", config)
-    Path("/tmp/firewall-ready").touch()
+    publish_ready('firewall', config)
     event("firewall", "started")
     while True:
         try:

@@ -5,6 +5,7 @@ No adoption, restart, orphan sweep, or independent crash recovery is provided.
 """
 
 import argparse
+from dataclasses import dataclass
 import fcntl
 import importlib
 import json
@@ -12,6 +13,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -40,7 +42,7 @@ def checked(command, timeout=DOCKER_COMMAND_TIMEOUT):
 
 
 def validate_topology(model, config):
-    """Reject disagreement between Docker addresses and image-owned network settings."""
+    """Reject disagreement between Docker addresses and operating network settings."""
     network = config["scout_network"]
     services = model["services"]
     if (set(services) != {"scout", "browser", "firewall", "proxy"}
@@ -72,6 +74,29 @@ def validate_topology(model, config):
             raise ValueError("Scout network configuration mismatch.")
 
 
+@dataclass(frozen=True)
+class _RunConfig:
+    path: Path
+    digest: str
+    identity: tuple[int, int]
+
+
+def validate_config_grants(model, source):
+    target = settings.CONFIG
+    if Path(model['configs']['scout-operating']['file']) != source:
+        raise ValueError('Scout configuration delivery mismatch.')
+    for service in model['services'].values():
+        grants = service.get('configs', [])
+        if (len(grants) != 1 or grants[0].get('source') != 'scout-operating'
+                or grants[0].get('target') != str(target) or grants[0].get('mode') != '0444'):
+            raise ValueError('Scout configuration delivery mismatch.')
+        for mount in service.get('volumes', []):
+            destination = Path(mount['target'])
+            if (mount['type'] == 'bind' or destination == target
+                    or destination in target.parents or target in destination.parents):
+                raise ValueError('Scout configuration delivery mismatch.')
+
+
 class BrowserRun:
     """Serialize ownership, verify readiness, and remove only this run's container.
 
@@ -80,12 +105,15 @@ class BrowserRun:
     """
 
     def __init__(self, compose_files=(COMPOSE,), config_path=CONFIG, *, restore_helpers=False, verbose=False):
-        self.config = settings.load_settings(config_path)
+        self.config_path = Path(config_path).absolute()
+        self.config = settings.load_settings(self.config_path)
         self.compose = ["docker", "compose"]
         for path in compose_files:
             self.compose += ["-f", str(path)]
         self.model = json.loads(checked(self.compose + ["config", "--format", "json"]))
         validate_topology(self.model, self.config)
+        validate_config_grants(self.model, Path(self.model['configs']['scout-operating']['file']))
+        self._base_compose = self.compose[:]
         self.project = self.model["name"]
         self.run = uuid.uuid4().hex
         self.container = None
@@ -93,7 +121,100 @@ class BrowserRun:
         self.lock = None
         self.restore_helpers = restore_helpers
         self._helper_state = None
-        self._diagnostics = BrowserDiagnostics(self, verbose)
+        self._verbose = verbose
+        self._diagnostics = None
+        self._run_config = None
+        self._config_override = None
+
+    def _slot_path(self):
+        if not re.fullmatch('[a-z0-9][a-z0-9_-]*', self.project):
+            raise ValueError('Invalid Scout project identity.')
+        return Path.home().resolve() / '.local' / 'state' / 'signal-scout' / self.project / 'config.yaml'
+
+    def _fix_configuration(self):
+        with os.fdopen(os.open(self.config_path, os.O_RDONLY | os.O_NONBLOCK), 'rb') as handle:
+            before = os.fstat(handle.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError('Invalid Scout operating settings.')
+            contents = handle.read()
+            after = os.fstat(handle.fileno())
+        if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (
+                after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            raise ValueError('Scout operating settings changed during capture.')
+        config = settings._parse_settings(contents)
+        validate_topology(self.model, config)
+        slot = self._slot_path()
+        directory = Path.home().resolve()
+        for index, part in enumerate(('.local', 'state', 'signal-scout', self.project)):
+            directory /= part
+            directory.mkdir(mode=0o700, exist_ok=True)
+            metadata = directory.lstat()
+            if (not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != os.getuid()
+                    or index >= 2 and metadata.st_mode & 0o077):
+                raise ValueError('Unsafe Scout configuration directory.')
+        with tempfile.NamedTemporaryFile(dir=slot.parent, prefix='.config-', delete=False) as handle:
+            temporary = Path(handle.name)
+            try:
+                handle.write(contents)
+                handle.flush()
+                os.fchmod(handle.fileno(), 0o444)
+                os.fsync(handle.fileno())
+                temporary.replace(slot)
+            finally:
+                temporary.unlink(missing_ok=True)
+        metadata = slot.stat()
+        self.config = config
+        self._run_config = _RunConfig(slot, settings.settings_digest(config), (metadata.st_dev, metadata.st_ino))
+        with tempfile.NamedTemporaryFile(mode='w', dir=slot.parent, prefix='.compose-', suffix='.json', delete=False) as handle:
+            self._config_override = Path(handle.name)
+            json.dump({'configs': {'scout-operating': {'file': str(slot)}}}, handle)
+        self.compose = self._base_compose + ['-f', str(self._config_override)]
+        self.model = json.loads(checked(self.compose + ['config', '--format', 'json']))
+        validate_topology(self.model, config)
+        validate_config_grants(self.model, slot)
+
+    def _verify_config_mount(self, info, expected):
+        metadata = expected.path.stat()
+        if ((metadata.st_dev, metadata.st_ino) != expected.identity
+                or settings.settings_digest(settings.load_settings(expected.path)) != expected.digest):
+            raise RuntimeError('Scout run configuration changed.')
+        target = settings.CONFIG
+        matches = []
+        for mount in info['Mounts']:
+            destination = Path(mount['Destination'])
+            if destination == target:
+                matches.append(mount)
+            elif mount['Type'] == 'bind' or destination in target.parents or target in destination.parents:
+                raise RuntimeError('Scout configuration delivery mismatch.')
+        if (len(matches) != 1 or matches[0]['Type'] != 'bind' or matches[0]['RW'] is not False
+                or matches[0]['Source'] != str(expected.path)):
+            raise RuntimeError('Scout configuration delivery mismatch.')
+
+    def verify_configuration(self, info, service):
+        expected = self._run_config
+        if expected is None:
+            sources = [Path(mount['Source']) for mount in info['Mounts']
+                       if mount['Destination'] == str(settings.CONFIG)]
+            if len(sources) != 1 or sources[0] not in {self.config_path.resolve(), self._slot_path()}:
+                raise RuntimeError('Scout configuration delivery mismatch.')
+            metadata = sources[0].stat()
+            expected = _RunConfig(sources[0], settings.settings_digest(self.config), (metadata.st_dev, metadata.st_ino))
+        self._verify_config_mount(info, expected)
+        if not info['State']['Running']:
+            return
+        module = 'plugins.signal-scout.security.settings' if service == 'scout' else 'security.settings'
+        code = "import importlib; s=importlib.import_module(" + repr(module) + "); print(s.settings_digest(s.load_settings()))"
+        if service == 'scout':
+            code = ("from pathlib import Path; p=Path('/var/lib/scout/config.yaml'); "
+                    "assert p.is_symlink() and p.resolve()==Path('/opt/scout/config.yaml'); " + code)
+        actual = checked(['docker', 'exec', '-u', '10000:10000', info['Id'], 'python3', '-c', code])
+        if actual != expected.digest:
+            raise RuntimeError('Scout configuration delivery mismatch.')
+        if service in {'proxy', 'firewall'}:
+            consumed = checked(['docker', 'exec', '-u', '10000:10000', info['Id'], 'python3', '-c',
+                'from security.helper_ready import consumed_settings; print(consumed_settings(' + repr(service) + '))'])
+            if consumed != expected.digest:
+                raise RuntimeError('Scout helper consumed configuration mismatch.')
 
     def inspect_helper(self, service):
         identifier = checked(self.compose + ["ps", "-a", "-q", service])
@@ -117,7 +238,7 @@ class BrowserRun:
                 try:
                     info = self.inspect_helper(service)
                     if running and (info is None or not info["State"]["Running"]):
-                        checked(self.compose + ["up", "-d", "--wait", service])
+                        checked(self.compose + ["up", "-d", "--wait", '--no-build', '--pull', 'never', service])
                 except Exception as error:
                     errors.append(error)
             for service, running in self._helper_state.items():
@@ -136,12 +257,16 @@ class BrowserRun:
 
     def start_helpers(self):
         """Install browser policy and start its proxy before creating the browser."""
-        checked(self.compose + ["up", "-d", "--wait", "firewall"])
+        if self.lock is None or self._run_config is None:
+            raise RuntimeError('Scout helper startup requires run ownership.')
+        checked(self.compose + ['up', '-d', '--wait', '--no-build', '--pull', 'never',
+                                '--force-recreate', 'proxy', 'firewall'])
         for service in ("proxy", "firewall"):
-            actual = checked(self.compose + ["exec", "-T", service, "python3", "-c",
-                "from security.settings import load_settings, settings_digest; print(settings_digest(load_settings()))"])
-            if actual != settings.settings_digest(self.config):
-                raise RuntimeError("Scout image configuration is stale; rebuild and recreate.")
+            info = self.inspect_helper(service)
+            if (info is None or not info['State']['Running']
+                    or info['State'].get('Health', {}).get('Status') != 'healthy'):
+                raise RuntimeError('Scout helper startup failed.')
+            self.verify_configuration(info, service)
 
     def inspect_owned(self, *, timeout=DOCKER_COMMAND_TIMEOUT):
         """Bind every readiness/cleanup operation to exact Docker ID and owner labels."""
@@ -168,16 +293,18 @@ class BrowserRun:
                                 "--filter", "label=com.docker.compose.service=browser"])
             if existing:
                 raise RuntimeError("Existing Scout browser requires operator inspection.")
+            existing = checked(["docker", "ps", "-aq", "--filter", "label=com.docker.compose.project=" + self.project,
+                                "--filter", "label=com.docker.compose.service=scout"])
+            if existing:
+                raise RuntimeError("Existing Scout mission requires operator inspection.")
             if self.restore_helpers:
-                existing = checked(["docker", "ps", "-aq", "--filter", "label=com.docker.compose.project=" + self.project,
-                                    "--filter", "label=com.docker.compose.service=scout"])
-                if existing:
-                    raise RuntimeError("Existing Scout mission requires operator inspection.")
                 snapshot = {}
                 for service in ("firewall", "proxy"):
                     info = self.inspect_helper(service)
                     snapshot[service] = bool(info and info["State"]["Running"])
                 self._helper_state = snapshot
+            self._fix_configuration()
+            self._diagnostics = BrowserDiagnostics(self, self._verbose)
             self.start_helpers()
             name = self.project + "-browser-active"
             try:
@@ -196,6 +323,7 @@ class BrowserRun:
                     self._diagnostics.start()
                 raise
             self._diagnostics.start()
+            self.verify_configuration(self.inspect_owned(), 'browser')
             deadline = time.monotonic() + self.config["scout_lifecycle"]["startup_timeout"]
             while time.monotonic() < deadline:
                 if not self.inspect_owned()["State"]["Running"]:
@@ -208,21 +336,25 @@ class BrowserRun:
                     if record["run"] != self.run:
                         raise RuntimeError("Browser ownership verification failed.")
                     if record["settings"] != settings.settings_digest(self.config):
-                        raise RuntimeError("Scout image configuration is stale; rebuild and recreate.")
+                        raise RuntimeError('Scout configuration delivery mismatch.')
+                    self.verify_configuration(self.inspect_owned(), 'browser')
                     network = self.config["scout_network"]
                     self.endpoint = control.validate_endpoint(record["endpoint"], network["browser_address"], network["relay_port"])
                     return self
                 time.sleep(0.05)
             raise RuntimeError("Browser startup timeout.")
         except BaseException:
-            self._diagnostics.capture('startup_failure', error=traceback.format_exc())
+            if self._diagnostics is not None:
+                self._diagnostics.capture('startup_failure', error=traceback.format_exc())
             self.close()
             raise
 
     def scout_environment(self):
         """Provide native CDP override only after binding this run to its owned browser."""
-        if not self.inspect_owned()["State"]["Running"] or self.endpoint is None:
+        info = self.inspect_owned()
+        if not info["State"]["Running"] or self.endpoint is None:
             raise RuntimeError("Browser control unavailable.")
+        self.verify_configuration(info, 'browser')
         return {"SCOUT_BROWSER_RUN": self.run, "SCOUT_BROWSER_CONTAINER": self.container,
                 "BROWSER_CDP_URL": self.endpoint}
 
@@ -274,12 +406,19 @@ class BrowserRun:
                 self.container = None
         finally:
             try:
-                self._diagnostics.close()
+                if self._diagnostics is not None:
+                    self._diagnostics.close()
                 self._restore_helpers()
             finally:
-                if self.lock is not None:
-                    os.close(self.lock)
-                    self.lock = None
+                try:
+                    if self._config_override is not None:
+                        self._config_override.unlink(missing_ok=True)
+                        self._config_override = None
+                        self.compose = self._base_compose[:]
+                finally:
+                    if self.lock is not None:
+                        os.close(self.lock)
+                        self.lock = None
 
     def __exit__(self, *_):
         self.close()

@@ -108,9 +108,9 @@ def test_SR_004_BT_004_topology_mismatch_is_rejected():
 
 
 def test_SR_004_container_mount_pid_network_and_resource_separation(scout_stack):
-    scout = scout_stack.compose('run', '--rm', '--no-deps', '-d', '--entrypoint', 'sleep', 'scout', '120')
-    try:
-        with scout_stack.browser_run() as run:
+    with scout_stack.browser_run() as run:
+        scout = lifecycle.checked(run.compose + ['run', '--rm', '--no-deps', '-d', '--entrypoint', 'sleep', 'scout', '120'])
+        try:
             browser = run.inspect_owned()
             hermes = json.loads(docker('inspect', scout))[0]
             host = browser['HostConfig']
@@ -129,7 +129,10 @@ def test_SR_004_container_mount_pid_network_and_resource_separation(scout_stack)
                        for key in ('max-size','max-buffer-size'))
             assert host['NetworkMode'] != hermes['HostConfig']['NetworkMode']
             assert not host['PidMode'] and not host['VolumesFrom']
-            assert all(mount['Type'] == 'tmpfs' for mount in browser['Mounts'])
+            binds = [m for m in browser['Mounts'] if m['Type'] == 'bind']
+            assert len(binds) == 1 and binds[0]['Source'] == str(run._run_config.path)
+            assert binds[0]['Destination'] == '/opt/scout/config.yaml' and binds[0]['RW'] is False
+            assert all(mount['Type'] in {'tmpfs', 'bind'} for mount in browser['Mounts'])
             assert 'size=64m' in host['Tmpfs']['/tmp']
             namespaces = "import os,json; print(json.dumps({n:os.readlink('/proc/self/ns/'+n) for n in ('pid','mnt','net')}))"
             left = json.loads(docker('exec', scout, 'python', '-c', namespaces))
@@ -154,8 +157,8 @@ assert all(int(state[key].strip(),16) == 0 for key in ('CapEff','CapBnd','CapPrm
             assert right['net'] == helper_namespaces['firewall']['net']
             assert len({left['net'], right['net'], helper_namespaces['proxy']['net']}) == 3
             assert all(right[key] != helper_namespaces['firewall'][key] for key in ('pid', 'mnt'))
-    finally:
-        docker('stop', '-t', '1', scout)
+        finally:
+            docker('stop', '-t', '1', scout)
 
 
 def test_SR_004_browser_cannot_read_hermes_fixture_or_connect_back(scout_stack):
@@ -171,19 +174,19 @@ with socket.socket() as listener:
         connection, _ = listener.accept()
         connection.sendall(b'fixture'); connection.close()
 """
-    scout = scout_stack.compose('run', '--rm', '--no-deps', '-d', '--entrypoint', 'python', 'scout', '-c', code)
-    try:
-        for _ in range(50):
-            if docker('exec', scout, 'python', '-c', "from pathlib import Path; print(Path('/tmp/fixture-ready').exists())") == 'True':
-                break
-            time.sleep(0.1)
-        else:
-            pytest.fail('Hermes fixture did not start')
-        # Hermes has direct networking; reachable listener proves browser denial.
-        positive = "import socket; s=socket.create_connection(('172.30.242.3',18080),timeout=2); assert s.recv(32)==b'fixture'; s.close()"
-        docker('exec', scout, 'python', '-c', positive)
-        scout_stack.exec_proxy(positive)
-        with scout_stack.browser_run() as run:
+    with scout_stack.browser_run() as run:
+        scout = lifecycle.checked(run.compose + ['run', '--rm', '--no-deps', '-d', '--entrypoint', 'python', 'scout', '-c', code])
+        try:
+            for _ in range(50):
+                if docker('exec', scout, 'python', '-c', "from pathlib import Path; print(Path('/tmp/fixture-ready').exists())") == 'True':
+                    break
+                time.sleep(0.1)
+            else:
+                pytest.fail('Hermes fixture did not start')
+            # Hermes has direct networking; reachable listener proves browser denial.
+            positive = "import socket; s=socket.create_connection(('172.30.242.3',18080),timeout=2); assert s.recv(32)==b'fixture'; s.close()"
+            docker('exec', scout, 'python', '-c', positive)
+            scout_stack.exec_proxy(positive)
             docker('exec', run.container, 'python3', '-c', f"""
 import socket
 from pathlib import Path
@@ -207,9 +210,9 @@ with Browser() as browser:
 """)
             docker('exec', scout, 'python', '-c', positive)
             scout_stack.exec_proxy(positive)
-    finally:
-        docker('exec', scout, 'python', '-c', f"from pathlib import Path; Path({fixture!r}).unlink(missing_ok=True)")
-        docker('stop', '-t', '1', scout)
+        finally:
+            docker('exec', scout, 'python', '-c', f"from pathlib import Path; Path({fixture!r}).unlink(missing_ok=True)")
+            docker('stop', '-t', '1', scout)
 
 
 def test_SR_004_SR_019_browser_direct_egress_and_unauthorized_control_denied(scout_stack):
@@ -412,4 +415,4 @@ def test_SR_004_BT_004_changed_compose_limits_reach_real_containers(scout_stack,
             finally:
                 docker('stop', '-t', '1', scout)
     finally:
-        lifecycle.BrowserRun().start_helpers()
+        lifecycle.checked(lifecycle.BrowserRun().compose + ['up', '-d', '--wait', '--no-build', '--pull', 'never', '--force-recreate', 'proxy', 'firewall'])

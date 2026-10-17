@@ -34,38 +34,27 @@ def headed_cli(cli_images, tmp_path_factory):
         auth = next(item["source"] for item in model["services"]["scout"]["volumes"] if item["target"] == "/var/lib/scout")
         prefix = "scout-cli-headed-" + uuid.uuid4().hex
         logs = prefix + "-logs"
-        images = {}
         try:
-            for target in ("runtime", "browser", "network"):
-                base = model["services"]["scout"]["image"] if target == "runtime" else "signal-scout-bootstrap-" + target + ":local"
-                dockerfile = directory / ("Dockerfile." + target)
-                dockerfile.write_text("FROM " + base + "\nCOPY config.yaml /opt/scout/config.yaml\n")
-                tag = prefix + "-" + target + ":local"
-                lifecycle.checked(["docker", "build", "-q", "-t", tag, "-f", str(dockerfile), str(directory)], timeout=120)
-                images[target] = tag
             override = directory / "headed.yaml"
-            override.write_text("services:\n  scout:\n    image: " + images["runtime"] + "\n    volumes: !override\n"
+            override.write_text("configs:\n  scout-operating:\n    file: " + str(path) + "\nservices:\n  scout:\n    volumes: !override\n"
                 "      - " + auth + ":/var/lib/scout\n      - " + logs + ":/var/lib/scout/logs\n"
-                "  browser:\n    image: " + images["browser"] + "\n"
-                "  proxy:\n    image: " + images["network"] + "\n    volumes: !override\n      - " + logs + ":/var/log/scout\n"
-                "  firewall:\n    image: " + images["network"] + "\n    volumes: !override\n      - " + logs + ":/var/log/scout\n"
+                "  proxy:\n    volumes: !override\n      - " + logs + ":/var/log/scout\n"
+                "  firewall:\n    volumes: !override\n      - " + logs + ":/var/log/scout\n"
                 "volumes:\n  " + logs + ": {}\n")
             files = (lifecycle.COMPOSE, cli_images, override)
             configured = lifecycle.BrowserRun(files, path)
-            configured.start_helpers()
+            lifecycle.checked(configured.compose + ['up', '-d', '--wait', '--no-build', '--pull', 'never', '--force-recreate', 'proxy', 'firewall'])
             command = [sys.executable, str(CLI), "--config", str(path)]
             for file in files:
                 command += ["--compose-file", str(file)]
             yield configured, command
         finally:
-            original.start_helpers()
+            lifecycle.checked(original.compose + ['up', '-d', '--wait', '--no-build', '--pull', 'never', '--force-recreate', 'proxy', 'firewall'])
             for service in ("firewall", "proxy"):
                 if service not in running:
                     info = original.inspect_helper(service)
                     if info is not None and info["State"]["Running"]:
                         lifecycle.checked(["docker", "stop", "-t", "5", info["Id"]])
-            for tag in images.values():
-                lifecycle.checked(["docker", "image", "rm", tag])
             volume = "signal-scout-bootstrap_" + logs
             existing = lifecycle.checked(["docker", "volume", "ls", "-q", "--filter", "name=^" + volume + "$"])
             if existing:
@@ -81,10 +70,8 @@ def test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotatio
         if not displays:
             pytest.skip("No host desktop X11 socket for visible mission viewer")
         environment["DISPLAY"] = ":" + displays[0].name[1:]
-    proxy = configured.inspect_helper("proxy")["Id"]
-
     def probe(code):
-        return lifecycle.checked(["docker", "exec", "-u", "10000:10000", proxy, "python3", "-c", code])
+        return lifecycle.checked(["docker", "exec", "-u", "10000:10000", configured.inspect_helper('proxy')['Id'], "python3", "-c", code])
 
     probe("from pathlib import Path; p=Path('/var/log/scout/proxy.log'); p.write_text('CLI previous-run marker\\n')")
     profiles = set(Path(tempfile.gettempdir()).glob("scout-mission-viewer-*"))

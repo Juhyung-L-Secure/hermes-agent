@@ -51,7 +51,10 @@ def test_BT_002_container_identity_mounts_resources_and_native_status():
             ("signal-scout-bootstrap_scout-auth", "/var/lib/scout"),
             ("signal-scout-bootstrap_scout-logs", "/var/lib/scout/logs"),
         }
-        assert all(m["Type"] in {"volume", "tmpfs"} for m in info["Mounts"])
+        binds = [m for m in info['Mounts'] if m['Type'] == 'bind']
+        assert len(binds) == 1 and binds[0]['Destination'] == '/opt/scout/config.yaml'
+        assert binds[0]['Source'] == str(ROOT / 'docker/signal-scout/config.yaml') and binds[0]['RW'] is False
+        assert all(m['Type'] in {'volume', 'tmpfs', 'bind'} for m in info['Mounts'])
     finally:
         subprocess.run(["docker", "stop", "-t", "1", container], check=True, capture_output=True)
     result = json.loads(compose("run", "--rm", "--no-deps", "-T", "scout", "status"))

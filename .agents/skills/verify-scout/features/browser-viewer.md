@@ -11,7 +11,7 @@ Trusted operator can watch a headed Scout browser through local authenticated no
 
 ## How to get to it (user POV)
 
-- Trusted run owner supplies local viewer URL and ephemeral login for `browser.mode: headed` and `browser.viewer: true`; open URL in browser and authenticate. No standalone watch/mission-launch CLI exists.
+- Set `browser.mode: headed` and `browser.viewer: true`, then run `.venv/bin/python docker/signal-scout/mission_run.py "RESEARCH REQUEST"`. The next run uses the edit without rebuilding and opens the local viewer. This launches a real mission and requires separate user authorization and model credentials.
 - Existing browser-mode harness starts disposable headed configuration and drives real noVNC using a temporary host Chrome profile.
 
 ## Driving it with canonical Scout tests

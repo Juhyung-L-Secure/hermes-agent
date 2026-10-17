@@ -1,12 +1,12 @@
 """SR_019, SR_001, SR_002: real native Chromium and controlled network peers."""
 
 import ipaddress
-import base64
 import json
 from pathlib import Path
 import subprocess
 import selectors
 import time
+import uuid
 import yaml
 
 import pytest
@@ -24,7 +24,6 @@ def docker(*args):
 
 @pytest.fixture(scope='module')
 def fixture_web(scout_stack, tmp_path_factory):
-    """Attach public-classified addresses only to existing proxy, then restore it."""
     ranges = [ipaddress.ip_network('11.203.247.0/29'),
               ipaddress.ip_network('2606:4700:ffff:fffe::/64')]
     existing = json.loads(docker('network', 'inspect', *docker('network', 'ls', '-q').splitlines()))
@@ -36,38 +35,48 @@ def fixture_web(scout_stack, tmp_path_factory):
     for value in occupied:
         network = ipaddress.ip_network(value, strict=False)
         assert not any(network.version == target.version and network.overlaps(target) for target in ranges)
-    created = attached = False
+    created = False
     local = tmp_path_factory.mktemp('scout-network-fixture')
     # Configure Docker's resolver normally; read-only container files stay read-only.
     public_https = json.loads(scout_stack.exec_proxy("import json, socket; print(json.dumps(sorted({a[4][0] for a in socket.getaddrinfo('example.com', 443, family=socket.AF_INET, type=socket.SOCK_STREAM)})))"))
+    prefix = 'scout-web-' + uuid.uuid4().hex
+    image, volume = prefix + ':local', prefix + '-state'
     override = local / 'dns.yaml'
-    override.write_text(yaml.safe_dump({'services': {'proxy': {'dns': ['127.0.0.53']}}}))
     compose = list(scout_stack.compose_command)
-    subprocess.run(compose + ['-f', str(override), 'up', '-d', '--force-recreate', '--wait', 'proxy'],
-                   check=True, capture_output=True, timeout=60)
-    proxy = scout_stack.compose('ps', '-q', 'proxy')
     original_files = scout_stack.browser_compose_files
-    scout_stack.browser_compose_files = (*original_files, override)
+    original_command = scout_stack.compose_command
     try:
-        docker('network', 'create', '--internal', '--ipv6', '--subnet', str(ranges[0]),
+        docker('network', 'create', '--ipv6', '--subnet', str(ranges[0]),
                '--subnet', str(ranges[1]), NETWORK)
         created = True
-        docker('network', 'connect', '--ip', PUBLIC4, '--ip6', PUBLIC6, NETWORK, proxy)
-        attached = True
         subprocess.run(['openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1',
                         '-subj', '/CN=public.test', '-keyout', str(local / 'key.pem'),
                         '-out', str(local / 'cert.pem')], check=True, capture_output=True)
-        scout_stack.exec_proxy(f"from pathlib import Path; Path({BASE!r}).mkdir(mode=0o700)")
-        for name in ('cert.pem', 'key.pem'):
-            encoded = base64.b64encode((local / name).read_bytes()).decode()
-            scout_stack.exec_proxy(f"import base64; from pathlib import Path; Path('{BASE}/{name}').write_bytes(base64.b64decode({encoded!r}))")
+        initial = {'public.test': [PUBLIC4], 'v6.test': [PUBLIC6], 'private.test': ['172.30.242.2'],
+                   'rebind.test': [PUBLIC4], 'mixed.test': [PUBLIC4, '::1'], 'missing.test': [],
+                   'example.com': public_https}
+        (local / 'records.json').write_text(json.dumps(initial))
+        subprocess.run(['cp', str(Path(__file__).with_name('fixture_server.py')), str(local / 'fixture_server.py')], check=True)
+        (local / 'Dockerfile').write_text('FROM signal-scout-bootstrap-network:local\n'
+            'COPY --chown=10000:10000 cert.pem key.pem records.json /tmp/scout-network-fixture/\n'
+            'COPY fixture_server.py /opt/fixture/server.py\n')
+        docker('build', '-q', '-t', image, str(local))
+        start = ("import os,subprocess,time; from pathlib import Path; "
+                 "p=Path('/tmp/scout-network-fixture/ready'); p.unlink(missing_ok=True); "
+                 "child=subprocess.Popen(['python3','/opt/fixture/server.py']); "
+                 "deadline=time.monotonic()+10\n"
+                 "while not p.exists():\n assert child.poll() is None and time.monotonic()<deadline\n time.sleep(.05)\n"
+                 "os.execv('/usr/local/bin/scout-proxy',['/usr/local/bin/scout-proxy'])")
+        override.write_text(yaml.safe_dump({'networks': {'outbound': {'name': NETWORK, 'external': True}},
+            'volumes': {volume: {}}, 'services': {'proxy': {'image': image, 'dns': ['127.0.0.53'],
+            'entrypoint': ['python3', '-c', start], 'volumes': [volume + ':' + BASE],
+            'networks': {'outbound': {'ipv4_address': PUBLIC4, 'ipv6_address': PUBLIC6}}}}}))
+        scout_stack.compose_command = compose + ['-f', str(override)]
+        scout_stack.browser_compose_files = (*original_files, override)
+        scout_stack.compose('up', '-d', '--force-recreate', '--wait', '--no-build', '--pull', 'never', 'proxy', 'firewall')
         def records(value):
             value['example.com'] = public_https
             scout_stack.exec_proxy(f"from pathlib import Path; Path('{BASE}/records.json').write_text({json.dumps(value)!r})")
-        records({'public.test': [PUBLIC4], 'v6.test': [PUBLIC6], 'private.test': ['172.30.242.2'],
-                 'rebind.test': [PUBLIC4], 'mixed.test': [PUBLIC4, '::1'], 'missing.test': []})
-        source = Path(__file__).with_name('fixture_server.py').read_text()
-        scout_stack.compose('exec', '-d', 'proxy', 'python3', '-c', source)
         for _ in range(50):
             if scout_stack.exec_proxy(f"from pathlib import Path; print(Path('{BASE}/ready').exists())") == 'True':
                 break
@@ -91,12 +100,14 @@ def fixture_web(scout_stack, tmp_path_factory):
         yield scout_stack, records, counts, baseline
     finally:
         scout_stack.browser_compose_files = original_files
-        if attached:
-            docker('network', 'disconnect', NETWORK, proxy)
+        scout_stack.compose_command = original_command
+        scout_stack.compose('up', '-d', '--force-recreate', '--wait', '--no-build', '--pull', 'never', 'proxy', 'firewall')
         if created:
             docker('network', 'rm', NETWORK)
-        # Replacement discards only fixture process/tmpfs/resolver changes, not volumes.
-        scout_stack.compose('up', '-d', '--force-recreate', '--wait', 'proxy')
+        existing_volume = docker('volume', 'ls', '-q', '--filter', 'name=^signal-scout-bootstrap_' + volume + '$')
+        if existing_volume:
+            docker('volume', 'rm', existing_volume)
+        docker('image', 'rm', image)
 
 
 def test_SR_001_native_chromium_sandbox_and_anonymous_identity(fixture_web):

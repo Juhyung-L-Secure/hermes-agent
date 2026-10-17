@@ -70,10 +70,7 @@ def doctor(*, own_test_lock=False):
             if item["running"]:
                 if item["health"] != "healthy":
                     raise RuntimeError("Running helper is not healthy.")
-                baked = command(["docker", "exec", item["id"], "python3", "-c",
-                    "from security.settings import load_settings, settings_digest; print(settings_digest(load_settings()))"])
-                if baked != digest:
-                    raise RuntimeError("Scout image configuration is stale; rebuild and recreate.")
+            run.verify_configuration(json.loads(command(['docker', 'inspect', item['id']]))[0], service)
             if service == "firewall":
                 expected = {str(run.config["scout_network"]["viewer_port"]) + "/tcp": [
                     {"HostIp": "127.0.0.1", "HostPort": str(run.config["scout_network"]["viewer_port"])}]}

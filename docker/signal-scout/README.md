@@ -9,7 +9,7 @@ Run commands from repository root. Requires Linux Docker Engine, Compose with na
 | `services/browser.yaml` | Disposable Chromium container, sandbox and resource limits |
 | `services/{proxy,firewall}.yaml` | Browser policy, public-web proxy and helper limits |
 | `Dockerfile` / `Dockerfile.dockerignore` | Pinned images, driver/browser archives, source inclusion |
-| `config.yaml` | Shared image-owned application settings and validated topology |
+| `config.yaml` | Runtime operating settings and validated topology |
 | `chrome-policy.json` | Root-owned native mandatory Chrome for Testing download policy |
 | `browser_run.py` | Trusted host ownership lock, browser creation, smoke, exact teardown |
 | `mission_run.py` / `mission_viewer.py` | Foreground mission ownership and disposable local viewer |
@@ -23,13 +23,13 @@ Run commands from repository root. Requires Linux Docker Engine, Compose with na
 ```bash
 docker compose -f docker/signal-scout/compose.yaml config --quiet
 docker compose -f docker/signal-scout/compose.yaml build
-HERMES_TEST_FILE_TIMEOUT=600 HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0
+HERMES_TEST_FILE_TIMEOUT=600 scripts/run_tests.sh tests/signal_scout/integration/test_runtime_config.py --include-integration -q -j 1 --file-retries 0
 docker compose -f docker/signal-scout/compose.yaml run --rm -T scout status
 .venv/bin/python docker/signal-scout/browser_run.py https://example.com
 ```
 
 Smoke creates fresh browser, attests actual `chrome://sandbox`, navigates operator URL, observes one snapshot, and returns fixed success metadata. No model call, screenshot archive, raw page output, or model browser tool. Denied URL/fatal control/startup failure removes owned browser.
-Tests use same host lifecycle/stack, serialize helpers, restore prior running/stopped state, and preserve auth/log volumes/history. Controlled HTTP/TLS/DNS fixtures attach public-classified `11.203.247.0/29` and `2606:4700:ffff:fffe::/64` to existing proxy after route-conflict checks. Host `openssl`, `ip`, and `google-chrome` are test prerequisites; host Chrome uses a temporary profile solely to exercise local noVNC.
+Tests use the same host lifecycle, serialize helpers, restore prior running/stopped state, and retain auth/log volumes. Rotation-changing variants use disposable log volumes. Configured rotation can expire old archives. Controlled HTTP/TLS/DNS fixtures give the existing proxy test-owned public-classified addresses in `11.203.247.0/29` and `2606:4700:ffff:fffe::/64` after route-conflict checks. Their test image and disposable state volume keep controlled peers available after helper recreation. Host `openssl`, `ip`, and `google-chrome` are test prerequisites. Host Chrome uses a temporary profile solely to exercise local noVNC.
 One worker serializes shared-stack fixtures; existing 600-second per-file allowance changes no runtime deadline or test selection.
 
 Run standalone link validation separately from test execution using the [plugin checker guide](../../plugins/signal-scout/README.md#validate-spec-links). This checks all promises, including uncovered work, without executing test bodies or assessing assertions; current missing coverage produces exit `1`:
@@ -40,7 +40,7 @@ spec-checker . --json
 
 ## Run a foreground research mission
 
-Build the current image-owned configuration once, then use the public host command. Authenticate the dedicated Scout account with the existing login command first.
+Build once when migrating to runtime configuration, or after source, dependencies, browser, or policy changes. Later configuration edits need no image build. Authenticate the dedicated Scout account with the existing login command first.
 
 ```bash
 docker compose -f docker/signal-scout/compose.yaml build scout browser proxy
@@ -54,16 +54,16 @@ The mission exposes only `browser_scout`, preloads the full registered `signal-s
 
 `--verbose` adds configured-level native Hermes diagnostics, new proxy/firewall log content, and current-run browser diagnostics. The host includes browser startup records and continues through browser teardown after Scout exits. Native secret redaction, saved handler levels, and rotation remain configured. Network followers start at current EOF and reopen replaced or truncated files. WARNING diagnostics remain visible in both modes. Verbose mode neither forces DEBUG nor replays older missions. Observer failure attempts a fixed stderr warning and cannot grant browser permission.
 
-For headed viewing, set `browser.mode: headed` and `browser.viewer: true` in `docker/signal-scout/config.yaml`, then rebuild all three targets with the build command above before invoking the same mission command. All four services must share the same baked settings digest. The launcher opens local authenticated noVNC in host `google-chrome` using a disposable profile and an available desktop display. Missing Chrome or desktop access reports an explicit viewer warning. Headless operation needs neither. Viewer passwords stay in memory and never enter arguments or progress. Restore `headless` and `false`, then rebuild the same targets to return to defaults.
+For headed viewing, set `browser.mode: headed` and `browser.viewer: true` in `docker/signal-scout/config.yaml`, then invoke the same mission command. The next run captures those settings without rebuilding images. The launcher opens local authenticated noVNC in host `google-chrome` using a disposable profile and an available desktop display. Missing Chrome or desktop access reports an explicit viewer warning. Headless operation needs neither. Viewer passwords stay in memory and never enter arguments or progress. Restore `headless` and `false` before the next run to return to defaults.
 
-Explicit operator variants use repeated `--compose-file PATH` in merge order and `--config PATH` for the matching baked configuration source. Include the base Compose file first. Topology and immutable-image digest checks still apply. Host verifies the exact waiting Scout's baked settings before sending research text, so stale main-model or retry settings fail before inference. These options do not mount writable configuration or select arbitrary browser endpoints. Another active or leftover Scout/browser prevents startup. Host death, SIGKILL, and Docker loss can prevent cleanup. Durable missions, saved stop requests, resume and Discord remain separate work.
+Select another operating file with `--config /absolute/path/scout.yaml`. Repeated `--compose-file PATH` arguments apply explicit operator overrides in merge order, with the base Compose file first. Topology checks still apply. The host verifies the exact waiting Scout's read-only file, native config symlink, and complete settings digest before sending research text. Missing, invalid, writable, shadowed, or mismatched delivery fails before inference. Another active or leftover Scout/browser prevents startup. Host death, SIGKILL, and Docker loss can prevent cleanup. Durable missions, saved stop requests, resume, and Discord remain separate work.
 
 ## Ownership and lifetime
 
 Host helper locks one run, rejects existing containers, starts healthy helpers and creates one run-labelled browser.
 Exact Docker ID/project/service/run labels and newly owned Chromium listener are checked before passing endpoint to Scout.
 Launcher checks socket inode/path, native policy and actual main-window sizing before readiness; Scout checks discovery and actual sandbox before browsing.
-Redirects, wrong/stale endpoints and mismatched baked settings fail closed.
+Redirects, wrong/stale endpoints, and mismatched runtime settings fail closed.
 Create/start failure cleanup resolves exact attempted name/project/service/run, verifies full ID and removes only current owner; foreign collisions/old runs remain untouched.
 
 Native Hermes `_run_browser_command` connects its pinned `agent-browser` through
@@ -138,13 +138,13 @@ Build downloads are distinct from restricted runtime networking.
 
 ## Settings and logs
 
-Edit shared `config.yaml`, rebuild, then recreate helpers. Edit resource limits
-in corresponding service YAML, then recreate. No hot reload, config generator,
-or disable-protection switches. Config is baked into each image; Scout auth
-volume's config path remains a symlink to immutable image config. Host compares
-settings digests and rejects stale images. Docker topology addresses/subnet must
-match `scout_network`; host validates resolved Compose before starting.
-Application ports and all Python network rules derive from `scout_network`.
+Edit `docker/signal-scout/config.yaml`, then start the next mission or browser run. Each owned run captures validated bytes after taking the project lock and refusing existing Scout/browser containers. It atomically publishes one private file at `~/.local/state/signal-scout/PROJECT/config.yaml` and gives all four services the same read-only Compose config at `/opt/scout/config.yaml`. Only that file crosses the host filesystem boundary. The Scout auth volume retains `/var/lib/scout/config.yaml` as a symlink to that canonical file. Images contain no operating-config fallback.
+
+Both helpers are recreated for each owned run, even when settings are unchanged. Their readiness records attest the configuration consumed by the running proxy and installed firewall rules. Host, browser, and the waiting Scout must agree before work. The original operator file remains editable. In-place edits and atomic replacement affect the next run only. Diagnostics also use the entry-captured settings.
+
+The private project file remains after cleanup because running or stopped helpers need its backing source for later restarts. Temporary Compose overrides are removed after final diagnostics and helper-state restoration. Constructor-only inventory and doctor create no snapshot and mutate no helpers. The next owner replaces the slot only while holding the existing lock with no Scout/browser present. Ordinary host/filesystem/Docker failures or forced termination can prevent publication or cleanup. There is no watchdog, object collector, or hot reload.
+
+Raw Compose `status`, `login`, `chat`, and helper commands receive the default file directly as a read-only named config. Raw long-running helpers retain startup settings. Recreate them after editing their source. Use the owned mission/browser launcher for a fixed cross-service run. Edit resource limits in the corresponding service YAML and recreate containers. Docker addresses, subnet, and port mappings must match `scout_network`. The host validates the resolved Compose model before starting. Application ports and Python network rules derive from `scout_network`.
 
 | Application settings | Defaults |
 | --- | --- |
@@ -171,13 +171,12 @@ Docker stop's host deadline adds the existing bounded 60-second Docker-command
 allowance to configured shutdown grace, so supported grace values are not cut short.
 
 ```bash
-docker compose -f docker/signal-scout/compose.yaml build
-docker compose -f docker/signal-scout/compose.yaml up -d --force-recreate --wait proxy firewall
+docker compose -f docker/signal-scout/compose.yaml up -d --force-recreate --wait --no-build --pull never proxy firewall
 ```
 
 ## Watch and control a test browser
 
-Set `browser.mode: headed` and `browser.viewer: true` in image-owned `config.yaml`, then rebuild/recreate as above. `headed` with viewer false also works unattended; no automatic mode fallback. Restore `headless`/false and rebuild/recreate for production.
+Set `browser.mode: headed` and `browser.viewer: true` in `config.yaml`, then start the next owned run without rebuilding. `headed` with viewer false also works unattended. There is no automatic mode fallback. Restore `headless` and false before the next production run.
 Existing trusted `BrowserRun` caller obtains `run.viewer_access()` after owned readiness. Open returned local URL (`http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale` by default), enter returned `scout` username/session password in browser's HTTP login prompt. Credentials live only in browser tmpfs, rotate each run, and never enter Scout environment/readiness/model tools or persisted logs. Do not persist/log returned access details.
 Packaged noVNC supports trusted clicks/typing without LLM review. Scout actions still pass existing review/context recheck; manual changes can invalidate pending approval. Closing viewer tab leaves mission/browser running. Normal owned cleanup removes display/VNC/viewer; no new crash/reconnect policy.
 Xvfb and VNC use container-local UNIX sockets, without host display/device/socket mounts. Websockify requires authentication for HTTP and WebSocket plus local Host/Origin. Dedicated viewer bridge joins only existing firewall/browser namespace: Docker cannot publish an internal-only bridge. Existing restricted bridge stays internal; firewall permits only viewer bridge's host gateway to viewer port/established replies and denies all other traffic on both interfaces. Docker mapping binds 127.0.0.1 only; no LAN/public/CDP exposure. Disabled configuration starts no listener/credentials even though localhost transport remains. Changing viewer subnet/address/port requires matching Compose bridge/address/localhost mapping; topology mismatch fails.
@@ -214,6 +213,6 @@ brief/checkpoint and browser-action review plan retain their original evidence;
 their Hermes-firewall/proxy requirements are superseded by this browser-only
 network boundary and current feature-owned specs.
 
-Open work includes independent crash cleanup, supervisor failure policy, selected-tab closure, durable mission/resume, live-provider research completion, and broader IN_001/SR_015/SR_016. [Security ownership](../../plugins/signal-scout/security/README.md) and [spec validation](../../plugins/signal-scout/README.md#validate-spec-links) distinguish test execution from link validation. AG_001–AG_007 own gate permissions/execution; BR_001–BR_005 own native routing, hard interrupt and text/image feedback. Browser action modes are image-owned: click/navigate/type/keypress require review; other implemented actions initially skip review, not protections. Standalone RV_001–RV_007 retains native `openai-codex` and read-only `reviewer-policy.md`; live reviewer quality/account and main-agent image support remain unverified.
+Open work includes independent crash cleanup, supervisor failure policy, selected-tab closure, durable mission/resume, live-provider research completion, and broader IN_001/SR_015/SR_016. [Security ownership](../../plugins/signal-scout/security/README.md) and [spec validation](../../plugins/signal-scout/README.md#validate-spec-links) distinguish test execution from link validation. AG_001–AG_007 own gate permissions/execution. BR_001–BR_005 own native routing, hard interrupt, and text/image feedback. Browser action modes come from the fixed operating file. Click/navigate/type/keypress require review by default. Other implemented actions initially skip review, not protections. Standalone RV_001–RV_007 retains native `openai-codex` and read-only `reviewer-policy.md`. Live reviewer quality/account and main-agent image support remain unverified.
 
 References: [Compose include](https://docs.docker.com/compose/how-tos/multiple-compose-files/include/), [service constraints](https://docs.docker.com/reference/compose-file/services/), [pinned native CDP](https://github.com/vercel-labs/agent-browser/blob/v0.26.0/cli/src/native/browser.rs), [pinned native policy path](https://github.com/chromium/chromium/blob/153.0.8010.36/docs/enterprise/policies.md), [DownloadRestrictions scope](https://github.com/chromium/chromium/blob/153.0.8010.36/components/policy/resources/templates/policy_definitions/Miscellaneous/DownloadRestrictions.yaml).

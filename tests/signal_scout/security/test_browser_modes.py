@@ -7,7 +7,6 @@ import http.client
 import json
 import selectors
 import subprocess
-import uuid
 
 import pytest
 import yaml
@@ -26,30 +25,14 @@ from tests.signal_scout.security.viewer_fixture import ViewerClient
 
 @contextmanager
 def configured_mode(stack, directory, mode, viewer):
-    """Bake mode into existing four services, retaining fixture DNS and volumes."""
     directory.mkdir()
     config = settings.load_settings(lifecycle.CONFIG)
     config['browser']['mode'], config['browser']['viewer'] = mode, viewer
     path = directory / 'config.yaml'
     path.write_text(yaml.safe_dump(config))
-    images, overrides = [], {}
-    prefix = 'signal-scout-mode-fixture-' + uuid.uuid4().hex
     override = directory / 'images.yaml'
-    try:
-        for target, services in (('runtime',('scout',)), ('browser',('browser',)), ('network',('proxy','firewall'))):
-            dockerfile = directory / ('Dockerfile.' + target)
-            dockerfile.write_text('FROM signal-scout-bootstrap-' + target + ':local\nCOPY config.yaml /opt/scout/config.yaml\n')
-            image = prefix + '-' + target + ':local'
-            lifecycle.checked(['docker','build','-q','-t',image,'-f',str(dockerfile),str(directory)])
-            images.append(image)
-            for service in services:
-                overrides[service] = {'image':image}
-        override.write_text(yaml.safe_dump({'services':overrides}))
-        yield lifecycle.BrowserRun(compose_files=(*stack.browser_compose_files, override), config_path=path)
-    finally:
-        lifecycle.BrowserRun().start_helpers()
-        for image in images:
-            lifecycle.checked(['docker','image','rm',image])
+    override.write_text(yaml.safe_dump({'configs': {'scout-operating': {'file': str(path)}}}))
+    yield lifecycle.BrowserRun(compose_files=(*stack.browser_compose_files, override), config_path=path)
 
 
 def probe(run, code, timeout=90):
@@ -61,7 +44,6 @@ def probe(run, code, timeout=90):
 
 @pytest.fixture(scope='module')
 def headed_web(scout_stack, tmp_path_factory):
-    """Run existing controlled-web fixture against baked headed service images."""
     directory = tmp_path_factory.mktemp('headed-web')/'images'
     with configured_mode(scout_stack,directory,'headed',True) as configured:
         previous = (scout_stack.compose_command,scout_stack.browser_compose_files,scout_stack.browser_config_path)

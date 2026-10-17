@@ -12,7 +12,7 @@ Docker and browser routes require these prerequisites.
 - Require Linux Docker and unused configured network ranges. Real fixture tests additionally require host `openssl` and `ip`; noVNC tests require host `google-chrome`.
 - Run the read-only doctor first. Refuse an active or leftover Scout/browser or a held run/test lock; never share a mission browser.
 - Anonymous status/smoke need no account or data seeds. Controlled integration fixtures supply their own explicitly required web state. Missing prerequisites are failures or reported blocks, never a reason to weaken assertions.
-- Keep current image-owned safety settings. Baseline is headless with viewer disabled; mapped viewer tests bake disposable overrides and restore canonical helpers.
+- Keep current safety settings in the runtime operating file. Baseline is headless with viewer disabled. Mapped viewer tests supply disposable runtime variants and restore canonical helpers without configuration-only image builds.
 - No model calls, login, external messages, purchase, upload, or deployment needed for these recipes.
 
 ## Driving conventions
@@ -37,6 +37,7 @@ Each feature uses `Sub-features`, `How to get to it (user POV)`, `Driving it wit
 ## Features
 
 - [Runtime status](runtime-status.md) checks operator CLI and native status-tool dispatch without a model.
+- [Runtime operating file](runtime-config.md) checks fixed capture, all-service delivery, same-image changes, and retained helper restart sources.
 - [Public browser smoke](browser-smoke.md) checks real owned browser navigation, observation, sandbox and teardown.
 - [Browser process diagnostics](browser-diagnostics.md) checks bounded process/relay logging, selected container state, native redaction, and final collection after Scout exits.
 - [Reviewed browser actions](reviewed-browser-actions.md) checks approved effects, rejected requests, and fatal cleanup through native Hermes dispatch using offline provider boundaries.

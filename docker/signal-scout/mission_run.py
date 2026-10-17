@@ -94,11 +94,7 @@ class MissionRun:
             info = self._scout()
             if info is None or not info["State"]["Running"]:
                 raise RuntimeError("Scout mission startup failed.")
-            digest = checked(["docker", "exec", info["Id"], "python", "-c",
-                "import importlib; s=importlib.import_module('plugins.signal-scout.security.settings'); print(s.settings_digest(s.load_settings()))"])
-            if digest != settings.settings_digest(self.browser.config):
-                print("Scout image configuration is stale; rebuild and recreate.", file=sys.stderr, flush=True)
-                raise RuntimeError("Scout image configuration is stale; rebuild and recreate.")
+            self.browser.verify_configuration(info, 'scout')
             self.child = subprocess.Popen(["docker", "attach", "--sig-proxy=false", info["Id"]],
                 stdin=subprocess.PIPE, text=True, start_new_session=True)
             self.child.stdin.write(json.dumps({"text": self.request.text}))
@@ -163,7 +159,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verbose", action="store_true", help="Stream configured native diagnostics.")
     parser.add_argument("--compose-file", action="append", help="Explicit operator Compose file; repeat in merge order.")
-    parser.add_argument("--config", default=str(CONFIG), help="Matching image-owned operator config source.")
+    parser.add_argument("--config", default=str(CONFIG), help="Operator settings captured for this run.")
     parser.add_argument("request", help="Nonempty research request.")
     args = parser.parse_args(argv)
     try:

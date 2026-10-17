@@ -42,6 +42,7 @@ From repository root, run these through the available terminal tool. The helper 
 | Check | Command or recipe | Boundary |
 | --- | --- | --- |
 | Runtime status | `scripts/verify.py status` through the Python invocation above | Native status dispatch, no model call |
+| Runtime operating file | [features/runtime-config.md](features/runtime-config.md) | Fixed per-run settings and same-image changes |
 | Public browser smoke | `scripts/verify.py smoke` through the Python invocation above | Owned Chromium, sandbox, navigation, snapshot, teardown |
 | Reviewed browser actions | [reviewed-browser-actions.md](features/reviewed-browser-actions.md) | Real gate/browser, offline main/reviewer transport |
 | Local headed viewer | [browser-viewer.md](features/browser-viewer.md) | Real noVNC, disposable host browser, no provider |
@@ -51,7 +52,7 @@ From repository root, run these through the available terminal tool. The helper 
 
 ### Launch
 
-Read `docker/signal-scout/README.md` for the current configuration/build contract. Validate Compose and build when images are absent or runtime inputs changed; do not rebuild unchanged images for each check.
+Read `docker/signal-scout/README.md` for the current configuration/build contract. Build once for this migration, missing images, or changed source, dependencies, browser, or policy. Configuration-only edits apply to the next owned run without rebuilding.
 
 ```bash
 docker compose -f docker/signal-scout/compose.yaml config --quiet
@@ -60,7 +61,7 @@ docker compose -f docker/signal-scout/compose.yaml build
 
 There is no persistent mission server to launch for the primary smoke. `verify.py smoke` invokes `.venv/bin/python docker/signal-scout/browser_run.py https://example.com`. That public CLI starts healthy helpers, creates a fresh browser/profile, validates native Chrome policy and actual sizing, attaches Scout, verifies the actual sandbox, navigates, snapshots, then removes the owned browser. All readiness steps must succeed; container existence alone is insufficient.
 
-An empty Docker auth volume is initialized by the image's existing entrypoint, including its image-config symlink. Anonymous smoke needs neither login nor seeded application data; `https://example.com` is its public page. Readiness is the successful JSON result plus verified teardown, not an assumed delay. Mapped integration tests create their own controlled pages and data through existing fixtures.
+An empty Docker auth volume is initialized by the image's existing entrypoint, including its canonical operating-file symlink. Anonymous smoke needs neither login nor seeded application data. `https://example.com` is its public page. Readiness is the successful JSON result plus verified teardown, not an assumed delay. Mapped integration tests create their own controlled pages and data through existing fixtures.
 
 The helper records initially running/stopped helpers and stops only exact helpers it started on completion. It retains Docker images, named volumes, existing logs, and proof. New named helper containers may remain stopped for reuse; it does not delete the shared stack.
 
@@ -70,7 +71,7 @@ The helper records initially running/stopped helpers and stops only exact helper
 .venv/bin/python .agents/skills/verify-scout/scripts/verify.py doctor
 ```
 
-Require exit zero. Doctor validates the resolved Compose/settings pairing, availability of all three image targets, helper image identity/health and baked configuration when running, localhost-only published viewer binding, and absence of active or leftover Scout/browser containers. Missing or stopped helpers are reported as needing startup, not falsely reported healthy; the production CLI starts them before browsing. An existing run or test lock must be free.
+Require exit zero. Doctor validates resolved Compose/settings delivery, availability of all three image targets, helper image identity and actual read-only file mounts, running helper health and startup-consumed settings, localhost-only viewer publication, and absence of active or leftover Scout/browser containers. Missing or stopped helpers are reported as needing startup, not healthy. Owned launchers recreate both helpers from the fixed run file before browsing. Constructor-only doctor allocates no snapshot and mutates no helpers. An existing run or test lock must be free.
 
 Doctor never reads credentials or claims provider auth is valid. Its selected anonymous/offline paths do not require auth. Image IDs identify artifacts, not proof that their source matches the working tree; rebuild after relevant changes. Browser readiness and policy application remain launch-time checks, not doctor claims.
 
@@ -109,7 +110,8 @@ The executable [scripts/verify.py](scripts/verify.py) supports `doctor`, `status
 
 ## Pitfalls
 
-- Changing image-owned YAML without rebuilding/recreating produces stale-image failures. Report them; do not weaken digest checks.
+- Runtime YAML edits affect the next owned run. Raw Compose helpers retain startup settings and need explicit recreation. Doctor refuses mismatched consumed settings without repairing them.
+- A persistent private project file backs retained helpers after cleanup. Do not delete it while a helper still references it. Only disposable overrides are removed by normal cleanup.
 - Status still returns `research` and `research_security` as `not_implemented`. Do not interpret `status: ready` as mission readiness.
 - Live subscription `chat` is status-only and consumes usage; none of these baseline checks starts it.
 - Viewer connection and framebuffer readiness do not prove input readiness. The fixture waits until the canvas receives the hit test before sending real mouse input; see its feature's Gotchas.

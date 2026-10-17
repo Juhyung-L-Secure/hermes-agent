@@ -46,7 +46,7 @@ def research(request, config, console):
         if agent.valid_tool_names != {"browser_scout"}:
             raise RuntimeError("Scout research tool exposure invalid.")
         if agent.run_budget_seconds is not None:
-            raise RuntimeError("Scout research budget must be disabled in image-owned config.")
+            raise RuntimeError("Scout research budget must be disabled in operating config.")
         console.progress("Scout mission started. Model %s. Reviewer %s. Research skill loaded.",
                          model, config["scout_reviewer"]["model"])
         with Browser() as browser:
@@ -70,7 +70,7 @@ def main(argv=None):
     from hermes_constants import get_hermes_home
 
     if (get_hermes_home() / "config.yaml").resolve(strict=True) != Path("/opt/scout/config.yaml"):
-        raise RuntimeError("Scout config must be the immutable image-owned config.")
+        raise RuntimeError("Scout config must resolve to the read-only operating file.")
     data = json.load(sys.stdin)
     if not isinstance(data, dict) or set(data) != {"text"}:
         raise ValueError("Invalid Scout research request.")

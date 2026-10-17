@@ -1,5 +1,9 @@
 services:
   firewall:
+    configs:
+      - source: scout-operating
+        target: /opt/scout/config.yaml
+        mode: 0444
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]

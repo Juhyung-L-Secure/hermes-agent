@@ -130,8 +130,15 @@ def test_BT_004_SR_005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_path)
     run.config, run.compose, run.project = config, ['docker', 'compose'], 'scout-bound-test'
     run.run, run.container, run.endpoint, run.lock = 'b' * 32, 'a' * 64, endpoint, None
     run._helper_state = None
+    run._config_override = None
+    run._base_compose = run.compose[:]
+    run._run_config = None
+    run._verbose = False
     run.restore_helpers = False
     run._diagnostics = Mock()
+    monkeypatch.setattr(lifecycle, 'BrowserDiagnostics', lambda *_: run._diagnostics)
+    monkeypatch.setattr(run, '_fix_configuration', lambda: None)
+    monkeypatch.setattr(run, 'verify_configuration', lambda *_: None)
     monkeypatch.setattr(run, 'inspect_owned', lambda: {'State': {'Running': True}})
     assert run.scout_environment() == {'SCOUT_BROWSER_RUN': run.run,
                                       'SCOUT_BROWSER_CONTAINER': run.container, 'BROWSER_CDP_URL': endpoint}

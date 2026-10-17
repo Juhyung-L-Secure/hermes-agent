@@ -1,5 +1,9 @@
 services:
   scout:
+    configs:
+      - source: scout-operating
+        target: /opt/scout/config.yaml
+        mode: 0444
     image: signal-scout-bootstrap-runtime:local
     build:
       context: ../..

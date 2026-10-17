@@ -157,7 +157,7 @@ def test_MI_034_network_cursor_current_only_append_replace_truncate_and_late_cre
     assert stream.getvalue() == "current\nTraceback detail\nreplacement\nshort\nnew-file\n"
 
 
-def bare_run():
+def bare_run(monkeypatch):
     run = lifecycle.BrowserRun.__new__(lifecycle.BrowserRun)
     run.config = yaml.safe_load((ROOT / "docker/signal-scout/config.yaml").read_text())
     run.project = "scout-unit-" + uuid.uuid4().hex
@@ -166,11 +166,15 @@ def bare_run():
     run.container = run.endpoint = run.lock = run._helper_state = None
     run.restore_helpers = True
     run._diagnostics = Mock()
+    run._verbose, run._config_override, run._run_config = False, None, None
+    run._base_compose = run.compose[:]
+    run._fix_configuration = Mock()
+    monkeypatch.setattr(lifecycle, 'BrowserDiagnostics', lambda *_: run._diagnostics)
     return run
 
 
 def test_MI_035_lock_rejects_second_owner_without_reading_or_restoring_helpers(monkeypatch):
-    run = bare_run()
+    run = bare_run(monkeypatch)
     path = Path(tempfile.gettempdir()) / (run.project + ".browser.lock")
     with path.open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -182,8 +186,10 @@ def test_MI_035_lock_rejects_second_owner_without_reading_or_restoring_helpers(m
 
 
 @pytest.mark.parametrize("existing", ["browser", "scout"])
-def test_MI_035_existing_resource_rejection_never_changes_helpers(monkeypatch, existing):
-    run = bare_run()
+@pytest.mark.parametrize('restore_helpers', [True, False])
+def test_MI_035_existing_resource_rejection_never_changes_helpers(monkeypatch, existing, restore_helpers):
+    run = bare_run(monkeypatch)
+    run.restore_helpers = restore_helpers
     calls = []
 
     def checked(command, **_kwargs):
@@ -199,7 +205,7 @@ def test_MI_035_existing_resource_rejection_never_changes_helpers(monkeypatch, e
 
 
 def test_MI_035_partial_helper_start_restores_state_before_unlock(monkeypatch):
-    run = bare_run()
+    run = bare_run(monkeypatch)
     state = {"firewall": False, "proxy": True}
     events = []
 
@@ -238,7 +244,7 @@ def test_MI_035_attach_status_cannot_override_native_exit_or_cleanup(monkeypatch
 
     browser = SimpleNamespace(project="test", run="owned", compose=["compose"],
         config={"browser": {"mode": "headless", "viewer": False}, "scout_lifecycle": {"shutdown_timeout": 5}},
-        scout_environment=lambda: {}, __enter__=lambda: None, close=lambda: None)
+        scout_environment=lambda: {}, verify_configuration=lambda *_: None, __enter__=lambda: None, close=lambda: None)
     monkeypatch.setattr(host, "BrowserRun", lambda *_args, **_kwargs: browser)
     owner = host.MissionRun(mission.MissionRequest("Research rice."))
     info = {"Id": "a" * 64, "State": {"Running": True, "ExitCode": 0}}
@@ -356,7 +362,7 @@ def test_MI_035_creation_failure_and_deferred_cancel_clean_attempted_owner(monke
 
 
 def test_MI_035_browser_create_then_start_failure_removes_only_exact_attempt(monkeypatch):
-    run = bare_run()
+    run = bare_run(monkeypatch)
     state = {"firewall": False, "proxy": False}
     removed = []
     own, foreign = "a" * 64, "b" * 64
@@ -403,7 +409,8 @@ def test_MI_032_stale_scout_refuses_before_attach_or_inference(monkeypatch, caps
 
     browser = SimpleNamespace(project="test", run="owned", compose=["compose"],
         config={"browser": {"mode": "headless", "viewer": False}, "scout_lifecycle": {"shutdown_timeout": 5}},
-        scout_environment=lambda: {}, __enter__=lambda: None, close=lambda: None)
+        scout_environment=lambda: {}, verify_configuration=Mock(side_effect=RuntimeError('Scout configuration delivery mismatch.')),
+        __enter__=lambda: None, close=lambda: None)
     monkeypatch.setattr(host, "BrowserRun", lambda *_args, **_kwargs: browser)
     owner = host.MissionRun(mission.MissionRequest("Research rice."))
     monkeypatch.setattr(owner, "_scout", lambda: {"Id": "a" * 64, "State": {"Running": True, "ExitCode": 0}})
@@ -416,7 +423,8 @@ def test_MI_032_stale_scout_refuses_before_attach_or_inference(monkeypatch, caps
 
     monkeypatch.setattr(host, "checked", checked)
     assert owner.run() == 1
-    assert "Scout image configuration is stale; rebuild and recreate." in capsys.readouterr().err
+    assert "Scout mission failed during startup or execution." in capsys.readouterr().err
+    browser.verify_configuration.assert_called_once_with({'Id': 'a' * 64, 'State': {'Running': True, 'ExitCode': 0}}, 'scout')
     assert ["docker", "rm", "a" * 64] in operations and owner.child is None
 
 

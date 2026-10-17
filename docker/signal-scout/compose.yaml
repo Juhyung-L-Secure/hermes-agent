@@ -1,4 +1,7 @@
 name: signal-scout-bootstrap
+configs:
+  scout-operating:
+    file: ./config.yaml
 include:
   - path: services/scout.yaml
     project_directory: .

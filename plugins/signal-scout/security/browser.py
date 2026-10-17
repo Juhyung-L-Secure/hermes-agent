@@ -18,7 +18,7 @@ class Browser:
         self.settings = load_settings()
         if (os.environ.get("HERMES_HOME") != "/var/lib/scout"
                 or Path("/var/lib/scout/config.yaml").resolve() != Path("/opt/scout/config.yaml")):
-            raise RuntimeError("Required image-owned browser configuration missing.")
+            raise RuntimeError("Required read-only browser configuration missing.")
         configure_logging("scout", self.settings)
         self.task = "scout-" + uuid.uuid4().hex
         self.ready = False

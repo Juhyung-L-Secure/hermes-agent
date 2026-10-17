@@ -290,6 +290,7 @@ def test_SR_024_stop_failure_still_attempts_after_state_before_unlock(monkeypatc
     run = lifecycle.BrowserRun.__new__(lifecycle.BrowserRun)
     run.config = lifecycle.settings.load_settings(lifecycle.CONFIG)
     run.container, run.lock, run._helper_state = 'b' * 64, None, None
+    run._config_override = None
     run.inspect_owned = Mock(return_value={'State': {'Running': True}})
     run._diagnostics = Mock()
     monkeypatch.setattr(lifecycle, 'checked', Mock(side_effect=RuntimeError('actual stop failed')))

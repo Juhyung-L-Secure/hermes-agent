@@ -103,7 +103,7 @@ def main():
     from hermes_constants import get_hermes_home
 
     if (get_hermes_home() / "config.yaml").resolve(strict=True) != Path("/opt/scout/config.yaml"):
-        raise RuntimeError("Scout config must be the immutable image-owned config.")
+        raise RuntimeError("Scout config must resolve to the read-only operating file.")
     from security.settings import load_settings
     from security.runtime_logging import configure_logging, event
 
