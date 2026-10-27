@@ -133,7 +133,9 @@ def test_SR_004_container_mount_pid_network_and_resource_separation(scout_stack)
             assert len(binds) == 1 and binds[0]['Source'] == str(run._run_config.path)
             assert binds[0]['Destination'] == '/opt/scout/config.yaml' and binds[0]['RW'] is False
             assert all(mount['Type'] in {'tmpfs', 'bind'} for mount in browser['Mounts'])
-            assert 'size=64m' in host['Tmpfs']['/tmp']
+            configured_tmp = next(mount.split(':', 1)[1] for mount in run.model['services']['browser']['tmpfs']
+                                  if mount.startswith('/tmp:'))
+            assert set(host['Tmpfs']['/tmp'].split(',')) == set(configured_tmp.split(','))
             namespaces = "import os,json; print(json.dumps({n:os.readlink('/proc/self/ns/'+n) for n in ('pid','mnt','net')}))"
             left = json.loads(docker('exec', scout, 'python', '-c', namespaces))
             right = json.loads(docker('exec', run.container, 'python3', '-c', namespaces))

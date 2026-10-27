@@ -12,7 +12,8 @@ agent:
 plugins:
   enabled: [signal-scout]
 compression:
-  enabled: false
+  enabled: true
+  threshold_tokens: 250000
 memory:
   memory_enabled: false
   user_profile_enabled: false
