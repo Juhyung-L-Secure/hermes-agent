@@ -49,6 +49,10 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if self.path == '/navigation-no-content':
+            self.send_response(204)
+            self.end_headers()
+            return
         if self.path == '/navigation-empty404':
             self.send_response(404)
             self.send_header('Content-Length', '0')
@@ -80,10 +84,15 @@ class Handler(BaseHTTPRequestHandler):
                 COUNTS['cli-effects'] += 1
                 (BASE / 'counts.next').write_text(json.dumps(COUNTS))
                 (BASE / 'counts.next').replace(BASE / 'counts.json')
-        elif self.path.startswith('/navigation/'):
+        elif self.path.startswith(('/navigation/', '/navigation-error/')):
             with LOCK:
                 NAVIGATIONS[self.path] += 1
                 attempt = NAVIGATIONS[self.path]
+            if self.path.startswith('/navigation-error/') and attempt == 1:
+                self.send_response(404)
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
             token = self.path.rsplit('/', 1)[1]
             blocked = '/always/' in self.path or attempt == 1
             body = (f'<html><body><h1>Navigation attempt {attempt}</h1>'

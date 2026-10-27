@@ -363,7 +363,7 @@ class BrowserActionGate:
                         failed_navigation = True
                         phase = "observation"
                         current_page = self._navigation_page(connection)
-                        if attempt + 1 < attempts:
+                        if data is _NavigationOutcome.LOAD_ERROR and attempt + 1 < attempts:
                             continue
                         return self._result("incomplete", "Browser navigation did not complete.",
                             started=True, data=current_page)

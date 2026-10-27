@@ -63,7 +63,7 @@ field and owns the selected page ID and fresh compact post-action snapshot.
 Ordinary feedback serializes gate status, reason, execution_started and data.
 Success includes the applicable observation; rejection confirms no proposed
 effect and permits healthy continuation. Fatal ends the enclosing run.
-Incomplete navigation includes fixed warning, current AX, selected target ID, and truthful `execution_started`. It permits another main-model turn to choose another URL. The gate owns bounded navigation retries; the adapter forwards this result without retry or fatal callback.
+Incomplete navigation includes fixed warning, current AX, selected target ID, and truthful `execution_started`. The first acknowledged load timeout returns its verified observation after the existing wait, without another capture, navigation, or review. The main model can choose another observation, explicit retry, or another URL. The gate retains bounded automatic retries for ordinary loading errors; the adapter forwards incomplete results without retry or fatal callback.
 Execution_started is not proof that a server-side effect completed.
 Adapter returns raw JSON text, not a custom warning wrapper. Hermes's native
 `make_tool_result_message` recognizes the actual `browser_scout` name and frames

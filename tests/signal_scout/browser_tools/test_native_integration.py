@@ -87,7 +87,7 @@ with Browser() as browser:
         assert browser.ready and not browser.failed and evidence._cdp is connection
         if index==2:
             assert result['status']=='incomplete' and result['reason']=='Browser navigation did not complete.'
-            assert 'Navigation attempt 2' in result['data']['snapshot']
+            assert 'Navigation attempt 1' in result['data']['snapshot']
             return response([tool({'action':'navigate','args':{'url':'http://public.test/safe'},'activity':'Inspect another source'})],content='')
         assert index==3 and result['status']=='success' and result['reason'] is None
         assert 'public fixture survives' in result['data']['snapshot']
@@ -100,8 +100,8 @@ with Browser() as browser:
         assert outcome.get('completed') and not outcome.get('interrupted') and not stops
         assert [item['status'] for item in outcomes]==['incomplete','success']
         stable_requests(requests)
-        assert reviewer.calls==[('navigate',{'url':first}),('navigate',{'url':first}),('navigate',{'url':'http://public.test/safe'})]
-        assert [row['params']['url'] for row in sent if row['method']=='Page.navigate']==[first,first,'http://public.test/safe']
+        assert reviewer.calls==[('navigate',{'url':first}),('navigate',{'url':'http://public.test/safe'})]
+        assert [row['params']['url'] for row in sent if row['method']=='Page.navigate']==[first,'http://public.test/safe']
         assert not any(row['method'].startswith('Input.') or row['method'] in {'Page.reload','Page.navigateToHistoryEntry'} for row in sent)
 ''', run=run, timeout=150)
     assert run.container is None
@@ -379,6 +379,7 @@ with Browser() as browser:
 
 @pytest.mark.parametrize('case', ['initial','navigation_retry'])
 def test_BR_003_BR_004_native_final_review_failure_stops_agent_and_host_cleans_owned_browser(fixture_web, case):
+    """AG_008"""
     stack, _, _, _ = fixture_web
     with stack.browser_run() as run:
         owned = run.container
@@ -398,6 +399,10 @@ with Browser() as browser:
     effects=[]
     evidence=browser.evidence()
     evidence._cdp.timeout=1
+    native_navigate=evidence._cdp.navigate;navigation_outcomes=[]
+    def navigate(*args):
+        result=native_navigate(*args);navigation_outcomes.append(result.value);return result
+    evidence._cdp.navigate=navigate
     original_send=evidence._cdp.connection.send
     def observed_send(raw):
         message=json.loads(raw);method=message['method']
@@ -406,8 +411,8 @@ with Browser() as browser:
     evidence._cdp.connection.send=observed_send
     def plan(index,kwargs):
         assert index==1,'Fatal review permitted another main-model request'
-        proposed=({'action':'navigate','args':{'url':'http://public.test/navigation/always/native-fatal'},
-            'activity':'Inspect loading source'} if case=='navigation_retry' else
+        proposed=({'action':'navigate','args':{'url':'http://public.test/navigation-no-content'},
+            'activity':'Inspect failed source'} if case=='navigation_retry' else
             {'action':'click','args':{'ref':ref},'activity':'Inspect controlled button'})
         return response([tool(proposed),
             tool({'action':'click','args':{'ref':ref},'activity':'Must never run'},call_id='must-not-execute')],content='')
@@ -426,6 +431,7 @@ with Browser() as browser:
         assert stops==[(True,True)]
         assert attempts==([1,2,3] if case=='navigation_retry' else [1,2])
         assert effects==(['Page.navigate'] if case=='navigation_retry' else [])
+        assert navigation_outcomes==(['load_error'] if case=='navigation_retry' else [])
         assert outcome.get('interrupted') and not outcome.get('completed')
         assert len(requests)==1
         replies=tool_replies(outcome)

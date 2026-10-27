@@ -42,44 +42,68 @@ def successful(gate,action,args=None):
 '''
 
 
-def test_AG_008_visible_unfinished_load_returns_incomplete_current_page(fixture_web):
+@pytest.mark.parametrize('retries', [0,1,4])
+def test_AG_008_visible_unfinished_load_returns_incomplete_current_page(fixture_web, retries):
     stack, _, _, _ = fixture_web
-    stack.browser_probe(SETUP + r'''
+    stack.browser_probe(SETUP + '\nretries='+repr(retries)+'\n' + r'''
 with Browser() as browser:
     adapter=browser.evidence();tab=adapter.tabs()[0]['target_id'];reviewer=Reviewer()
+    browser.settings['browser']['navigation_retries']=retries
     gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
-    adapter._cdp.timeout=1
-    result=dispatch(gate,'navigate',{'url':'http://public.test/navigation/always/red-proof'})
+    connection=adapter._cdp;connection.timeout=1
+    native=connection.connection.send;sent=[];snapshots=[];outcomes=[]
+    def send(raw):
+        sent.append(json.loads(raw));return native(raw)
+    connection.connection.send=send
+    native_snapshot=adapter.snapshot
+    def snapshot(target):
+        value=native_snapshot(target);snapshots.append((target,value));return value
+    adapter.snapshot=snapshot
+    native_navigate=connection.navigate
+    def navigate(*args):
+        value=native_navigate(*args);outcomes.append(value.value);return value
+    connection.navigate=navigate
+    url='http://public.test/navigation/always/first-observation-'+str(retries)
+    result=dispatch(gate,'navigate',{'url':url})
     assert result['status']=='incomplete',result
     assert result['execution_started'] is True and result['data']['target_id']==tab
-    assert 'Navigation attempt 2' in result['data']['snapshot']
-    assert reviewer.calls==['navigate','navigate']
-    assert browser.ready and not browser.failed
+    assert 'Navigation attempt 1' in result['data']['snapshot']
+    assert snapshots==[(tab,result['data']['snapshot'])]
+    assert outcomes==['load_timeout'] and reviewer.calls==['navigate']
+    assert [row['params']['url'] for row in sent if row['method']=='Page.navigate']==[url]
+    assert adapter._cdp is connection and browser.ready and not browser.failed
     assert successful(gate,'navigate',{'url':'http://public.test/safe'})['target_id']==tab
 ''', timeout=120)
 
 
-def test_AG_008_failed_load_retries_original_url_with_fresh_review(fixture_web):
+@pytest.mark.parametrize('mode,status,last', [('once','success','loaded'),('always','incomplete','load_timeout')])
+def test_AG_008_failed_load_retries_original_url_with_fresh_review(fixture_web, mode, status, last):
     stack, _, _, _ = fixture_web
-    stack.browser_probe(SETUP + r'''
+    stack.browser_probe(SETUP + '\nmode,status,last='+repr((mode,status,last))+'\n' + r'''
 with Browser() as browser:
     evidence=browser.evidence();tab=evidence.tabs()[0]['target_id'];reviewer=Reviewer()
+    browser.settings['browser']['navigation_retries']=4
     gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
     connection=evidence._cdp;connection.timeout=1
-    native=connection.connection.send;sent=[];screens=[]
+    native=connection.connection.send;sent=[];screens=[];outcomes=[]
     def send(raw):
         sent.append(json.loads(raw));return native(raw)
     connection.connection.send=send
+    native_navigate=connection.navigate
+    def navigate(*args):
+        value=native_navigate(*args);outcomes.append(value.value);return value
+    connection.navigate=navigate
     def review(values):
         screens.append(values['screenshot'])
         assert struct.unpack('>II',values['screenshot'][16:24])==(1280,720)
     reviewer.callback=review
-    url='http://public.test/navigation/once/retry-success'
+    url='http://public.test/navigation-error/'+mode+'/retry-'+last
     result=dispatch(gate,'navigate',{'url':url})
-    assert result['status']=='success',result
+    assert result['status']==status,result
     assert 'Navigation attempt 2' in result['data']['snapshot']
     assert result['execution_started'] is True and result['data']['target_id']==tab
     assert reviewer.calls==['navigate','navigate'] and len(screens)==2 and screens[0]!=screens[1]
+    assert outcomes==['load_error',last],outcomes
     assert [(row['method'],row['params']) for row in sent if row['method']=='Page.navigate']==[
         ('Page.navigate',{'url':url}),('Page.navigate',{'url':url})]
     assert not any(row['method'].startswith('Input.') or row['method'] in {'Page.reload','Page.navigateToHistoryEntry'} for row in sent)
@@ -136,19 +160,24 @@ with Browser() as browser:
     evidence=browser.evidence();tab=evidence.tabs()[0]['target_id'];reviewer=Reviewer()
     gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
     connection=evidence._cdp;connection.timeout=1
-    native=connection.connection.send;sent=[]
+    native=connection.connection.send;sent=[];outcomes=[]
     def send(raw):
         sent.append(json.loads(raw));return native(raw)
     connection.connection.send=send
+    native_navigate=connection.navigate
+    def navigate(*args):
+        value=native_navigate(*args);outcomes.append(value.value);return value
+    connection.navigate=navigate
     def changed(values):
         if len(reviewer.calls)==2:
             if decision=='deny': reviewer.verdict='deny'
-            else: browser.command('eval',"history.pushState({},'', '/changed-context');true")
+            else: browser.command('eval',"document.title='Changed review context';true")
     reviewer.callback=changed
-    result=dispatch(gate,'navigate',{'url':'http://public.test/navigation/always/retry-'+decision})
+    result=dispatch(gate,'navigate',{'url':'http://public.test/navigation-empty404'})
     assert result['status']=='incomplete',result
     assert result['execution_started'] is True and result['data']['target_id']==tab
-    assert 'Navigation attempt 1' in result['data']['snapshot']
+    assert 'Reload' in result['data']['snapshot']
+    assert outcomes==['load_error'],outcomes
     assert reviewer.calls==['navigate','navigate']
     assert len([row for row in sent if row['method']=='Page.navigate'])==1
     assert browser.ready and not browser.failed and evidence._cdp is connection
