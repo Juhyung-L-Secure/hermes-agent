@@ -194,6 +194,8 @@ def install_observers():
     gate_class.dispatch = record_dispatch
     def record_observation(self, *args, **kwargs):
         self.observation_timeout = 60
+        observe("document-observation-start", explicit=kwargs.get("explicit", False),
+                connection=id(self.connection), **state())
         result = observed_effect(self, *args, **kwargs)
         observe("document-observed", outcome=result.outcome.value, explicit=kwargs.get("explicit", False),
                 connection=id(self.connection), **state())

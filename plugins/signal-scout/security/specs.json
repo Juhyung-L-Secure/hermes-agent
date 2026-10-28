@@ -628,6 +628,8 @@
         {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_compound_input_requires_every_ack_even_after_ready"},
         {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_successor_lineage_and_final_capture_must_match"},
         {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_ready_loader_cannot_certify_another_backend_document"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_root_readiness_does_not_relax_required_child_capture"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_gate_observes_ready_root_without_child_inspection"},
         {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_interaction_current_page_uses_short_interval_and_never_replays"},
         {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_final_ack_anchors_one_absolute_deadline"},
         {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_unrelated_packets_cannot_extend_missing_ack_deadline"},

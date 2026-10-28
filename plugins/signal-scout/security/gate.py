@@ -204,7 +204,7 @@ class BrowserActionGate:
         baseline = evidence._document_key(evidence._frames(self._selected))
         connection = evidence._cdp
         return invoke(lambda: connection.observe(effect, baseline,
-            lambda: evidence._document_key(evidence._frames(self._selected)),
+            lambda: evidence._document_key(evidence._frames(self._selected, root_only=True)),
             lambda: invoke(lambda: self._navigation_page(connection), phase_name="observation"),
             explicit=action == "navigate", interaction=action in {"click", "keypress"}))
 
@@ -396,6 +396,7 @@ class BrowserActionGate:
                             if outcome is _NavigationOutcome.OBSERVATION_TIMEOUT else "Browser navigation reported a loading error.")
                         return self._result("incomplete", reason, started=True, data=projected)
                     if failed_navigation and outcome is _NavigationOutcome.SAME_DOCUMENT:
+                        projected["observation"]["action_completed"] = False
                         return self._result("incomplete", "Browser navigation recovery did not establish document readiness.",
                             started=True, data=projected)
                     data = projected

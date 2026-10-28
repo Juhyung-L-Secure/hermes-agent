@@ -325,7 +325,33 @@ with Browser() as browser:
     assert browser.command('eval','scrollY')['result']==0
     successful(gate,'click',{'ref':reference(snapshot,'Play audio')})
     assert browser.command('eval',"!document.querySelector('#audio').paused && document.querySelector('#audio').readyState>=2")['result']
-    successful(gate,'click',{'ref':reference(snapshot,'Download fixture')})
+    connection=adapter._cdp;native_event=connection._event;native_send=connection.connection.send
+    events=[];effects=[]
+    def event(packet):
+        method=packet.get('method');params=packet.get('params',{})
+        if method in {'Page.frameRequestedNavigation','Page.frameStartedNavigating','Page.frameStartedLoading',
+          'Page.frameStoppedLoading','Page.frameNavigated','Page.lifecycleEvent',
+          'Page.downloadWillBegin','Page.downloadProgress','Browser.downloadWillBegin','Browser.downloadProgress'}:
+            events.append({'method':method,'session':packet.get('sessionId'),
+                **{key:params[key] for key in ('frameId','loaderId','name','type','state') if key in params}})
+        return native_event(packet)
+    def send(raw):
+        command=json.loads(raw)
+        if command['method']=='Input.dispatchMouseEvent': effects.append(command['params']['type'])
+        return native_send(raw)
+    connection._event=event;connection.connection.send=send
+    try:
+        downloaded=dispatch(gate,'click',{'ref':reference(snapshot,'Download fixture')})
+    finally:
+        connection._event=native_event;connection.connection.send=native_send
+    assert downloaded['status']=='incomplete' and downloaded['execution_started'] is True,downloaded
+    state=downloaded['data']['observation']
+    assert state['state']=='observation_timeout' and state['commands_acknowledged'] is True
+    assert state['action_completed'] is False and state['document_relation']=='same'
+    assert state['url']=='http://public.test/gate' and 'Guarded research controls' in downloaded['data']['snapshot']
+    assert downloaded['data']['target_id']==main and browser.ready and not browser.failed
+    assert effects==['mousePressed','mouseReleased']
+    print(json.dumps({'download_click_observation':state,'download_events':events}))
     assert browser.command('eval','location.pathname')['result']=='/gate'
     successful(gate,'click',{'ref':reference(snapshot,'Open popup')})
     assert gate._selected==main
@@ -391,8 +417,8 @@ with Browser() as browser:
 def test_AG_005_AG_006_required_failure_terminal_started_and_owned_cleanup(fixture_web, phase):
     """SR_022 persists original browser failures without changing owned cleanup."""
     stack, _, _, _ = fixture_web
-    helper = stack.compose('ps','-q','proxy')
     with stack.browser_run() as run:
+        helper = stack.compose('ps','-q','proxy')
         stack.browser_probe(SETUP + '\nphase=' + repr(phase) + r'''
 from pathlib import Path
 import uuid

@@ -175,6 +175,7 @@ def test_AG_008_fresh_retry_preserves_original_copy_and_completion_truth(boundar
     boundary.reviewer.review=review
     result=boundary.gate.dispatch(request)
     assert result['status']==status and result['execution_started'] is True
+    assert result['data']['observation']['action_completed'] is (status=='success')
     assert boundary.effects==[('navigate',{'url':'http://public.test/original'})]*2
     assert [values['action'] for values in calls]==[{'url':'http://public.test/original'}]*2
     assert all(values['screenshot']==b'private-viewport' for values in calls)
@@ -466,7 +467,8 @@ def test_AG_008_long_replay_instrumentation_installs_against_current_private_api
     spec.loader.exec_module(replay)
     from tools import browser_tool
     monkeypatch.setattr(replay,'_installed',False)
-    monkeypatch.setattr(replay,'observe',lambda *args,**kwargs: None)
+    events=[]
+    monkeypatch.setattr(replay,'observe',lambda event,**values: events.append((event,values)))
     monkeypatch.setattr(replay,'state',lambda *args,**kwargs: {})
     monkeypatch.setattr(browser_tool,'_cleanup_single_browser_session',lambda _: None)
     native_command=cdp_module._CDP.command;native_observe=cdp_module._CDP.observe
@@ -476,6 +478,10 @@ def test_AG_008_long_replay_instrumentation_installs_against_current_private_api
     replay.install_observers()
     cdp,_=transport([reply(loaderId='current'),load()])
     assert navigation(cdp).value=='ready' and cdp.observation_timeout==60
+    observations=[(event,values) for event,values in events if event.startswith('document-observ')]
+    assert [event for event,_ in observations]==['document-observation-start','document-observed']
+    assert all(values['explicit'] is True for _,values in observations)
+    assert observations[-1][1]['outcome']=='ready'
 
 
 def test_AG_008_ready_loader_cannot_certify_another_backend_document():
@@ -512,3 +518,61 @@ def test_AG_008_explicit_redirect_requires_observed_successor_identity(started,e
         'params':{'frame':{'id':'root','loaderId':'successor'}}},load('successor')]
     cdp,_=transport(events)
     assert navigation(cdp,loader='successor').value==expected
+
+
+@pytest.mark.parametrize('unavailable', ['selected-child','other-tab-iframe'])
+def test_AG_008_root_readiness_does_not_relax_required_child_capture(unavailable):
+    browser=SimpleNamespace(failed=False)
+    adapter=evidence_module.BrowserEvidence(browser)
+    def command(method,params=None,session=None):
+        if method=='Target.getTargets':
+            targets=[{'targetId':'tab','type':'page'}]
+            if unavailable=='other-tab-iframe': targets.append({'targetId':'foreign','type':'iframe'})
+            return {'targetInfos':targets}
+        if method=='Target.attachToTarget': return {'sessionId':'owned' if params['targetId']=='tab' else 'foreign'}
+        if method=='Page.getFrameTree':
+            if session=='foreign': raise cdp_module._ProtocolError({'code':-32602,'message':'No frame for given id found'})
+            tree={'frame':{'id':'root','loaderId':'current'}}
+            if unavailable=='selected-child':
+                tree['childFrames']=[{'frame':{'id':'missing-child','loaderId':'child','parentId':'root'}}]
+            return {'frameTree':tree}
+        if method=='Page.createIsolatedWorld':
+            if params['frameId']!='root': raise cdp_module._ProtocolError({'code':-32602,'message':'No frame for given id found'})
+            return {'executionContextId':10}
+        if method=='Runtime.evaluate': return {'result':{'objectId':'root-document'}}
+        if method=='DOM.describeNode': return {'node':{'backendNodeId':2}}
+        assert method=='Runtime.releaseObject'
+        return {}
+    adapter._command=command
+    key=adapter._document_key(adapter._frames('tab',root_only=True))
+    assert key==cdp_module._DocumentKey('owned','root','current',2) and not browser.failed
+    with pytest.raises(evidence_module.EvidenceFailure,match='Required browser evidence check failed.'):
+        adapter._page('tab')
+    assert browser.failed
+
+
+def test_AG_008_gate_observes_ready_root_without_child_inspection(boundary):
+    messages=[{'id':number,'sessionId':'owned','result':{}} for number in (1,2)]
+    messages += [reply(3,loaderId='current'),load()]
+    connection,sent=transport(messages)
+    boundary.adapter._cdp=connection
+    boundary.adapter._command=connection.command
+    boundary.adapter._document_key=evidence_module.BrowserEvidence._document_key
+    changed=False
+    def frames(tab,*,root_only=False):
+        if changed and not root_only:
+            raise cdp_module._ProtocolError({'code':-32602,'message':'No frame for given id found'})
+        return {'root':SimpleNamespace(parent=None,session='owned',loader='current' if changed else 'old',document=2 if changed else 1)}
+    boundary.adapter._frames=frames
+    page=cdp_module._Page(cdp_module._DocumentKey('owned','root','current',2),
+        '- heading "Selected ready document"','http://public.test/current','interactive')
+    boundary.adapter._page=lambda _: page
+    boundary.browser.verify_control=lambda:None
+    def effect():
+        nonlocal changed
+        changed=True
+        connection.command('Page.navigate',{'url':'http://public.test/current'},'owned')
+    result=boundary.gate._observe_effect('navigate',SimpleNamespace(session='owned'),effect,
+        lambda operation,**kwargs:operation())
+    assert result.outcome.value=='ready' and result.page==page
+    assert [entry['method'] for entry in sent]==['Page.enable','Page.setLifecycleEventsEnabled','Page.navigate']

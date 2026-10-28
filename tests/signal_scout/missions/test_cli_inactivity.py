@@ -153,8 +153,9 @@ def test_active_mission_keeps_native_session_through_inactivity_replay(inactivit
     assert text.count('Retrying API call in') == 1, text
     assert 'OpenAI client aborted (stale_call_kill, shared=False, tcp_force_closed=1,' in text, text
     assert any(event['event'] == 'loopback-native-abort' for event in events), text
-    final_navigation = [event for event in events if event['event'] in {'cdp-start', 'cdp-end'}
-                        and event['method'] == 'Page.navigate'][-2:]
+    final_navigation = [event for event in events
+                        if event['event'] in {'document-observation-start', 'document-observed'}
+                        and event['explicit']][-2:]
     assert final_navigation[1]['elapsed'] - final_navigation[0]['elapsed'] >= 7.2, text
     premature = [event for event in events if event['event'] == 'native-cleanup-start'
                  and event['thread'] == 'browser-cleanup' and event['browser_ready'] is True]

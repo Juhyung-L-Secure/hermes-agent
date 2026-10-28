@@ -214,7 +214,7 @@ class BrowserEvidence:
             raise EvidenceFailure("Required browser evidence check failed.")
         return result["result"]
 
-    def _frames(self, tab):
+    def _frames(self, tab, *, root_only=False):
         targets = self._command("Target.getTargets")["targetInfos"]
         if not any(t["targetId"] == tab and t["type"] == "page" for t in targets):
             raise EvidenceRejected("Original browser tab is unavailable.")
@@ -223,7 +223,7 @@ class BrowserEvidence:
         # Out-of-process iframe roots identify themselves via Page.getFrameTree;
         # no title/URL matching and no assumed targetId == frameId correspondence.
         for target in targets:
-            if target["type"] == "iframe":
+            if not root_only and target["type"] == "iframe":
                 session = self._session(target["targetId"])
                 trees.append((target["targetId"], session,
                               self._command("Page.getFrameTree", session=session)["frameTree"]))
@@ -239,6 +239,8 @@ class BrowserEvidence:
             frame.document = self._command("DOM.describeNode", {"objectId": doc}, session)["node"]["backendNodeId"]
             self._command("Runtime.releaseObject", {"objectId": doc}, session)
             frames[frame_id] = frame
+            if root_only:
+                return
             for child in tree.get("childFrames", ()):
                 child_id = child["frame"]["id"]
                 owned = next(((t, s, tr) for t, s, tr in trees[1:] if tr["frame"]["id"] == child_id), None)
@@ -476,8 +478,6 @@ class BrowserEvidence:
                 owner = node
                 while "frameId" not in owner and owner.get("parentId") in by_id:
                     owner = by_id[owner["parentId"]]
-                # Main AX trees can include same-origin child documents.
-                # Use Chrome's document/frame association, never query scope.
                 if owner.get("frameId") != frame_id:
                     continue
                 if node.get("ignored"):
