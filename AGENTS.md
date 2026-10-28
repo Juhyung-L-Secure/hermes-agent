@@ -4,6 +4,17 @@ Instructions for AI coding assistants and developers working on the hermes-agent
 
 **Never give up on the right solution.**
 
+## Scout implementation workflow
+
+The primary assistant acts as the software development manager. It owns research, planning, specifications, implementation briefs, coordination, verification, and review.
+
+- Use `$poteto-mode` automatically for large or nontrivial implementations. Read `/home/juhyu/skills/pstack/skills/poteto-mode/SKILL.md` and follow its workflow. The user does not need to invoke it again for each implementation.
+- Delegate implementation to coding agents through that workflow. The primary assistant must not write application code, tests, or runtime configuration directly unless the user explicitly authorizes direct implementation of a small task. A task appearing small is not sufficient authorization.
+- A request such as "implement it" authorizes coordinating the implementation. It does not authorize the primary assistant to bypass delegation and code directly.
+- The primary assistant may inspect source, run checks, review evidence, and maintain planning and instruction documents. It remains responsible for inspecting delegated changes and verification results.
+- These role restrictions apply to the primary coordinating assistant. Delegated coding agents may implement within their assigned scope.
+- Explicit stop, undo, and hold instructions take precedence. Do not resume implementation merely because a workflow skill is supplied with such an instruction.
+
 ## What Hermes Is
 
 Hermes is a personal AI agent that runs the same agent core across a CLI, a

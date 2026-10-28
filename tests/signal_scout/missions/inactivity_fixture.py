@@ -148,7 +148,8 @@ def install_observers():
     cdp_class = importlib.import_module('plugins.signal-scout.security._cdp')._CDP
     cleanup = browser_tool._cleanup_single_browser_session
     dispatch = gate_class.dispatch
-    exchange = cdp_class._exchange
+    exchange = cdp_class.command
+    observed_effect = cdp_class.observe
 
     def record_cleanup(task):
         observe("native-cleanup-start", **state(task))
@@ -167,7 +168,7 @@ def install_observers():
                 execution_started=result['execution_started'], terminal=self._terminal, **state())
         return result
 
-    def record_exchange(self, method, params, session, **kwargs):
+    def record_exchange(self, method, params=None, session=None, **kwargs):
         selected = method in {'Page.navigate', 'Input.dispatchMouseEvent'}
         if selected:
             observe("cdp-start", method=method, timeout=self.timeout,
@@ -191,7 +192,15 @@ def install_observers():
 
     browser_tool._cleanup_single_browser_session = record_cleanup
     gate_class.dispatch = record_dispatch
-    cdp_class._exchange = record_exchange
+    def record_observation(self, *args, **kwargs):
+        self.observation_timeout = 60
+        result = observed_effect(self, *args, **kwargs)
+        observe("document-observed", outcome=result.outcome.value, explicit=kwargs.get("explicit", False),
+                connection=id(self.connection), **state())
+        return result
+
+    cdp_class.command = record_exchange
+    cdp_class.observe = record_observation
     observe("observer-ready", **state())
 
 

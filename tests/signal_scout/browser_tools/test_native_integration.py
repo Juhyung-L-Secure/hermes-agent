@@ -77,7 +77,8 @@ with Browser() as browser:
     def send(raw):
         sent.append(json.loads(raw));return native(raw)
     connection.connection.send=send
-    first='http://public.test/navigation/always/native-continue'
+    connection.observation_timeout=.4
+    first='http://public.test/parser-stall/native-continue'
     def plan(index,kwargs):
         if index==1:
             return response([tool({'action':'navigate','args':{'url':first},'activity':'Inspect loading source'})],content='')
@@ -86,8 +87,10 @@ with Browser() as browser:
         assert result['execution_started'] is True and result['data']['target_id']==tab
         assert browser.ready and not browser.failed and evidence._cdp is connection
         if index==2:
-            assert result['status']=='incomplete' and result['reason']=='Browser navigation did not complete.'
-            assert 'Navigation attempt 1' in result['data']['snapshot']
+            assert result['status']=='incomplete' and result['reason']=='Browser document observation deadline reached after 0.4 seconds.'
+            assert 'Visible partial document' in result['data']['snapshot']
+            assert result['data']['observation']['ready_state']=='loading' and result['data']['observation']['url']==first
+            browser.command('eval',"fetch('/observation-release/native-continue');true")
             return response([tool({'action':'navigate','args':{'url':'http://public.test/safe'},'activity':'Inspect another source'})],content='')
         assert index==3 and result['status']=='success' and result['reason'] is None
         assert 'public fixture survives' in result['data']['snapshot']
@@ -399,10 +402,10 @@ with Browser() as browser:
     effects=[]
     evidence=browser.evidence()
     evidence._cdp.timeout=1
-    native_navigate=evidence._cdp.navigate;navigation_outcomes=[]
-    def navigate(*args):
-        result=native_navigate(*args);navigation_outcomes.append(result.value);return result
-    evidence._cdp.navigate=navigate
+    native_navigate=evidence._cdp.observe;navigation_outcomes=[]
+    def navigate(*args,**kwargs):
+        result=native_navigate(*args,**kwargs);navigation_outcomes.append(result.outcome.value);return result
+    evidence._cdp.observe=navigate
     original_send=evidence._cdp.connection.send
     def observed_send(raw):
         message=json.loads(raw);method=message['method']
@@ -431,7 +434,7 @@ with Browser() as browser:
         assert stops==[(True,True)]
         assert attempts==([1,2,3] if case=='navigation_retry' else [1,2])
         assert effects==(['Page.navigate'] if case=='navigation_retry' else [])
-        assert navigation_outcomes==(['load_error'] if case=='navigation_retry' else [])
+        assert navigation_outcomes==(['loading_error'] if case=='navigation_retry' else [])
         assert outcome.get('interrupted') and not outcome.get('completed')
         assert len(requests)==1
         replies=tool_replies(outcome)

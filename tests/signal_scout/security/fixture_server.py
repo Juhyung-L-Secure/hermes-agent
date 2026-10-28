@@ -15,6 +15,8 @@ BASE = Path('/tmp/scout-network-fixture')
 COUNTS = Counter()
 NAVIGATIONS = Counter()
 LOCK = threading.Lock()
+HELD = {}
+RESOURCE_STARTED = set()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -48,6 +50,30 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
             self.wfile.write(body)
+            return
+        if self.path.startswith('/observation-release/'):
+            token = self.path.rsplit('/', 1)[1]
+            with LOCK:
+                HELD.setdefault(token, threading.Event()).set()
+            self.send_response(200)
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
+        if self.path.startswith(('/parser-resource/', '/navigation-held/')):
+            token = self.path.rsplit('/', 1)[1]
+            with LOCK:
+                release = HELD.setdefault(token, threading.Event())
+                RESOURCE_STARTED.add(token)
+            release.wait(30)
+            body = b'window.parserReleased=true;' if self.path.startswith('/parser-resource/') else b'<h1>Released destination</h1>'
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/javascript' if self.path.startswith('/parser-resource/') else 'text/html')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            try:
+                self.wfile.write(body)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
             return
         if self.path == '/navigation-no-content':
             self.send_response(204)
@@ -84,6 +110,19 @@ class Handler(BaseHTTPRequestHandler):
                 COUNTS['cli-effects'] += 1
                 (BASE / 'counts.next').write_text(json.dumps(COUNTS))
                 (BASE / 'counts.next').replace(BASE / 'counts.json')
+        elif self.path.startswith('/parser-stall/'):
+            token = self.path.rsplit('/', 1)[1]
+            body = (f'<html><body><h1>Visible partial document</h1><script src="/parser-resource/{token}"></script>'
+                    '<h2>Parser released</h2><script>window.fixtureReady=true</script></body></html>').encode()
+        elif self.path == '/observation-controls':
+            body = b'''<html><body><h1>Observation controls</h1>
+              <button id="dropdown" onclick="setTimeout(()=>{document.querySelector('#menu').hidden=false},60)">Show choices</button>
+              <div id="menu" hidden>Visible dropdown choices</div>
+              <a href="/navigation/always/link-observation">Follow observed link</a>
+              <a href="/navigation-held/pending-old">Hold destination</a>
+              <a href="#section">Same document section</a>
+              <form action="/navigation/always/enter-observation"><input aria-label="Navigation query" name="q"><button>Go</button></form>
+              <script>window.fixtureReady=true</script></body></html>'''
         elif self.path.startswith(('/navigation/', '/navigation-error/')):
             with LOCK:
                 NAVIGATIONS[self.path] += 1
@@ -96,7 +135,8 @@ class Handler(BaseHTTPRequestHandler):
             token = self.path.rsplit('/', 1)[1]
             blocked = '/always/' in self.path or attempt == 1
             body = (f'<html><body><h1>Navigation attempt {attempt}</h1>'
-                    + (f'<img src="/navigation-resource/{token}">' if blocked else '')
+                    + ((f'<script src="/parser-resource/{token}"></script>' if self.path.startswith('/navigation-error/')
+                        else f'<img src="/navigation-resource/{token}">') if blocked else '')
                     + '<script>window.fixtureReady=true</script></body></html>').encode()
         elif self.path == '/navigation404':
             body = b'<html><body><h1>Loaded 404 fixture</h1></body></html>'

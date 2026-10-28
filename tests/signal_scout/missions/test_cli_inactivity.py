@@ -148,8 +148,7 @@ def test_active_mission_keeps_native_session_through_inactivity_replay(inactivit
     assert stdout.read_text().strip() == 'Controlled inactivity replay completed.', text
     assert [event['status'] for event in events if event['event'] == 'dispatch-end'] == [
         'incomplete', 'success', 'success', 'success'], text
-    assert [event['outcome'] for event in events if event['event'] == 'cdp-end'
-            and event['method'] == 'Page.navigate'] == ['load_timeout', 'loaded', 'loaded'], text
+    assert [event['outcome'] for event in events if event['event'] == 'document-observed' and event['explicit']] == ['observation_timeout', 'ready', 'ready'], text
     assert 'Non-streaming API call stale for 90s (threshold 90s)' in text, text
     assert text.count('Retrying API call in') == 1, text
     assert 'OpenAI client aborted (stale_call_kill, shared=False, tcp_force_closed=1,' in text, text

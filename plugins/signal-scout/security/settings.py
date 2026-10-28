@@ -107,8 +107,16 @@ def _parse_settings(contents):
                        "mode": browser["mode"], "viewer": browser["viewer"],
                        "auto_local_for_private_urls": False, "command_timeout": browser["command_timeout"],
                        "navigation_retries": browser["navigation_retries"],
+                       "observation_timeout": browser["observation_timeout"],
+                       "interaction_observation_timeout": browser["interaction_observation_timeout"],
                        "viewport": viewport, "action_permissions": permissions,
                        "scroll_pixels": browser["scroll_pixels"]}:
+            raise ValueError
+        for key in ("observation_timeout", "interaction_observation_timeout"):
+            value = browser[key]
+            if type(value) not in (int, float) or not math.isfinite(value) or not 0 < value <= 120:
+                raise ValueError
+        if browser["interaction_observation_timeout"] > browser["observation_timeout"]:
             raise ValueError
         if set(viewport) != {"width", "height", "device_scale_factor"}:
             raise ValueError

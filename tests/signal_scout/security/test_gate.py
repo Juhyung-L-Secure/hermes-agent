@@ -237,30 +237,35 @@ def test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_hea
     boundary.gate._navigation_retries = 0
     boundary.adapter._cdp = object()
     boundary.browser.verify_control = lambda: None
-    def navigation(frames, root, method, args, invoke):
+    def navigation(action, root, effect, invoke):
+        args = {"url":"http://public.test/attachment/fixture.bin"}
         def operation():
-            boundary.effects.append((method, args))
+            boundary.effects.append(("Page.navigate", args))
             if response is None:
                 raise RuntimeError('private-transport-failure')
             if type(response.get('isDownload', False)) is not bool:
                 raise ValueError('Invalid browser navigation result.')
-            return (cdp_module._NavigationOutcome.DOWNLOAD_DENIED if response == {
-                'isDownload':True,'errorText':'net::ERR_ABORTED'} else cdp_module._NavigationOutcome.LOAD_ERROR)
+            outcome = (cdp_module._NavigationOutcome.DOWNLOAD_DENIED if response == {
+                'isDownload':True,'errorText':'net::ERR_ABORTED'} else cdp_module._NavigationOutcome.LOADING_ERROR)
+            key = cdp_module._DocumentKey('owned','root','old',1)
+            page = cdp_module._Page(key, snapshot('owned-page'), 'http://public.test/current', 'complete')
+            return cdp_module._ObservedEffect(outcome, key, page, 5, 0)
         return invoke(operation)
-    monkeypatch.setattr(boundary.gate, '_navigation', navigation)
+    monkeypatch.setattr(boundary.gate, '_observe_effect', navigation)
     result = boundary.gate.dispatch({'action':'navigate','args':{'url':'http://public.test/attachment/fixture.bin'},
                                     'activity':'Inspect controlled download enforcement'})
     assert result['execution_started'] is True and len(boundary.effects) == 1
     if response == {'isDownload':True,'errorText':'net::ERR_ABORTED'}:
-        assert result == {'status':'success','reason':None,'execution_started':True,
-                          'data':{'snapshot':'- heading "Fresh selected observation"','target_id':'owned-page'}}
+        assert result['status']=='success' and result['reason'] is None
+        assert result['data']['snapshot']=='- heading "Fresh selected observation"'
+        assert result['data']['observation']['state']=='download_denied'
         assert not boundary.closed and not boundary.gate._terminal and boundary.browser.ready
         assert boundary.gate.dispatch({'action':'snapshot','args':{}})['status'] == 'success'
         assert snapshots == ['owned-page','owned-page']
     elif response is not None and type(response.get('isDownload', False)) is bool:
-        assert result == {'status':'incomplete','reason':'Browser navigation did not complete.',
-                          'execution_started':True,'data':{'snapshot':'- heading "Fresh selected observation"',
-                                                         'target_id':'owned-page'}}
+        assert result['status']=='incomplete' and result['reason']=='Browser navigation reported a loading error.'
+        assert result['data']['snapshot']=='- heading "Fresh selected observation"'
+        assert result['data']['observation']['state']=='loading_error'
         assert not boundary.closed and snapshots == ['owned-page']
     else:
         assert result == {'status':'fatal','reason':'Browser action failed.','execution_started':True,'data':{}}
@@ -295,34 +300,29 @@ def test_AG_002_browser_key_mapping_preserves_native_default_actions(key, expect
 
 
 @pytest.mark.parametrize('case', ['before_response','after_response','same_document','history','history_hash','bfcache','error'])
-def test_AG_005_navigation_observation_waits_only_exact_native_load(case):
-    cdp = importlib.import_module('plugins.signal-scout.security._cdp')._CDP.__new__(
-        importlib.import_module('plugins.signal-scout.security._cdp')._CDP)
-    load = {'method':'Page.lifecycleEvent','sessionId':'owned','params':{'frameId':'root','loaderId':'new','name':'load'}}
+def test_AG_005_navigation_observation_matches_native_document(case):
+    from tests.signal_scout.security.test_browser_diagnostics import transport
+    c = importlib.import_module('plugins.signal-scout.security._cdp')
+    load = {'method':'Page.lifecycleEvent','sessionId':'owned','params':{'frameId':'root','loaderId':'new','name':'DOMContentLoaded'}}
     response = {'id':1,'sessionId':'owned','result':{'frameId':'root','loaderId':'new'}}
     navigated = {'method':'Page.frameNavigated','sessionId':'owned','params':{'frame':{'id':'root','loaderId':'new'}}}
+    started = {'method':'Page.frameStartedNavigating','sessionId':'owned','params':{'frameId':'root','loaderId':'new'}}
     within = {'method':'Page.navigatedWithinDocument','sessionId':'owned','params':{'frameId':'root'}}
     method = 'Page.navigateToHistoryEntry' if case in {'history','history_hash','bfcache'} else 'Page.navigate'
     wrong = [{**load,'sessionId':'other'}, {**load,'params':{**load['params'],'frameId':'child'}}]
+    ack = {'id':1,'sessionId':'owned','result':{}}
     messages = {
         'before_response':wrong+[load,response], 'after_response':wrong+[response,load],
-        'same_document':[{'id':1,'sessionId':'owned','result':{'frameId':'root'}}], 'history':[{'id':1,'result':{}},navigated,load],
-        'history_hash':[within,{'id':1,'result':{}}],
-        'bfcache':[{**navigated,'params':{**navigated['params'],'type':'BackForwardCacheRestore'}},{'id':1,'result':{}}],
+        'same_document':[{'id':1,'sessionId':'owned','result':{'frameId':'root'}}],
+        'history':[started,ack,navigated,load], 'history_hash':[within,ack],
+        'bfcache':[{**navigated,'params':{**navigated['params'],'type':'BackForwardCacheRestore'}},ack],
         'error':[{'id':1,'sessionId':'owned','result':{'frameId':'root','errorText':'fixed fixture failure'}}],
     }[case]
-    pending = iter(messages)
-    sent, received = [], []
-    def receive(**values):
-        assert values['timeout'] <= 30
-        value = next(pending); received.append(value)
-        return json.dumps(value)
-    cdp.timeout, cdp.sequence = 30, 0
-    cdp.connection = SimpleNamespace(send=sent.append, recv=receive)
-    result = (cdp.navigate('http://public.test/','owned','root') if method=='Page.navigate' else
-              cdp.command(method, {}, 'owned', navigation_frame='root'))
-    assert len(sent)==1 and received==messages
-    if method=='Page.navigate':
-        assert result.value=={'same_document':'same_document','error':'load_error'}.get(case,'loaded')
-    else:
-        assert result==next(value['result'] for value in messages if 'id' in value)
+    cdp, sent = transport(messages)
+    baseline=c._DocumentKey('owned','root','old',1)
+    key=baseline if case in {'same_document','history_hash'} else c._DocumentKey('owned','root','new',2)
+    result=cdp.observe(lambda: cdp.command(method, {}, 'owned'), baseline, lambda: key,
+        lambda: c._Page(key,'- heading "Current"','http://public.test/current','complete'), explicit=method=='Page.navigate')
+    assert len(sent)==1
+    assert result.outcome.value=={'same_document':'same_document','history_hash':'same_document',
+        'bfcache':'restored','error':'loading_error'}.get(case,'ready')

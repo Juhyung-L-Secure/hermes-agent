@@ -6,7 +6,7 @@ import os
 import re
 import time
 
-from ._cdp import _NavigationOutcome, _ProtocolError
+from ._cdp import _NavigationOutcome, _ObservedEffect, _ProtocolError
 from .browser import Browser
 from .evidence import EvidenceFailure, EvidenceRejected
 from .reviewer import ReviewResult
@@ -197,15 +197,16 @@ class BrowserActionGate:
             raise EvidenceRejected("Browser typing target is not editable.")
         return frame, obj
 
-    def _navigation(self, frames, root, method, params, invoke):
+    def _observe_effect(self, action, root, effect, invoke):
         evidence = self._evidence
         evidence._command("Page.enable", session=root.session)
         evidence._command("Page.setLifecycleEventsEnabled", {"enabled": True}, root.session)
-        frame_id = next(key for key, frame in frames.items() if frame is root)
-        if method == "Page.navigate":
-            return invoke(lambda: evidence._cdp.navigate(params["url"], root.session, frame_id))
-        return invoke(lambda: evidence._cdp.command(method, params, root.session,
-            navigation_frame=frame_id))
+        baseline = evidence._document_key(evidence._frames(self._selected))
+        connection = evidence._cdp
+        return invoke(lambda: connection.observe(effect, baseline,
+            lambda: evidence._document_key(evidence._frames(self._selected)),
+            lambda: invoke(lambda: self._navigation_page(connection), phase_name="observation"),
+            explicit=action == "navigate", interaction=action in {"click", "keypress"}))
 
     def _navigation_page(self, connection):
         self._live()
@@ -213,12 +214,24 @@ class BrowserActionGate:
         if connection is None or evidence._cdp is not connection:
             raise EvidenceFailure("Browser control unavailable.")
         self._browser.verify_control()
-        evidence._frames(self._selected)
-        snapshot = evidence.snapshot(self._selected)
+        page = evidence._page(self._selected)
         self._live()
         if evidence._cdp is not connection:
             raise EvidenceFailure("Browser control unavailable.")
-        return {"snapshot": snapshot, "target_id": self._selected}
+        return page
+
+    def _effect_data(self, result, action, args):
+        page = result.page
+        data = {"snapshot": page.snapshot, "target_id": self._selected,
+            "observation": {"url": page.url, "ready_state": page.ready_state,
+                "document_relation": "same" if page.key == result.baseline else "changed",
+                "state": result.outcome.value, "commands_acknowledged": True,
+                "action_completed": result.outcome not in {
+                    _NavigationOutcome.OBSERVATION_TIMEOUT, _NavigationOutcome.LOADING_ERROR},
+                "timeout_seconds": result.timeout, "elapsed_seconds": round(result.elapsed, 3)}}
+        if action == "navigate":
+            data["requested_url"] = args["url"]
+        return data
 
     def _execute(self, action, args, checked, invoke):
         evidence = self._evidence
@@ -232,12 +245,16 @@ class BrowserActionGate:
         root = self._root(frames)
         command = lambda method, params: invoke(lambda: evidence._command(method, params, root.session))
         if action == "navigate":
-            return self._navigation(frames, root, "Page.navigate", {"url": args["url"]}, invoke)
+            return self._observe_effect(action, root,
+                lambda: evidence._command("Page.navigate", {"url": args["url"]}, root.session), invoke)
         elif action == "click":
             x, y = checked.interaction_point
-            for kind, buttons in (("mousePressed", 1), ("mouseReleased", 0)):
-                command("Input.dispatchMouseEvent", {"type": kind, "x": x, "y": y,
-                    "button": "left", "buttons": buttons, "clickCount": 1})
+            def click():
+                for kind, buttons in (("mousePressed", 1), ("mouseReleased", 0)):
+                    self._live()
+                    evidence._command("Input.dispatchMouseEvent", {"type": kind, "x": x, "y": y,
+                        "button": "left", "buttons": buttons, "clickCount": 1}, root.session)
+            return self._observe_effect(action, root, click, invoke)
         elif action == "type":
             frame, obj = self._type_target(checked._binding, frames)
             try:
@@ -256,15 +273,20 @@ class BrowserActionGate:
                 evidence._command("Runtime.releaseObject", {"objectId": obj}, frame.session)
         elif action == "keypress":
             params = _key_params(args["key"])
-            command("Input.dispatchKeyEvent", {"type": "keyDown", **params})
-            command("Input.dispatchKeyEvent", {"type": "keyUp", **{
-                key: value for key, value in params.items() if key not in {"text", "unmodifiedText"}}})
+            def keypress():
+                self._live()
+                evidence._command("Input.dispatchKeyEvent", {"type": "keyDown", **params}, root.session)
+                self._live()
+                evidence._command("Input.dispatchKeyEvent", {"type": "keyUp", **{
+                    key: value for key, value in params.items() if key not in {"text", "unmodifiedText"}}}, root.session)
+            return self._observe_effect(action, root, keypress, invoke)
         elif action == "back":
             history = evidence._command("Page.getNavigationHistory", session=root.session)
             if history["currentIndex"] == 0:
                 raise EvidenceRejected("Browser history is unavailable.")
-            self._navigation(frames, root, "Page.navigateToHistoryEntry",
-                {"entryId": history["entries"][history["currentIndex"] - 1]["id"]}, invoke)
+            params = {"entryId": history["entries"][history["currentIndex"] - 1]["id"]}
+            return self._observe_effect(action, root,
+                lambda: evidence._command("Page.navigateToHistoryEntry", params, root.session), invoke)
         elif action == "scroll":
             pixels = self._scroll_pixels * (1 if args["direction"] == "down" else -1)
             invoke(lambda: evidence._evaluate(root, f"window.scrollBy(0, {pixels})"))
@@ -308,11 +330,14 @@ class BrowserActionGate:
                     exc_info=True if failure is None else None)
             except Exception:
                 pass
-        def incomplete():
+        def incomplete(reason="Browser navigation recovery was not performed."):
             nonlocal phase
             phase = "observation"
-            return self._result("incomplete", "Browser navigation did not complete.",
-                started=True, data=self._navigation_page(connection))
+            page = self._navigation_page(connection)
+            current = _ObservedEffect(_NavigationOutcome.LOADING_ERROR, last_observation.baseline, page,
+                last_observation.timeout, last_observation.elapsed)
+            return self._result("incomplete", reason, started=True,
+                data=self._effect_data(current, action, request["args"]))
         try:
             self._live()
             try:
@@ -322,6 +347,7 @@ class BrowserActionGate:
             action = request["action"]
             connection = getattr(self._evidence, "_cdp", None)
             failed_navigation = False
+            last_observation = None
             attempts = 1 + self._navigation_retries if action == "navigate" else 1
             for attempt in range(attempts):
                 phase = "preparation"
@@ -358,19 +384,21 @@ class BrowserActionGate:
                 self._live()
                 phase = "execution"
                 data = self._execute(action, args, checked, invoke)
-                if isinstance(data, _NavigationOutcome):
-                    if data in {_NavigationOutcome.LOAD_TIMEOUT, _NavigationOutcome.LOAD_ERROR}:
+                if isinstance(data, _ObservedEffect):
+                    last_observation = data
+                    outcome = data.outcome
+                    projected = self._effect_data(data, action, args)
+                    if outcome in {_NavigationOutcome.OBSERVATION_TIMEOUT, _NavigationOutcome.LOADING_ERROR}:
                         failed_navigation = True
-                        phase = "observation"
-                        current_page = self._navigation_page(connection)
-                        if data is _NavigationOutcome.LOAD_ERROR and attempt + 1 < attempts:
+                        if outcome is _NavigationOutcome.LOADING_ERROR and action == "navigate" and attempt + 1 < attempts:
                             continue
-                        return self._result("incomplete", "Browser navigation did not complete.",
-                            started=True, data=current_page)
-                    if failed_navigation and data is _NavigationOutcome.SAME_DOCUMENT:
-                        return incomplete()
-                    data = {"snapshot": invoke(lambda: self._evidence.snapshot(self._selected),
-                        phase_name="observation"), "target_id": self._selected}
+                        reason = (f"Browser document observation deadline reached after {data.timeout:g} seconds."
+                            if outcome is _NavigationOutcome.OBSERVATION_TIMEOUT else "Browser navigation reported a loading error.")
+                        return self._result("incomplete", reason, started=True, data=projected)
+                    if failed_navigation and outcome is _NavigationOutcome.SAME_DOCUMENT:
+                        return self._result("incomplete", "Browser navigation recovery did not establish document readiness.",
+                            started=True, data=projected)
+                    data = projected
                 return self._result("success", started=started, data=data)
         except _Stopped as error:
             return self._fatal(str(error), started)

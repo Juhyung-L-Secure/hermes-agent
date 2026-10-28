@@ -36,14 +36,14 @@ def successful(gate,action,args=None):
     assert result['status']=='success',result['reason']
     assert result['reason'] is None and result['execution_started'] is True
     if action in {'click','navigate','type','keypress','back','scroll','switch_tab'}:
-        assert set(result['data'])=={'snapshot','target_id'} and isinstance(result['data']['snapshot'],str)
+        assert {'snapshot','target_id'} <= result['data'].keys() and isinstance(result['data']['snapshot'],str)
         assert result['data']['target_id']==gate._selected
     return result['data']
 '''
 
 
 @pytest.mark.parametrize('retries', [0,1,4])
-def test_AG_008_visible_unfinished_load_returns_incomplete_current_page(fixture_web, retries):
+def test_AG_008_stalled_image_returns_ready_before_image_completion(fixture_web, retries):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + '\nretries='+repr(retries)+'\n' + r'''
 with Browser() as browser:
@@ -55,28 +55,31 @@ with Browser() as browser:
     def send(raw):
         sent.append(json.loads(raw));return native(raw)
     connection.connection.send=send
-    native_snapshot=adapter.snapshot
-    def snapshot(target):
-        value=native_snapshot(target);snapshots.append((target,value));return value
-    adapter.snapshot=snapshot
-    native_navigate=connection.navigate
-    def navigate(*args):
-        value=native_navigate(*args);outcomes.append(value.value);return value
-    connection.navigate=navigate
+    native_page=adapter._page
+    def page(target):
+        value=native_page(target);snapshots.append((target,value.snapshot));return value
+    adapter._page=page
+    native_navigate=connection.observe
+    def navigate(*args,**kwargs):
+        value=native_navigate(*args,**kwargs);outcomes.append(value.outcome.value);return value
+    connection.observe=navigate
     url='http://public.test/navigation/always/first-observation-'+str(retries)
     result=dispatch(gate,'navigate',{'url':url})
-    assert result['status']=='incomplete',result
+    assert result['status']=='success',result
+    assert result['data']['observation']['state']=='ready'
+    assert result['data']['observation']['url']==url
+    assert browser.command('eval','document.images.length===1 && !document.images[0].complete')['result']
     assert result['execution_started'] is True and result['data']['target_id']==tab
     assert 'Navigation attempt 1' in result['data']['snapshot']
     assert snapshots==[(tab,result['data']['snapshot'])]
-    assert outcomes==['load_timeout'] and reviewer.calls==['navigate']
+    assert outcomes==['ready'] and reviewer.calls==['navigate']
     assert [row['params']['url'] for row in sent if row['method']=='Page.navigate']==[url]
     assert adapter._cdp is connection and browser.ready and not browser.failed
     assert successful(gate,'navigate',{'url':'http://public.test/safe'})['target_id']==tab
 ''', timeout=120)
 
 
-@pytest.mark.parametrize('mode,status,last', [('once','success','loaded'),('always','incomplete','load_timeout')])
+@pytest.mark.parametrize('mode,status,last', [('once','success','ready'),('always','incomplete','observation_timeout')])
 def test_AG_008_failed_load_retries_original_url_with_fresh_review(fixture_web, mode, status, last):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + '\nmode,status,last='+repr((mode,status,last))+'\n' + r'''
@@ -84,15 +87,15 @@ with Browser() as browser:
     evidence=browser.evidence();tab=evidence.tabs()[0]['target_id'];reviewer=Reviewer()
     browser.settings['browser']['navigation_retries']=4
     gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
-    connection=evidence._cdp;connection.timeout=1
+    connection=evidence._cdp;connection.timeout=2;connection.observation_timeout=.5
     native=connection.connection.send;sent=[];screens=[];outcomes=[]
     def send(raw):
         sent.append(json.loads(raw));return native(raw)
     connection.connection.send=send
-    native_navigate=connection.navigate
-    def navigate(*args):
-        value=native_navigate(*args);outcomes.append(value.value);return value
-    connection.navigate=navigate
+    native_navigate=connection.observe
+    def navigate(*args,**kwargs):
+        value=native_navigate(*args,**kwargs);outcomes.append(value.outcome.value);return value
+    connection.observe=navigate
     def review(values):
         screens.append(values['screenshot'])
         assert struct.unpack('>II',values['screenshot'][16:24])==(1280,720)
@@ -103,7 +106,7 @@ with Browser() as browser:
     assert 'Navigation attempt 2' in result['data']['snapshot']
     assert result['execution_started'] is True and result['data']['target_id']==tab
     assert reviewer.calls==['navigate','navigate'] and len(screens)==2 and screens[0]!=screens[1]
-    assert outcomes==['load_error',last],outcomes
+    assert outcomes==['loading_error',last],outcomes
     assert [(row['method'],row['params']) for row in sent if row['method']=='Page.navigate']==[
         ('Page.navigate',{'url':url}),('Page.navigate',{'url':url})]
     assert not any(row['method'].startswith('Input.') or row['method'] in {'Page.reload','Page.navigateToHistoryEntry'} for row in sent)
@@ -118,15 +121,15 @@ with Browser() as browser:
     evidence=browser.evidence();tab=evidence.tabs()[0]['target_id'];reviewer=Reviewer()
     gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
     connection=evidence._cdp;connection.timeout=2
-    native=connection.navigate;outcomes=[]
-    def navigate(*args):
-        outcome=native(*args);outcomes.append(outcome.value);return outcome
-    connection.navigate=navigate
+    native=connection.observe;outcomes=[]
+    def navigate(*args,**kwargs):
+        outcome=native(*args,**kwargs);outcomes.append(outcome.outcome.value);return outcome
+    connection.observe=navigate
     result=dispatch(gate,'navigate',{'url':'http://public.test/navigation-empty404'})
     assert result['status']=='incomplete',(result,outcomes)
     assert result['execution_started'] is True and result['data']['target_id']==tab
     assert 'Reload' in result['data']['snapshot'],(result,outcomes)
-    assert outcomes==['load_error','load_error'],outcomes
+    assert outcomes==['loading_error','loading_error'],outcomes
     assert browser.ready and not browser.failed and evidence._cdp is connection
     successful(gate,'navigate',{'url':'http://public.test/safe'})
 ''', timeout=120)
@@ -159,15 +162,15 @@ def test_AG_008_retry_denial_or_staleness_returns_current_ax_without_second_effe
 with Browser() as browser:
     evidence=browser.evidence();tab=evidence.tabs()[0]['target_id'];reviewer=Reviewer()
     gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
-    connection=evidence._cdp;connection.timeout=1
+    connection=evidence._cdp;connection.timeout=2;connection.observation_timeout=.5
     native=connection.connection.send;sent=[];outcomes=[]
     def send(raw):
         sent.append(json.loads(raw));return native(raw)
     connection.connection.send=send
-    native_navigate=connection.navigate
-    def navigate(*args):
-        value=native_navigate(*args);outcomes.append(value.value);return value
-    connection.navigate=navigate
+    native_navigate=connection.observe
+    def navigate(*args,**kwargs):
+        value=native_navigate(*args,**kwargs);outcomes.append(value.outcome.value);return value
+    connection.observe=navigate
     def changed(values):
         if len(reviewer.calls)==2:
             if decision=='deny': reviewer.verdict='deny'
@@ -177,7 +180,7 @@ with Browser() as browser:
     assert result['status']=='incomplete',result
     assert result['execution_started'] is True and result['data']['target_id']==tab
     assert 'Reload' in result['data']['snapshot']
-    assert outcomes==['load_error'],outcomes
+    assert outcomes==['loading_error'],outcomes
     assert reviewer.calls==['navigate','navigate']
     assert len([row for row in sent if row['method']=='Page.navigate'])==1
     assert browser.ready and not browser.failed and evidence._cdp is connection
@@ -416,7 +419,7 @@ with Browser() as browser:
         def snapshot_failure(_):
             assert browser.command('eval','window.clicks')['result']==1
             raise RuntimeError('private post-action poison')
-        adapter.snapshot=snapshot_failure
+        adapter._page=snapshot_failure
     result=dispatch(gate,'click',{'ref':reference(snapshot,'Controlled click')})
     assert result['status']=='fatal' and result['execution_started'] is (phase!='capture')
     assert result['data']=={} and 'poison' not in repr(result)
@@ -456,17 +459,18 @@ with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, op
     browser.command('eval',"document.querySelector('#state').textContent='Fresh enforcement fixture';true")
     session=attach(next(page for page in pages() if page['targetId']==tab))
     cdp('Page.enable',session=session);events.clear()
-    responses=[];native_navigation=gate._navigation
+    responses=[];native_navigation=gate._observe_effect
     def navigation(*args):
         result=native_navigation(*args);responses.append(result);return result
-    gate._navigation=navigation
+    gate._observe_effect=navigation
     destination='http://public.test/attachment/gate-fixture.bin'
     if kind=='redirect': destination='http://public.test/redirect/'+destination
     result=dispatch(gate,'navigate',{'url':destination})
-    assert result=={'status':'success','reason':None,'execution_started':True,
-                   'data':{'snapshot':adapter.snapshot(tab),'target_id':tab}}
+    assert result['status']=='success' and result['reason'] is None and result['execution_started'] is True
+    assert result['data']['snapshot']==adapter.snapshot(tab) and result['data']['target_id']==tab
+    assert result['data']['observation']['state']=='download_denied'
     assert 'Fresh enforcement fixture' in result['data']['snapshot'] and result['data']['snapshot']!=initial
-    assert len(responses)==1 and responses[0].value=='download_denied'
+    assert len(responses)==1 and responses[0].outcome.value=='download_denied'
     assert reviewer.calls==['navigate'] and gate._selected==tab and not gate._terminal
     assert browser.ready and not browser.failed
     began,canceled={},set();deadline=time.monotonic()+10
@@ -541,3 +545,80 @@ with Browser() as browser:
         owner.join(5)
         assert all(event.wait(5) for event in finished)
 ''', timeout=150)
+
+
+def test_AG_008_parser_stall_returns_partial_current_ax_then_healthy_next_action(fixture_web):
+    stack, _, _, _ = fixture_web
+    stack.browser_probe(SETUP + r'''
+with Browser() as browser:
+    adapter=browser.evidence();tab=adapter.tabs()[0]['target_id'];reviewer=Reviewer()
+    gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
+    connection=adapter._cdp;connection.observation_timeout=.4
+    sent=[];native=connection.connection.send
+    def send(raw):
+        sent.append(json.loads(raw));return native(raw)
+    connection.connection.send=send
+    url='http://public.test/parser-stall/partial-observation'
+    result=dispatch(gate,'navigate',{'url':url})
+    assert result['status']=='incomplete' and result['execution_started'] is True,result
+    assert result['reason']=='Browser document observation deadline reached after 0.4 seconds.'
+    assert 'Visible partial document' in result['data']['snapshot'] and 'Parser released' not in result['data']['snapshot']
+    state=result['data']['observation']
+    assert state['url']==url and state['ready_state']=='loading' and state['document_relation']=='changed'
+    assert state['state']=='observation_timeout' and result['data']['requested_url']==url
+    assert browser.command('eval',"fetch('/observation-release/partial-observation');true")['result']
+    wait_ready(browser)
+    assert 'Parser released' in successful(gate,'snapshot')['snapshot']
+    assert successful(gate,'navigate',{'url':'http://public.test/safe'})['target_id']==tab
+    assert [r['params']['url'] for r in sent if r['method']=='Page.navigate']==[url,'http://public.test/safe']
+    assert reviewer.calls==['navigate','navigate'] and adapter._cdp is connection
+''',timeout=120)
+
+
+def test_AG_008_dropdown_link_enter_history_and_pending_old_document(fixture_web):
+    stack, _, _, _ = fixture_web
+    proof=stack.browser_probe(SETUP + r'''
+with Browser() as browser:
+    adapter=browser.evidence();tab=adapter.tabs()[0]['target_id'];reviewer=Reviewer()
+    gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
+    connection=adapter._cdp;connection.observation_timeout=.6
+    successful(gate,'navigate',{'url':'http://public.test/observation-controls'})
+    snapshot=successful(gate,'snapshot')['snapshot']
+    start=time.monotonic()
+    current=successful(gate,'click',{'ref':reference(snapshot,'Show choices')})
+    assert current['observation']['state']=='current' and 'Visible dropdown choices' in current['snapshot']
+    assert current['observation']['elapsed_seconds'] < .6
+    linked=successful(gate,'click',{'ref':reference(snapshot,'Follow observed link')})
+    assert linked['observation']['state']=='ready' and linked['observation']['url'].endswith('/navigation/always/link-observation')
+    assert browser.command('eval','!document.images[0].complete')['result']
+    restored=successful(gate,'back')
+    assert 'Observation controls' in restored['snapshot'] and restored['observation']['url'].endswith('/observation-controls')
+    snapshot=restored['snapshot']
+    same=successful(gate,'click',{'ref':reference(snapshot,'Same document section')})
+    assert same['observation']['state']=='same_document' and same['observation']['url'].endswith('#section')
+    same_back=successful(gate,'back')
+    assert same_back['observation']['state']=='same_document' and same_back['observation']['url'].endswith('/observation-controls')
+    successful(gate,'type',{'ref':reference(same_back['snapshot'],'Navigation query'),'text':'read'})
+    entered=successful(gate,'keypress',{'key':'Enter'})
+    assert entered['observation']['state']=='ready' and '/navigation/always/enter-observation?q=read' in entered['observation']['url']
+    assert 'Navigation attempt 1' in entered['snapshot']
+    returned=successful(gate,'back')
+    old_url=returned['observation']['url']
+    pending=dispatch(gate,'click',{'ref':reference(returned['snapshot'],'Hold destination')})
+    assert pending['status']=='incomplete' and pending['execution_started'] is True,pending
+    state=pending['data']['observation']
+    assert state['state']=='observation_timeout' and state['commands_acknowledged'] is True
+    assert state['action_completed'] is False
+    if state['url']==old_url:
+        assert state['document_relation']=='same' and 'Observation controls' in pending['data']['snapshot']
+        assert 'Released destination' not in pending['data']['snapshot']
+    else:
+        assert state['url']=='http://public.test/navigation-held/pending-old',pending
+        assert state['document_relation']=='changed' and 'Released destination' in pending['data']['snapshot']
+        assert 'Observation controls' not in pending['data']['snapshot']
+    print(json.dumps({'pending_destination':state,'real_history_state':restored['observation']['state']}))
+    browser.command('eval',"fetch('/observation-release/pending-old');true")
+    assert browser.ready and adapter._cdp is connection
+    assert reviewer.calls==['navigate','click','click','click','type','keypress','click']
+''',timeout=180)
+    print(proof)

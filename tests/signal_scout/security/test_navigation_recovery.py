@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.signal_scout.security.test_browser_diagnostics import transport
+from tests.signal_scout.security.test_browser_diagnostics import transport, navigation
 from tests.signal_scout.security.test_gate import boundary
 
 cdp_module = importlib.import_module('plugins.signal-scout.security._cdp')
@@ -20,7 +20,7 @@ def reply(number=1, **result):
 
 def load(loader='current', **params):
     return {'sessionId':'owned','method':'Page.lifecycleEvent',
-            'params':{'frameId':'root','name':'load','loaderId':loader,**params}}
+            'params':{'frameId':'root','name':'DOMContentLoaded','loaderId':loader,**params}}
 
 
 @pytest.mark.parametrize('before', [True, False])
@@ -36,7 +36,7 @@ def test_AG_008_reply_pins_loader_despite_old_same_root_events(before):
     def receive(**values):
         raw=native(**values);received.append(json.loads(raw));return raw
     cdp.connection.recv=receive
-    assert cdp.navigate('http://public.test/original', 'owned', 'root').value == 'loaded'
+    assert navigation(cdp, 'http://public.test/original', 'owned', 'root').value == 'ready'
     assert received==messages
     assert sent == [{'id':1,'sessionId':'owned','method':'Page.navigate','params':{'url':'http://public.test/original'}}]
 
@@ -47,26 +47,25 @@ def test_AG_008_reply_pins_loader_despite_old_same_root_events(before):
      'params':{'frame':{'id':'root','loaderId':'old'},'type':'BackForwardCacheRestore'}}]])
 def test_AG_008_old_events_cannot_finish_acknowledged_load(events):
     cdp, _ = transport([reply(loaderId='current'),*events])
-    assert cdp.navigate('http://public.test/', 'owned', 'root').value == 'load_timeout'
+    assert navigation(cdp, 'http://public.test/', 'owned', 'root').value == 'observation_timeout'
 
 
-def test_AG_008_SR_022_recoverable_load_timeout_logs_original_traceback(caplog):
-    original=TimeoutError('original navigation deadline')
-    cdp,_=transport([reply(loaderId='current')],receive_error=original)
-    with caplog.at_level(logging.ERROR):
-        assert cdp.navigate('http://public.test/','owned','root').value=='load_timeout'
-    record,=[row for row in caplog.records if row.name==cdp_module.__name__]
-    assert record.exc_info[1] is original and record.exc_info[2] is not None
-    assert 'response_received=True' in record.getMessage() and 'wait_state=navigation_load' in record.getMessage()
+def test_AG_008_SR_022_observation_deadline_is_not_missing_command_reply(caplog):
+    cdp,_=transport([reply(loaderId='current')])
+    with caplog.at_level(logging.INFO):
+        assert navigation(cdp).value=='observation_timeout'
+    record,=[row for row in caplog.records if row.name==cdp_module.__name__ and 'Browser observation deadline' in row.getMessage()]
+    assert record.exc_info is None and record.levelno == logging.INFO
+    assert 'response_received=True' in record.getMessage() and 'wait_state=document_observation' in record.getMessage()
 
 
 @pytest.mark.parametrize('result,expected', [({},'same_document'),
-    ({'errorText':'net::ERR_NAME_NOT_RESOLVED'},'load_error'),
+    ({'errorText':'net::ERR_NAME_NOT_RESOLVED'},'loading_error'),
     ({'errorText':'net::ERR_ABORTED','isDownload':True},'download_denied'),
-    ({'errorText':'net::ERR_ABORTED','isDownload':False},'load_error')])
+    ({'errorText':'net::ERR_ABORTED','isDownload':False},'loading_error')])
 def test_AG_008_native_navigation_facts(result, expected):
     cdp, _ = transport([reply(**result)])
-    assert cdp.navigate('http://public.test/', 'owned', 'root').value == expected
+    assert navigation(cdp, 'http://public.test/', 'owned', 'root').value == expected
 
 
 @pytest.mark.parametrize('messages,error', [([],TimeoutError),
@@ -81,20 +80,24 @@ def test_AG_008_native_navigation_facts(result, expected):
 def test_AG_008_unacknowledged_or_malformed_navigation_remains_fatal(messages, error):
     cdp, _ = transport(messages)
     with pytest.raises(error):
-        cdp.navigate('http://public.test/', 'owned', 'root')
+        navigation(cdp, 'http://public.test/', 'owned', 'root')
 
 
 def test_AG_008_sequential_attempt_ignores_late_previous_reply_and_load():
     cdp, sent = transport([reply(loaderId='old')])
-    assert cdp.navigate('http://public.test/', 'owned', 'root').value == 'load_timeout'
+    assert navigation(cdp, 'http://public.test/', 'owned', 'root').value == 'observation_timeout'
     messages=[reply(loaderId='old'),load('old'),reply(2,loaderId='new'),load('old'),load('new')]
     pending = iter(messages);received=[]
     def receive(**_):
         value=next(pending);received.append(value);return json.dumps(value)
     cdp.connection.recv = receive
-    assert cdp.navigate('http://public.test/', 'owned', 'root').value == 'loaded'
+    assert navigation(cdp, 'http://public.test/', 'owned', 'root', loader='new').value == 'ready'
     assert received==messages
     assert [item['id'] for item in sent] == [1,2]
+
+
+def observed(outcome, page):
+    return cdp_module._ObservedEffect(outcome, cdp_module._DocumentKey('owned','root','old',1), page, 5, 5)
 
 
 def recovery_boundary(boundary, monkeypatch, outcomes, retries=1):
@@ -103,6 +106,8 @@ def recovery_boundary(boundary, monkeypatch, outcomes, retries=1):
     boundary.browser.verify_control = lambda: None
     boundary.adapter._frames = lambda _: {'root':SimpleNamespace(parent=None,session='owned')}
     boundary.adapter.snapshot = lambda _: '- heading "Current incomplete observation"'
+    boundary.adapter._page = lambda target: cdp_module._Page(cdp_module._DocumentKey('owned','root','current',2),
+        boundary.adapter.snapshot(target), 'http://public.test/current', 'loading')
     pending = iter(outcomes)
     def execute(action, args, checked, invoke):
         def effect():
@@ -110,15 +115,18 @@ def recovery_boundary(boundary, monkeypatch, outcomes, retries=1):
             value = next(pending)
             if isinstance(value,Exception):
                 raise value
-            return cdp_module._NavigationOutcome(value)
-        return invoke(effect)
+            return observed(cdp_module._NavigationOutcome(value), boundary.gate._navigation_page(boundary.adapter._cdp))
+        value = invoke(effect)
+        if boundary.adapter._cdp is None:
+            raise evidence_module.EvidenceFailure('Browser control unavailable.')
+        return value
     monkeypatch.setattr(boundary.gate, '_execute', execute)
     return {'action':'navigate','args':{'url':'http://public.test/original'},'activity':'Inspect original'}
 
 
 @pytest.mark.parametrize('retries', [0,1,4])
 def test_AG_008_timeout_returns_first_observation_without_retry(boundary, monkeypatch, retries):
-    request = recovery_boundary(boundary,monkeypatch,['load_timeout']*(retries+1),retries)
+    request = recovery_boundary(boundary,monkeypatch,['observation_timeout']*(retries+1),retries)
     snapshots=[];reviews=[]
     def snapshot(target):
         snapshots.append(target)
@@ -129,8 +137,11 @@ def test_AG_008_timeout_returns_first_observation_without_retry(boundary, monkey
         return gate_module.ReviewResult('approve',None,1,0,{})
     boundary.reviewer.review=review
     result=boundary.gate.dispatch(request)
-    assert result=={'status':'incomplete','reason':'Browser navigation did not complete.',
-        'execution_started':True,'data':{'snapshot':'- heading "Navigation observation 1"','target_id':'owned-page'}}
+    assert result['status']=='incomplete' and result['execution_started'] is True
+    assert result['data']['snapshot']=='- heading "Navigation observation 1"'
+    assert result['data']['target_id']=='owned-page'
+    assert result['reason']=='Browser document observation deadline reached after 5 seconds.'
+    assert result['data']['observation']['state']=='observation_timeout'
     assert snapshots==['owned-page']
     assert boundary.effects==[('navigate',{'url':'http://public.test/original'})]
     assert [item[0] for item in boundary.calls]==['prepare','recheck']
@@ -140,18 +151,21 @@ def test_AG_008_timeout_returns_first_observation_without_retry(boundary, monkey
 
 @pytest.mark.parametrize('retries', [0,1,4])
 def test_AG_008_configured_budget_exhausts_with_current_ax(boundary, monkeypatch, retries):
-    request = recovery_boundary(boundary,monkeypatch,['load_error']*(retries+1),retries)
+    request = recovery_boundary(boundary,monkeypatch,['loading_error']*(retries+1),retries)
     result = boundary.gate.dispatch(request)
-    assert result == {'status':'incomplete','reason':'Browser navigation did not complete.',
-        'execution_started':True,'data':{'snapshot':'- heading "Current incomplete observation"','target_id':'owned-page'}}
+    assert result['status']=='incomplete' and result['execution_started'] is True
+    assert result['reason']=='Browser navigation reported a loading error.'
+    assert result['data']['snapshot']=='- heading "Current incomplete observation"'
+    assert result['data']['target_id']=='owned-page'
+    assert result['data']['requested_url']=='http://public.test/original'
     assert boundary.effects == [('navigate',{'url':'http://public.test/original'})]*(retries+1)
     assert [item[0] for item in boundary.calls] == ['prepare','recheck']*(retries+1)
     assert not boundary.closed and boundary.browser.ready
 
 
-@pytest.mark.parametrize('last,status', [('loaded','success'),('download_denied','success'),('same_document','incomplete')])
+@pytest.mark.parametrize('last,status', [('ready','success'),('download_denied','success'),('same_document','incomplete')])
 def test_AG_008_fresh_retry_preserves_original_copy_and_completion_truth(boundary, monkeypatch, last, status):
-    request = recovery_boundary(boundary,monkeypatch,['load_error',last])
+    request = recovery_boundary(boundary,monkeypatch,['loading_error',last])
     calls=[]
     def review(**values):
         calls.append(deepcopy(values))
@@ -169,7 +183,7 @@ def test_AG_008_fresh_retry_preserves_original_copy_and_completion_truth(boundar
 @pytest.mark.parametrize('change', ['deny','stale','recheck_stale','blocked','review_failure','control',
     'evidence','recheck_failure','connection','interrupt'])
 def test_AG_008_retry_rejection_is_incomplete_technical_failure_fatal(boundary, monkeypatch, change):
-    request=recovery_boundary(boundary,monkeypatch,['load_error','loaded'])
+    request=recovery_boundary(boundary,monkeypatch,['loading_error','ready'])
     reviews=[]
     native=boundary.adapter.prepare
     def prepare(**values):
@@ -202,13 +216,14 @@ def test_AG_008_retry_rejection_is_incomplete_technical_failure_fatal(boundary, 
     assert result['status']==('incomplete' if change in {'deny','stale','recheck_stale','blocked'} else 'fatal')
     assert result['execution_started'] is True and len(boundary.effects)==1
     if result['status']=='incomplete':
-        assert result['data']=={'snapshot':'- heading "Current incomplete observation"','target_id':'owned-page'}
+        assert result['data']['snapshot']=='- heading "Current incomplete observation"'
+        assert result['data']['target_id']=='owned-page' and result['reason']
     assert 'private' not in repr(result)
     assert bool(boundary.closed)==(result['status']=='fatal')
 
 
 def test_AG_008_load_error_then_timeout_returns_timeout_observation(boundary, monkeypatch):
-    request=recovery_boundary(boundary,monkeypatch,['load_error','load_timeout','loaded'],4)
+    request=recovery_boundary(boundary,monkeypatch,['loading_error','observation_timeout','ready'],4)
     snapshots=[];reviews=[]
     def snapshot(target):
         snapshots.append(target)
@@ -219,8 +234,9 @@ def test_AG_008_load_error_then_timeout_returns_timeout_observation(boundary, mo
         return gate_module.ReviewResult('approve',None,1,0,{})
     boundary.reviewer.review=review
     result=boundary.gate.dispatch(request)
-    assert result=={'status':'incomplete','reason':'Browser navigation did not complete.',
-        'execution_started':True,'data':{'snapshot':'- heading "Navigation observation 2"','target_id':'owned-page'}}
+    assert result['status']=='incomplete' and result['execution_started'] is True
+    assert result['data']['snapshot']=='- heading "Navigation observation 2"'
+    assert result['data']['observation']['state']=='observation_timeout'
     assert snapshots==['owned-page','owned-page']
     assert boundary.effects==[('navigate',{'url':'http://public.test/original'})]*2
     assert [item[0] for item in boundary.calls]==['prepare','recheck']*2
@@ -232,7 +248,7 @@ def test_AG_008_load_error_then_timeout_returns_timeout_observation(boundary, mo
     'interrupt_before','interrupt_after','connection_after','browser_after'])
 def test_AG_008_timeout_observation_failure_remains_terminal(boundary, monkeypatch, failure):
     from tools.interrupt import set_interrupt
-    request=recovery_boundary(boundary,monkeypatch,['load_timeout','loaded'],4)
+    request=recovery_boundary(boundary,monkeypatch,['observation_timeout','ready'],4)
     native_execute=boundary.gate._execute
     def broken(*args):
         raise OSError('private observation failure')
@@ -245,12 +261,13 @@ def test_AG_008_timeout_observation_failure_remains_terminal(boundary, monkeypat
     boundary.adapter.snapshot=snapshot
     def execute(*args):
         result=native_execute(*args)
-        if failure=='frames': boundary.adapter._frames=broken
+        if failure=='frames': boundary.adapter._page=broken
         if failure=='control': boundary.browser.verify_control=broken
         if failure=='missing_connection': boundary.adapter._cdp=None
         if failure=='changed_connection': boundary.adapter._cdp=object()
         if failure=='interrupt_before': set_interrupt(True)
-        return result
+        return observed(result.outcome, boundary.gate._navigation_page(connection))
+    connection=boundary.adapter._cdp
     monkeypatch.setattr(boundary.gate,'_execute',execute)
     result=boundary.gate.dispatch(request)
     assert result['status']=='fatal' and result['execution_started'] is True and result['data']=={}
@@ -280,17 +297,18 @@ def test_AG_008_other_action_errors_never_retry(boundary, monkeypatch, action, a
     assert boundary.effects==[(action,args)] and boundary.closed==[True]
 
 
-@pytest.mark.parametrize('outcome', ['loaded','same_document','download_denied'])
+@pytest.mark.parametrize('outcome', ['ready','same_document','download_denied'])
 def test_AG_008_first_complete_attempt_returns_without_retry(boundary, monkeypatch, outcome):
     request=recovery_boundary(boundary,monkeypatch,[outcome])
     result=boundary.gate.dispatch(request)
-    assert result=={'status':'success','reason':None,'execution_started':True,
-        'data':{'snapshot':'- heading "Current incomplete observation"','target_id':'owned-page'}}
+    assert result['status']=='success' and result['reason'] is None and result['execution_started'] is True
+    assert result['data']['snapshot']=='- heading "Current incomplete observation"'
+    assert result['data']['observation']['state']==outcome
     assert len(boundary.effects)==1 and [item[0] for item in boundary.calls]==['prepare','recheck']
 
 
 def test_AG_008_later_execution_failure_preserves_aggregate_started(boundary,monkeypatch):
-    request=recovery_boundary(boundary,monkeypatch,['load_error',OSError('private transport')])
+    request=recovery_boundary(boundary,monkeypatch,['loading_error',OSError('private transport')])
     result=boundary.gate.dispatch(request)
     assert result=={'status':'fatal','reason':'Browser action failed.','execution_started':True,'data':{}}
     assert len(boundary.effects)==2 and boundary.closed==[True]
@@ -305,3 +323,192 @@ def test_AG_008_required_retry_setting_has_no_missing_key_default(tmp_path):
     target.write_text(yaml.safe_dump(config))
     with pytest.raises(ValueError,match='Invalid Scout operating settings.'):
         settings.load_settings(target)
+
+
+def test_AG_008_document_ready_does_not_wait_for_pending_image_load():
+    cdp, sent = transport([reply(loaderId='current'), load(name='DOMContentLoaded')])
+    assert navigation(cdp, 'http://public.test/stalled-image', 'owned', 'root').value == 'ready'
+    assert len(sent) == 1
+
+
+def effect_observation(cdp, *, methods=('Input.dispatchMouseEvent','Input.dispatchMouseEvent'), inspect_key=None,
+                       capture_key=None, interaction=True):
+    baseline=cdp_module._DocumentKey('owned','root','baseline',1)
+    key=inspect_key or cdp_module._DocumentKey('owned','root','current',2)
+    def effect():
+        for method in methods:
+            cdp.command(method, {}, 'owned')
+    return cdp.observe(effect, baseline, lambda: key,
+        lambda: cdp_module._Page(capture_key or key, '- heading "Visible"','http://public.test/current','interactive'),
+        interaction=interaction)
+
+
+@pytest.mark.parametrize('kind', ['missing','wrong_session','error','duplicate','invalid_result'])
+@pytest.mark.parametrize('method', ['Input.dispatchMouseEvent','Input.dispatchKeyEvent'])
+def test_AG_008_compound_input_requires_every_ack_even_after_ready(kind, method):
+    messages=[load(), {'sessionId':'owned','method':'Page.frameStartedNavigating',
+        'params':{'frameId':'root','loaderId':'current'}},
+        {'sessionId':'owned','method':'Page.frameNavigated','params':{'frame':{'id':'root','loaderId':'current'}}},
+        {'id':1,'sessionId':'owned','result':{}}]
+    messages += {'missing':[], 'wrong_session':[{'id':2,'sessionId':'other','result':{}}],
+        'error':[{'id':2,'sessionId':'owned','error':{'code':-32601,'message':'unsupported'}}],
+        'duplicate':[{'id':1,'sessionId':'owned','result':{}}],
+        'invalid_result':[{'id':2,'sessionId':'owned','result':None}]}[kind]
+    cdp,sent=transport(messages)
+    with pytest.raises((TimeoutError,ValueError,cdp_module._ProtocolError)):
+        effect_observation(cdp,methods=(method,method))
+    assert [item['id'] for item in sent]==[1,2] and cdp._observation is None
+
+
+@pytest.mark.parametrize('started,actual,captured,expected', [
+    (True,'current','current','ready'), (False,'current','current','observation_timeout'),
+    (True,'baseline','baseline','observation_timeout'),
+    (True,'current','different','observation_timeout'),
+])
+def test_AG_008_successor_lineage_and_final_capture_must_match(started,actual,captured,expected):
+    events=[]
+    if started:
+        events.append({'sessionId':'owned','method':'Page.frameStartedNavigating',
+            'params':{'frameId':'root','loaderId':'current'}})
+    events += [{'sessionId':'owned','method':'Page.frameNavigated',
+        'params':{'frame':{'id':'root','loaderId':'current'}}}, load(),
+        {'id':1,'sessionId':'owned','result':{}},{'id':2,'sessionId':'owned','result':{}}]
+    cdp,_=transport(events)
+    key=lambda loader: cdp_module._DocumentKey('owned','root',loader,1 if loader=='baseline' else 2)
+    result=effect_observation(cdp,inspect_key=key(actual),capture_key=key(captured))
+    assert result.outcome.value==expected and result.page.key==key(captured)
+
+
+def test_AG_008_interaction_current_page_uses_short_interval_and_never_replays():
+    baseline=cdp_module._DocumentKey('owned','root','baseline',1)
+    cdp,sent=transport([{'id':1,'sessionId':'owned','result':{}},{'id':2,'sessionId':'owned','result':{}}])
+    waits=[];native=cdp.connection.recv
+    def receive(**values):
+        waits.append(values['timeout']);return native(**values)
+    cdp.connection.recv=receive
+    result=effect_observation(cdp,inspect_key=baseline,capture_key=baseline)
+    assert result.outcome.value=='current' and 0 < waits[-1] <= .25
+    assert len(sent)==2
+
+
+def test_AG_008_final_ack_anchors_one_absolute_deadline(monkeypatch):
+    clock=[0.0];waits=[]
+    cdp,sent=transport()
+    monkeypatch.setattr(cdp_module,'time',SimpleNamespace(monotonic=lambda:clock[0]))
+    messages=[{'id':1,'sessionId':'owned','result':{}},load(),
+        {'id':2,'sessionId':'owned','result':{}},{'method':'unrelated','params':{}},
+        {'sessionId':'owned','method':'Page.frameStartedNavigating','params':{'frameId':'root','loaderId':'current'}},
+        {'method':'unrelated','params':{}}]
+    pending=iter(zip([10.0,11.0,20.0,20.1,20.2,24.9],messages))
+    def receive(**values):
+        waits.append((clock[0],values['timeout']))
+        try: tick,message=next(pending)
+        except StopIteration:
+            clock[0]=25.0;raise TimeoutError('observation')
+        clock[0]=tick;return json.dumps(message)
+    cdp.connection.recv=receive
+    result=effect_observation(cdp)
+    assert result.outcome.value=='observation_timeout' and len(sent)==2
+    assert waits[3]==(20.0,.25)
+    assert waits[-1][0]+waits[-1][1]==25.0
+    assert result.elapsed==5 and cdp._observation is None
+
+
+def test_AG_008_SR_022_native_metadata_correlates_without_raw_packets(caplog):
+    cdp,_=transport([{'sessionId':'owned','method':'Page.javascriptDialogOpening',
+        'params':{'type':'alert','message':'private-dialog-marker'}},reply(loaderId='current'),load()])
+    cdp.connection.local_address=('172.30.242.3',43210)
+    cdp.connection.remote_address=('172.30.242.4',9223)
+    with caplog.at_level(logging.INFO):
+        assert navigation(cdp).value=='ready'
+    for token in ['utc=','43210','9223','id=1','session=owned','frame=root','loader=current','DOMContentLoaded','type=alert']:
+        assert token in caplog.text
+    assert 'private-dialog-marker' not in caplog.text
+
+
+@pytest.mark.parametrize('changed', [False,True])
+def test_AG_008_page_capture_binds_ax_url_readiness_to_one_document(changed):
+    browser=SimpleNamespace(failed=False)
+    adapter=evidence_module.BrowserEvidence(browser)
+    def frame(document):
+        return {'root':SimpleNamespace(target='tab',session='owned',loader='current',document=document,parent=None)}
+    pending=iter([frame(2),frame(3 if changed else 2)])
+    adapter._frames=lambda _: next(pending)
+    calls=[]
+    def snapshot(tab,frames):
+        calls.append((tab,frames['root'].document));return '- heading "Coherent AX"'
+    adapter._snapshot=snapshot
+    adapter._evaluate=lambda *args: {'value':{'url':'http://public.test/current','readyState':'loading'}}
+    if changed:
+        with pytest.raises(evidence_module.EvidenceFailure,match='Required browser evidence check failed.'):
+            adapter._page('tab')
+        assert browser.failed
+    else:
+        page=adapter._page('tab')
+        assert page.snapshot=='- heading "Coherent AX"' and page.url=='http://public.test/current'
+        assert page.key==cdp_module._DocumentKey('owned','root','current',2) and page.ready_state=='loading'
+        assert not browser.failed
+    assert calls==[('tab',2)]
+
+
+def test_AG_008_long_replay_instrumentation_installs_against_current_private_api(monkeypatch):
+    import importlib.util
+    import sys
+    from pathlib import Path
+    import httpx
+    monkeypatch.setitem(sys.modules,'inference_helpers',SimpleNamespace(
+        _message=lambda *args: None,_reply=lambda *args: None,_result=lambda *args: None,_tool=lambda *args: None))
+    monkeypatch.setattr(httpx.Client,'send',httpx.Client.send)
+    spec=importlib.util.spec_from_file_location('scout_replay_instrumentation',
+        Path(__file__).parents[1]/'missions'/'inactivity_fixture.py')
+    replay=importlib.util.module_from_spec(spec)
+    monkeypatch.setitem(sys.modules,spec.name,replay)
+    spec.loader.exec_module(replay)
+    from tools import browser_tool
+    monkeypatch.setattr(replay,'_installed',False)
+    monkeypatch.setattr(replay,'observe',lambda *args,**kwargs: None)
+    monkeypatch.setattr(replay,'state',lambda *args,**kwargs: {})
+    monkeypatch.setattr(browser_tool,'_cleanup_single_browser_session',lambda _: None)
+    native_command=cdp_module._CDP.command;native_observe=cdp_module._CDP.observe
+    monkeypatch.setattr(cdp_module._CDP,'command',native_command)
+    monkeypatch.setattr(cdp_module._CDP,'observe',native_observe)
+    monkeypatch.setattr(gate_module.BrowserActionGate,'dispatch',gate_module.BrowserActionGate.dispatch)
+    replay.install_observers()
+    cdp,_=transport([reply(loaderId='current'),load()])
+    assert navigation(cdp).value=='ready' and cdp.observation_timeout==60
+
+
+def test_AG_008_ready_loader_cannot_certify_another_backend_document():
+    cdp,_=transport([reply(loaderId='current'),load()])
+    baseline=cdp_module._DocumentKey('owned','root','old',1)
+    inspected=cdp_module._DocumentKey('owned','root','current',2)
+    captured=cdp_module._DocumentKey('owned','root','current',3)
+    result=cdp.observe(lambda:cdp.command('Page.navigate',{},'owned'),baseline,lambda:inspected,
+        lambda:cdp_module._Page(captured,'- heading "New document"','http://public.test/current','loading'),explicit=True)
+    assert result.outcome.value=='observation_timeout' and result.page.key==captured
+
+
+def test_AG_008_unrelated_packets_cannot_extend_missing_ack_deadline(monkeypatch):
+    cdp,sent=transport()
+    cdp.timeout=1
+    clock=[0.0];calls=[]
+    monkeypatch.setattr(cdp_module,'time',SimpleNamespace(monotonic=lambda:clock[0]))
+    def receive(**values):
+        calls.append(values['timeout']);clock[0]+=.4
+        return json.dumps({'method':'unrelated','params':{}})
+    cdp.connection.recv=receive
+    with pytest.raises(TimeoutError,match='Browser receive deadline reached.'):
+        navigation(cdp)
+    assert len(sent)==1 and len(calls)==3 and cdp._observation is None
+
+
+@pytest.mark.parametrize('started,expected',[(True,'ready'),(False,'observation_timeout')])
+def test_AG_008_explicit_redirect_requires_observed_successor_identity(started,expected):
+    events=[reply(loaderId='requested')]
+    if started:
+        events.append({'sessionId':'owned','method':'Page.frameStartedNavigating',
+            'params':{'frameId':'root','loaderId':'successor'}})
+    events += [{'sessionId':'owned','method':'Page.frameNavigated',
+        'params':{'frame':{'id':'root','loaderId':'successor'}}},load('successor')]
+    cdp,_=transport(events)
+    assert navigation(cdp,loader='successor').value==expected

@@ -8,7 +8,7 @@ import logging
 import struct
 import time
 
-from ._cdp import _CDP, _ProtocolError
+from ._cdp import _CDP, _DocumentKey, _Page, _ProtocolError
 from .urls import validate_url
 
 
@@ -179,7 +179,9 @@ class BrowserEvidence:
             raise EvidenceFailure("Browser evidence unavailable.")
         if self._cdp is None:
             self._browser.verify_control()
-            self._cdp = _CDP(self._browser.endpoint, self._browser.settings["browser"]["command_timeout"])
+            policy = self._browser.settings["browser"]
+            self._cdp = _CDP(self._browser.endpoint, policy["command_timeout"],
+                             policy["observation_timeout"], policy["interaction_observation_timeout"])
         return self._cdp.command(method, params, session)
 
     def _run(self, operation):
@@ -460,37 +462,59 @@ class BrowserEvidence:
         finally:
             self._command("Runtime.releaseObject", {"objectId": obj}, frame.session)
 
+    @staticmethod
+    def _document_key(frames):
+        frame_id, root = next((key, value) for key, value in frames.items() if value.parent is None)
+        return _DocumentKey(root.session, frame_id, root.loader, root.document)
+
+    def _snapshot(self, target_id, frames):
+        lines = []
+        for frame_id, frame in frames.items():
+            nodes = self._command("Accessibility.getFullAXTree", {"frameId": frame_id}, frame.session)["nodes"]
+            by_id = {node["nodeId"]: node for node in nodes}
+            for node in nodes:
+                owner = node
+                while "frameId" not in owner and owner.get("parentId") in by_id:
+                    owner = by_id[owner["parentId"]]
+                # Main AX trees can include same-origin child documents.
+                # Use Chrome's document/frame association, never query scope.
+                if owner.get("frameId") != frame_id:
+                    continue
+                if node.get("ignored"):
+                    continue
+                role, name = node.get("role", {}).get("value", ""), node.get("name", {}).get("value", "")
+                if role in {"none", "generic", "InlineTextBox"}:
+                    continue
+                ref = ""
+                if node.get("backendDOMNodeId") and role not in {"RootWebArea", "StaticText"}:
+                    binding = self._binding(target_id, frame_id, frame, node["backendDOMNodeId"])
+                    ref = next((key for key, value in self._refs.items() if value == binding), None)
+                    if ref is None:
+                        ref = "@s" + str(len(self._refs) + 1)
+                        self._refs[ref] = binding
+                lines.append(f"- {role} {json.dumps(name, ensure_ascii=False)}" + (f" [{ref}]" if ref else ""))
+        return "\n".join(lines)
+
     def snapshot(self, target_id):
         """Return compact AX text with exact refs for an explicit CDP page target."""
-        def observe():
+        return self._run(lambda: self._snapshot(target_id, self._frames(target_id)))
+
+    def _page(self, target_id):
+        def capture():
             frames = self._frames(target_id)
-            lines = []
-            for frame_id, frame in frames.items():
-                nodes = self._command("Accessibility.getFullAXTree", {"frameId": frame_id}, frame.session)["nodes"]
-                by_id = {node["nodeId"]: node for node in nodes}
-                for node in nodes:
-                    owner = node
-                    while "frameId" not in owner and owner.get("parentId") in by_id:
-                        owner = by_id[owner["parentId"]]
-                    # Main AX trees can include same-origin child documents.
-                    # Use Chrome's document/frame association, never query scope.
-                    if owner.get("frameId") != frame_id:
-                        continue
-                    if node.get("ignored"):
-                        continue
-                    role, name = node.get("role", {}).get("value", ""), node.get("name", {}).get("value", "")
-                    if role in {"none", "generic", "InlineTextBox"}:
-                        continue
-                    ref = ""
-                    if node.get("backendDOMNodeId") and role not in {"RootWebArea", "StaticText"}:
-                        binding = self._binding(target_id, frame_id, frame, node["backendDOMNodeId"])
-                        ref = next((key for key, value in self._refs.items() if value == binding), None)
-                        if ref is None:
-                            ref = "@s" + str(len(self._refs) + 1)
-                            self._refs[ref] = binding
-                    lines.append(f"- {role} {json.dumps(name, ensure_ascii=False)}" + (f" [{ref}]" if ref else ""))
-            return "\n".join(lines)
-        return self._run(observe)
+            key = self._document_key(frames)
+            root = frames[key.frame]
+            snapshot = self._snapshot(target_id, frames)
+            page = self._evaluate(root, "({url:location.href,readyState:document.readyState})")["value"]
+            after = self._frames(target_id)
+            identities = lambda values: {name: (f.target, f.session, f.loader, f.document) for name, f in values.items()}
+            if identities(frames) != identities(after):
+                raise EvidenceFailure("Browser document changed during observation.")
+            if (not isinstance(page, dict) or not isinstance(page.get("url"), str)
+                    or page.get("readyState") not in {"loading", "interactive", "complete"}):
+                raise EvidenceFailure("Required browser page state unavailable.")
+            return _Page(key, snapshot, page["url"], page["readyState"])
+        return self._run(capture)
 
     def tabs(self):
         """List explicit CDP page identities; never infer selection from title/URL."""

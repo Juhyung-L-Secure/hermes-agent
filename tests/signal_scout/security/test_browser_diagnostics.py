@@ -26,37 +26,38 @@ def transport(messages=(), *, send_error=None, receive_error=None):
             raise receive_error or TimeoutError('fixture response deadline')
     cdp = cdp_module._CDP.__new__(cdp_module._CDP)
     cdp.timeout, cdp.sequence = 30, 0
+    cdp.observation_timeout, cdp.interaction_observation_timeout = 5, 0.25
+    cdp._observation = None
     cdp.connection = SimpleNamespace(send=send, recv=receive)
     return cdp, sent
 
 
-@pytest.mark.parametrize('stage,reply,wait', [
-    ('send', False, 'send'),
-    ('response', False, 'command_response'),
-    ('load', True, 'navigation_load'),
-])
-def test_SR_022_cdp_failure_preserves_original_error_and_wait_state(caplog, monkeypatch, stage, reply, wait):
+def navigation(cdp, url='http://public.test/', session='owned', frame='root', *, loader='current'):
+    baseline = cdp_module._DocumentKey(session, frame, 'baseline', 1)
+    current = cdp_module._DocumentKey(session, frame, loader, 2)
+    return cdp.observe(lambda: cdp.command('Page.navigate', {'url':url}, session), baseline,
+        lambda: current, lambda: cdp_module._Page(
+            baseline if cdp._observation.native is cdp_module._NavigationOutcome.SAME_DOCUMENT else current,
+            '- heading "Current"', url, 'interactive'),
+        explicit=True).outcome
+
+
+@pytest.mark.parametrize('stage', ['send', 'response'])
+def test_SR_022_cdp_failure_preserves_original_error_and_wait_state(caplog, monkeypatch, stage):
     error = OSError('fixture send failed') if stage == 'send' else TimeoutError('fixture response deadline')
-    messages = [{'id':99,'result':{}}, {'method':'unrelated','params':{'body':'bulk-packet-marker'}}]
-    if stage == 'load':
-        messages.append({'id':1,'sessionId':'owned','result':{'frameId':'root','loaderId':'new'}})
-    cdp, sent = transport(messages, send_error=error if stage == 'send' else None, receive_error=error)
-    ticks = iter([100.0] + [100.125] * 20)
-    monkeypatch.setattr(cdp_module, 'time', SimpleNamespace(monotonic=lambda: next(ticks)))
-    with caplog.at_level(logging.INFO):
-        if stage=='load':
-            assert cdp.navigate('https://bulk-params-marker.test/','owned','root') is cdp_module._NavigationOutcome.LOAD_TIMEOUT
-        else:
-            with pytest.raises(type(error)) as caught:
-                cdp.navigate('https://bulk-params-marker.test/','owned','root')
-            assert caught.value is error
-    record, = [r for r in caplog.records if r.name == cdp_module.__name__]
+    cdp, sent = transport([{'id':99,'result':{}}, {'method':'unrelated','params':{'body':'bulk-packet-marker'}}],
+        send_error=error if stage == 'send' else None, receive_error=error)
+    monkeypatch.setattr(cdp_module, 'time', SimpleNamespace(monotonic=lambda: 100.125))
+    with caplog.at_level(logging.INFO), pytest.raises(type(error)) as caught:
+        navigation(cdp, 'https://bulk-params-marker.test/')
+    assert caught.value is error
+    record, = [r for r in caplog.records if r.name == cdp_module.__name__ and 'Browser command failed' in r.getMessage()]
     message = record.getMessage()
     assert 'method=Page.navigate' in message and 'timeout_seconds=30' in message
-    assert 'elapsed_ms=125' in message and f'response_received={reply}' in message
-    assert f'wait_state={wait}' in message and record.levelno == logging.ERROR
-    assert record.exc_info[1] is error and record.exc_info[2] is not None
-    assert 'bulk-' not in caplog.text
+    assert 'elapsed_ms=0' in message and 'response_received=False' in message
+    assert f"wait_state={'send' if stage == 'send' else 'command_response'}" in message
+    assert record.levelno == logging.ERROR and record.exc_info[1] is error
+    assert record.exc_info[2] is not None and 'bulk-' not in caplog.text
     assert sent == [{'id':1,'method':'Page.navigate','params':{'url':'https://bulk-params-marker.test/'},'sessionId':'owned'}]
 
 
@@ -73,7 +74,7 @@ def test_SR_022_protocol_detail_is_logged_before_generic_exception(caplog, code,
     assert vars(caught.value) == {'stale': message == 'No node with given id found',
                                  'no_hit': message == 'No node found at given location'}
     assert message not in repr(caught.value)
-    record, = [r for r in caplog.records if r.name == cdp_module.__name__]
+    record, = [r for r in caplog.records if r.name == cdp_module.__name__ and r.exc_info]
     assert record.levelno == expected_level and record.exc_info[1] is caught.value
     assert f'protocol_code={code}' in record.getMessage() and message in record.getMessage()
     assert 'response_received=True' in record.getMessage() and 'bulk-' not in caplog.text
@@ -89,7 +90,7 @@ def test_SR_022_runtime_result_logs_selected_native_error_not_remote_packet(capl
     cdp, _ = transport([{'id':1,'result':result}])
     with caplog.at_level(logging.INFO):
         assert cdp.command(method, {'expression':'bulk-expression-marker'}) == result
-    record, = [r for r in caplog.records if r.name == cdp_module.__name__]
+    record, = [r for r in caplog.records if r.name == cdp_module.__name__ and 'Browser runtime failed' in r.getMessage()]
     message = record.getMessage()
     assert record.levelno == logging.ERROR and record.exc_info is None
     assert method in message and 'native runtime text' in message
@@ -106,8 +107,8 @@ def test_SR_022_runtime_result_logs_selected_native_error_not_remote_packet(capl
 def test_SR_022_navigation_native_error_and_exact_download_success(caplog, result, expected_level):
     cdp, _ = transport([{'id':1,'sessionId':'owned','result':{'frameId':'root',**result,'private':'bulk-result-marker'}}])
     with caplog.at_level(logging.INFO):
-        assert cdp.navigate('http://public.test/','owned','root') is (
-            cdp_module._NavigationOutcome.DOWNLOAD_DENIED if expected_level is None else cdp_module._NavigationOutcome.LOAD_ERROR)
+        assert navigation(cdp) is (
+            cdp_module._NavigationOutcome.DOWNLOAD_DENIED if expected_level is None else cdp_module._NavigationOutcome.LOADING_ERROR)
     records = [r for r in caplog.records if r.name == cdp_module.__name__ and r.levelno >= logging.ERROR]
     if expected_level is None:
         assert records == []
@@ -131,10 +132,16 @@ def test_SR_022_actual_gate_phases_preserve_result_and_terminal_closure(boundary
         boundary.adapter.recheck = fail
     else:
         monkeypatch.setattr(boundary.gate, '_execute', gate_module.BrowserActionGate._execute.__get__(boundary.gate))
-        boundary.adapter._frames = lambda _: {'root':SimpleNamespace(parent=None,session='owned')}
+        boundary.adapter._frames = lambda _: {'root':SimpleNamespace(parent=None,session='owned',loader='old',document=1)}
+        boundary.adapter._document_key = evidence_module.BrowserEvidence._document_key
         boundary.adapter._command = lambda *_, **__: {}
-        boundary.adapter._cdp = SimpleNamespace(navigate=fail if phase == 'execution' else
-            lambda *_, **__: cdp_module._NavigationOutcome.LOADED)
+        def observe(effect, baseline, inspect, capture, **kwargs):
+            if phase == 'execution':
+                fail()
+            return capture()
+        boundary.adapter._cdp = SimpleNamespace(observe=observe)
+        boundary.browser.verify_control = lambda: None
+        boundary.adapter._page = fail
         boundary.adapter.snapshot = fail
     monkeypatch.setattr(gate_module, 'time', SimpleNamespace(monotonic=lambda: 100.0))
     request = {'action':'snapshot','args':{}} if phase == 'explicit_snapshot' else {
@@ -186,7 +193,7 @@ def test_SR_022_evidence_conversion_logs_original_before_suppression(caplog):
 def test_SR_022_runtime_detail_survives_actual_evidence_conversion(caplog, method):
     browser = SimpleNamespace(failed=False)
     evidence = evidence_module.BrowserEvidence(browser)
-    cdp, _ = transport([{'id':1,'result':{'exceptionDetails':{
+    cdp, _ = transport([{'id':1,'sessionId':'owned','result':{'exceptionDetails':{
         'text':'native evaluator failure','exception':{'description':'fixture JavaScript cause'}}}}])
     evidence._command = cdp.command
     frame = SimpleNamespace(session='owned',context=1)
@@ -220,7 +227,7 @@ def test_SR_022_invalid_transport_json_keeps_original_parser_error(caplog):
     cdp.connection.recv = lambda **_: 'not JSON'
     with caplog.at_level(logging.INFO), pytest.raises(json.JSONDecodeError) as caught:
         cdp.command('Target.getTargets')
-    record, = [r for r in caplog.records if r.name == cdp_module.__name__]
+    record, = [r for r in caplog.records if r.name == cdp_module.__name__ and r.exc_info]
     assert record.exc_info[1] is caught.value and 'method=Target.getTargets' in record.getMessage()
     assert 'response_received=False' in record.getMessage() and 'wait_state=command_response' in record.getMessage()
 

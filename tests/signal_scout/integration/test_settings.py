@@ -194,3 +194,27 @@ def test_AG_007_BT_004_required_action_policy_and_scroll_configuration_fail_expl
     path.write_text(yaml.safe_dump(config))
     with pytest.raises(ValueError, match=r'^Invalid Scout operating settings\.$'):
         settings.load_settings(path)
+
+
+@pytest.mark.parametrize('key', ['observation_timeout','interaction_observation_timeout'])
+@pytest.mark.parametrize('value', [None,True,False,0,-1,121,float('inf'),float('nan'),'5'])
+def test_AG_008_required_observation_settings_reject_invalid_values(tmp_path,key,value):
+    config=yaml.safe_load(CONFIG.read_text())
+    if value is None:
+        del config['browser'][key]
+    else:
+        config['browser'][key]=value
+    target=tmp_path/'config.yaml';target.write_text(yaml.safe_dump(config))
+    with pytest.raises(ValueError,match='Invalid Scout operating settings.'):
+        settings.load_settings(target)
+
+
+def test_AG_008_interaction_interval_cannot_exceed_document_allowance(tmp_path):
+    config=yaml.safe_load(CONFIG.read_text())
+    config['browser'].update(observation_timeout=.1,interaction_observation_timeout=.25)
+    target=tmp_path/'config.yaml';target.write_text(yaml.safe_dump(config))
+    with pytest.raises(ValueError,match='Invalid Scout operating settings.'):
+        settings.load_settings(target)
+    config['browser'].update(observation_timeout=.5,interaction_observation_timeout=.125)
+    target.write_text(yaml.safe_dump(config))
+    assert settings.load_settings(target)['browser']['observation_timeout']==.5

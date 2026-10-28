@@ -44,6 +44,8 @@ browser:
   use_real_profile: false
   auto_local_for_private_urls: false
   command_timeout: 60
+  observation_timeout: 5
+  interaction_observation_timeout: 0.25
   navigation_retries: 1
   scroll_pixels: 500
   action_permissions:
