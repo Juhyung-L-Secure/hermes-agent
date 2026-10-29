@@ -501,13 +501,26 @@
       "id": "AE_006",
       "subfeature": "action-evidence",
       "title": "Fatal required evidence machinery failure",
-      "contract": "Required capture/check transport/protocol/machinery failure marks Browser unusable and raises sanitized fatal EvidenceFailure for existing owned teardown. Missing/stale/hidden/covered target, expected node detachment/frame loss/layout loss between inspection calls, or relevant-context change instead raises EvidenceRejected and permits continued browsing. Adapter uses existing validated browser.command_timeout, endpoint/ownership checks and Browser teardown, adds no settings, retries, recovery or browser replacement. Normal/fatal tests retain helper state and auth/log volumes.",
+      "contract": "Required capture/check transport, unknown protocol or machinery failure marks Browser unusable and raises sanitized fatal EvidenceFailure for existing owned teardown. Missing/stale/hidden/covered required target, expected target node detachment/frame loss/layout loss between inspection calls, or relevant-context change instead raises EvidenceRejected and permits continued browsing. Known unavailable unrelated frame branches follow the partial-inspection behavior of AE_007 rather than ending the mission. Adapter uses existing validated browser.command_timeout, endpoint/ownership checks and Browser teardown, adds no settings, automatic action replay or browser replacement. Normal/fatal tests retain helper state and auth/log volumes.",
       "requiredCoverage": ["e2e"],
       "coverage": [
         {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_006_required_machinery_failure_poison_and_owned_teardown"},
         {"layer":"unit","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_006_expected_target_loss_protocol_errors_reject"},
         {"layer":"e2e","file":"tests/signal_scout/security/test_evidence.py","test":"test_AE_002_AE_005_AE_006_target_loss_during_inspection_rejects"}
       ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AE_007",
+      "subfeature": "action-evidence",
+      "title": "Partial frame inspection and proposal-level unavailable-target recovery",
+      "contract": "Known missing or detached iframe responses during frame inspection stop traversal of the unavailable branch while preserving inspectable page branches. Available fresh full-viewport PNG and relevant current context may proceed to the unchanged safety reviewer with an explicit code-owned indication of incomplete inspection; successful snapshots and browser observations disclose omitted branches to Hermes rather than presenting inspection as complete. If the original requested target, its required frame ancestry, actual focus for keyboard actions or required identity/context/hit checks cannot be verified, reject that proposal with a clear sanitized reason and permit healthy mission continuation without executing it, replacing its target, reusing stale evidence or automatically replaying the action. The same behavior applies when known frame loss occurs during preparation, required capture or context recheck; skipped-branch state remains local to that inspection and cannot contaminate another proposal. Current exact-node/document/focus checks, network/download protections, review decisions and late-approval protections remain. Only understood frame-unavailability conditions receive this treatment; root/control loss, unknown protocol errors, transport failures and genuine required capture/machinery failures retain existing fatal handling. No browser replacement, broad mission-failure-policy rewrite or upstream Hermes core change is introduced.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
       "otherCoverage": [],
       "blocker": ""
     },
