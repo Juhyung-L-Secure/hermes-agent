@@ -515,12 +515,103 @@
       "id": "AE_007",
       "subfeature": "action-evidence",
       "title": "Partial frame inspection and proposal-level unavailable-target recovery",
-      "contract": "Known missing or detached iframe responses during frame inspection stop traversal of the unavailable branch while preserving inspectable page branches. Available fresh full-viewport PNG and relevant current context may proceed to the unchanged safety reviewer with an explicit code-owned indication of incomplete inspection; successful snapshots and browser observations disclose omitted branches to Hermes rather than presenting inspection as complete. If the original requested target, its required frame ancestry, actual focus for keyboard actions or required identity/context/hit checks cannot be verified, reject that proposal with a clear sanitized reason and permit healthy mission continuation without executing it, replacing its target, reusing stale evidence or automatically replaying the action. The same behavior applies when known frame loss occurs during preparation, required capture or context recheck; skipped-branch state remains local to that inspection and cannot contaminate another proposal. Current exact-node/document/focus checks, network/download protections, review decisions and late-approval protections remain. Only understood frame-unavailability conditions receive this treatment; root/control loss, unknown protocol errors, transport failures and genuine required capture/machinery failures retain existing fatal handling. No browser replacement, broad mission-failure-policy rewrite or upstream Hermes core change is introduced.",
+      "contract": "Known missing or detached iframe responses during frame inspection stop traversal of the unavailable branch while preserving inspectable page branches. Available fresh full-viewport PNG and relevant current context may proceed to the unchanged safety reviewer with an explicit code-owned indication of incomplete inspection; successful snapshots and browser observations disclose omitted branches to Hermes rather than presenting inspection as complete. If the original requested target, its required frame ancestry, required actual focus for keypress or required identity/context/hit checks cannot be verified, reject that proposal with a clear sanitized reason and permit healthy mission continuation without executing it, replacing its target, reusing stale evidence or automatically replaying the action. The same behavior applies when known frame loss occurs during preparation, required capture or context recheck; skipped-branch state remains local to that inspection and cannot contaminate another proposal. Current exact-node/document/focus checks, network/download protections, review decisions and late-approval protections remain. Only understood frame-unavailability conditions receive this treatment; previously recognized pre-effect selected-tab or document loss retains existing proposal rejection and never permits a successful partial selected-root capture; unknown protocol errors, lost owned control, transport failures and genuine required capture/machinery failures retain existing fatal handling. No browser replacement, broad mission-failure-policy rewrite or upstream Hermes core change is introduced.",
       "requiredCoverage": [
         "unit",
         "e2e"
       ],
-      "coverage": [],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_snapshot_skips_missing_branch_and_continues_siblings"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_006_AE_007_unknown_root_and_transport_failure_remain_fatal"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_frame_loss_during_accessibility_keeps_available_snapshot"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_001_AE_007_final_page_scan_omits_changed_child_without_rebinding_refs"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_unavailable_inner_focus_rejects_keys_and_is_explicit_for_navigation"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_preparation_recheck_exposes_new_omissions_without_mutating_reviewed_packet"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_required_target_loss_rejects_and_gate_can_snapshot_afterward"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_required_target_loss_after_preparation_rejects_without_browser_poison"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_pending_remote_roots_distinguish_excluded_descendants_and_unknown_page_membership"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_006_AE_007_known_frame_error_from_required_png_capture_remains_fatal"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_gate_typing_precheck_keeps_missing_frame_reason_and_no_review"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_nontext_observations_disclose_partial_inspection"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_reviewed_execution_uses_checked_scan_without_another_tree_lookup"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_type_precheck_reuses_prepared_frames_and_retains_review_packet"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_snapshot_missing_selected_context_rejects_before_capture"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_gate_snapshot_uses_one_partial_scan_and_keeps_notice"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_AE_007_root_readiness_and_partial_child_capture"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_AE_007_native_partial_frames_preserve_review_exact_effect_and_mission_continuation"
+        }
+      ],
       "otherCoverage": [],
       "blocker": ""
     },
@@ -641,7 +732,7 @@
         {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_compound_input_requires_every_ack_even_after_ready"},
         {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_successor_lineage_and_final_capture_must_match"},
         {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_ready_loader_cannot_certify_another_backend_document"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_root_readiness_does_not_relax_required_child_capture"},
+        {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_AE_007_root_readiness_and_partial_child_capture"},
         {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_gate_observes_ready_root_without_child_inspection"},
         {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_interaction_current_page_uses_short_interval_and_never_replays"},
         {"layer":"unit","file":"tests/signal_scout/security/test_navigation_recovery.py","test":"test_AG_008_final_ack_anchors_one_absolute_deadline"},

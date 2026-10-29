@@ -163,11 +163,13 @@ Viewport × scale must match dimensions; popup stays native. Private binding/
 baseline separate. No new caps/truncation/crop/shrink/secret masking. Relevant
 secrets may reach provider, never unrelated cookies/auth stores. Preparation keeps evidence in memory and omits it from repr, emitted events, and separate files/archives. Native backend diagnostics follow the logging boundary above.
 
+Known unavailable iframe branches produce partial inspection rather than browser failure. Snapshots prefix a fixed Scout notice; reviewer context includes inspection completeness and omission counts. Unassociated iframe targets have a separate count and are not claimed as selected-page children. Screenshot and image observations disclose partial inspection in `data.inspection`. Missing required target, ancestor or keyboard focus rejects the proposal and keeps healthy browsing available. Exact identities and hit checks remain required. Previously recognized selected-tab or document loss before effect rejects the proposal; no partial capture substitutes for a missing selected root. Unknown protocol, transport, owned-control and required PNG failures retain fatal handling.
+
 Recheck requires same action and original preparation. Original tab/frame/
 document/node, relevant semantics/destination/form/active descendant and actual keyboard focus must match.
 Current visible unobstructed point is recomputed, including iframe geometry.
 Same-node movement/unrelated pixels pass; whole target need not fit. `CheckedAction`
-carries original private binding/current point, never approval. Gate consumes it
+carries original private binding/current point and the verified frame scan, never approval. Gate reuses that scan for execution rather than traversing again. Gate consumes it
 directly: type focuses/fills exact node; keys preserve focus/native chord defaults.
 Check is not atomic; hidden JavaScript/server effects remain outside guarantees.
 Expected staleness/detachment/layout loss/change/hidden/covered raises sanitized `EvidenceRejected`,

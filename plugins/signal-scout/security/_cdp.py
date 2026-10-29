@@ -136,6 +136,10 @@ class _Observation:
 
 class _ProtocolError(Exception):
     def __init__(self, error):
+        self.frame_unavailable = error.get("code") in {-32602, -32000} and error.get("message") in {
+            "No frame for given id found", "Frame with the given id was not found.",
+            "No target with given id found",
+        }
         # Browser text can contain input. Retain classification, never raw text.
         self.stale = error.get("code") == -32000 and error.get("message") in {
             "No node with given id found", "Node with given id does not belong to the document",

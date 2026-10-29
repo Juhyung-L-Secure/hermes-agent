@@ -2,7 +2,7 @@
 
 import base64
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import json
 import logging
 import struct
@@ -21,6 +21,12 @@ class EvidenceRejected(Exception):
 
 class EvidenceFailure(RuntimeError):
     """End browsing after required inspection/capture fails; owner must tear down."""
+
+
+class _RequiredFrameUnavailable(EvidenceRejected):
+    def __init__(self, reason="Required browser target or frame is unavailable.", *, frame=None, parent=None):
+        self.frame, self.parent = frame, parent
+        super().__init__(reason)
 
 
 @dataclass(frozen=True)
@@ -43,6 +49,54 @@ class _Frame:
     parent: str | None
 
 
+@dataclass(frozen=True)
+class _FrameOmission:
+    frame: str | None
+    target: str | None
+    parent: str | None
+
+
+@dataclass
+class _FrameScan:
+    frames: dict[str, _Frame]
+    omitted: tuple[_FrameOmission, ...] = ()
+
+    def exclude(self, frame, target=None, parent=None):
+        unavailable = {frame} if frame is not None else set()
+        while True:
+            descendants = {key for key, value in self.frames.items() if value.parent in unavailable}
+            if descendants <= unavailable:
+                break
+            unavailable.update(descendants)
+        for key in unavailable:
+            self.frames.pop(key, None)
+        omission = _FrameOmission(frame, target, parent)
+        if not any(item.frame == frame and (frame is not None or item.target == target) for item in self.omitted):
+            self.omitted += (omission,)
+
+    def summary(self):
+        result = {"complete": not self.omitted,
+                  "omitted_branches": sum(item.frame is not None for item in self.omitted)}
+        unresolved = sum(item.frame is None for item in self.omitted)
+        if unresolved:
+            result["unresolved_iframe_targets"] = unresolved
+        if self.omitted:
+            result["reason"] = "frame_unavailable"
+        return result
+
+    def describe(self, text):
+        if self.omitted:
+            counts = self.summary()
+            parts = []
+            if count := counts["omitted_branches"]:
+                parts.append(f"{count} unavailable frame " + ("branch omitted" if count == 1 else "branches omitted"))
+            if count := counts.get("unresolved_iframe_targets"):
+                parts.append(f"{count} iframe " + ("target unavailable or unassociated" if count == 1
+                    else "targets unavailable or unassociated"))
+            text = "[Scout inspection incomplete: " + "; ".join(parts) + ".]\n" + text
+        return text
+
+
 @dataclass(frozen=True, repr=False)
 class PreparedReview:
     """Hold reviewer input separately from private identity and baseline state.
@@ -57,6 +111,7 @@ class PreparedReview:
     _binding: _Binding | None = field(repr=False)
     _documents: dict = field(repr=False)
     _baseline: dict = field(repr=False)
+    _frames: dict = field(repr=False)
 
     def reviewer_input(self):
         """Return an independent input copy, without private CDP identity metadata."""
@@ -73,6 +128,7 @@ class CheckedAction:
 
     _binding: _Binding | None = field(repr=False)
     interaction_point: tuple[float, float] | None
+    _scan: _FrameScan = field(repr=False)
 
 
 # Isolated-world DOM reads keep page JavaScript from replacing inspection code.
@@ -193,6 +249,8 @@ class BrowserEvidence:
         except Exception as error:
             if isinstance(error, _ProtocolError) and error.stale:
                 raise EvidenceRejected("Original browser target is stale.") from None
+            if isinstance(error, _ProtocolError) and error.frame_unavailable:
+                raise _RequiredFrameUnavailable() from None
             try:
                 logger.error("Browser evidence failed operation=inspection elapsed_ms=%d",
                     int((time.monotonic() - began) * 1000), exc_info=True)
@@ -218,26 +276,57 @@ class BrowserEvidence:
         targets = self._command("Target.getTargets")["targetInfos"]
         if not any(t["targetId"] == tab and t["type"] == "page" for t in targets):
             raise EvidenceRejected("Original browser tab is unavailable.")
-        root_session = self._session(tab)
-        trees = [(tab, root_session, self._command("Page.getFrameTree", session=root_session)["frameTree"])]
+        try:
+            root_session = self._session(tab)
+            trees = [(tab, root_session, self._command("Page.getFrameTree", session=root_session)["frameTree"])]
+        except _ProtocolError as error:
+            if error.frame_unavailable and not error.stale:
+                raise EvidenceFailure("Required browser root is unavailable.") from None
+            raise
+        scan = _FrameScan({})
         # Out-of-process iframe roots identify themselves via Page.getFrameTree;
         # no title/URL matching and no assumed targetId == frameId correspondence.
         for target in targets:
             if not root_only and target["type"] == "iframe":
-                session = self._session(target["targetId"])
-                trees.append((target["targetId"], session,
-                              self._command("Page.getFrameTree", session=session)["frameTree"]))
-        frames = {}
+                try:
+                    session = self._session(target["targetId"])
+                    trees.append((target["targetId"], session,
+                                  self._command("Page.getFrameTree", session=session)["frameTree"]))
+                except _ProtocolError as error:
+                    if not (error.frame_unavailable or error.stale):
+                        raise
+                    scan.exclude(None, target["targetId"])
+        frames = scan.frames
+        excluded = set()
+
+        def exclude_tree(tree):
+            excluded.add(tree["frame"]["id"])
+            for child in tree.get("childFrames", ()):
+                exclude_tree(child)
 
         def visit(tree, target, session, parent=None):
             raw = tree["frame"]
             frame_id = raw["id"]
-            context = self._command("Page.createIsolatedWorld", {"frameId": frame_id,
-                "worldName": "scout-evidence"}, session)["executionContextId"]
-            frame = _Frame(target, session, context, 0, raw["loaderId"], raw.get("parentId", parent))
-            doc = self._evaluate(frame, "document", value=False)["objectId"]
-            frame.document = self._command("DOM.describeNode", {"objectId": doc}, session)["node"]["backendNodeId"]
-            self._command("Runtime.releaseObject", {"objectId": doc}, session)
+            if frame_id in excluded:
+                return
+            parent = raw.get("parentId", parent)
+            try:
+                context = self._command("Page.createIsolatedWorld", {"frameId": frame_id,
+                    "worldName": "scout-evidence"}, session)["executionContextId"]
+                frame = _Frame(target, session, context, 0, raw["loaderId"], parent)
+                doc = self._evaluate(frame, "document", value=False)["objectId"]
+                frame.document = self._command("DOM.describeNode", {"objectId": doc}, session)["node"]["backendNodeId"]
+                self._command("Runtime.releaseObject", {"objectId": doc}, session)
+            except _ProtocolError as error:
+                if parent is None:
+                    if error.frame_unavailable and not error.stale:
+                        raise EvidenceFailure("Required browser root is unavailable.") from None
+                    raise
+                if not (error.frame_unavailable or error.stale):
+                    raise
+                scan.exclude(frame_id, target, parent)
+                exclude_tree(tree)
+                return
             frames[frame_id] = frame
             if root_only:
                 return
@@ -262,14 +351,37 @@ class BrowserEvidence:
                 if tree["frame"]["id"] not in frames:
                     visit(tree, target, session)
                 pending.remove((target, session, tree))
-        return frames
+        while True:
+            descendants = {tree["frame"]["id"] for _, _, tree in pending
+                           if tree["frame"].get("parentId") in excluded}
+            if descendants <= excluded:
+                break
+            excluded.update(descendants)
+        for target, _, tree in pending:
+            parent = tree["frame"].get("parentId")
+            if tree["frame"]["id"] not in excluded:
+                scan.exclude(None, target, parent)
+        return scan
 
     def _binding(self, tab, frame_id, frame, node):
         return _Binding(tab, frame.target, frame_id, frame.document, frame.loader, node)
 
+    @staticmethod
+    def _ancestry(frame_id, frames):
+        result = set()
+        while frame_id:
+            frame = frames.get(frame_id)
+            if frame is None:
+                raise _RequiredFrameUnavailable()
+            result.add(frame_id)
+            frame_id = frame.parent
+        return result
+
     def _resolve(self, binding, frames):
         frame = frames.get(binding.frame)
-        if frame is None or (frame.target, frame.document, frame.loader) != (
+        if frame is None:
+            raise _RequiredFrameUnavailable()
+        if (frame.target, frame.document, frame.loader) != (
                 binding.target, binding.document, binding.loader):
             raise EvidenceRejected("Original browser document changed.")
         obj = self._command("DOM.resolveNode", {"backendNodeId": binding.node,
@@ -350,7 +462,10 @@ class BrowserEvidence:
                         self._command("Runtime.releaseObject", {"objectId": root_obj}, frame.session)
                     if obj.get("objectId"):
                         continue
-                if node.get("frameId") in frames:
+                if node.get("frameId"):
+                    if node["frameId"] not in frames:
+                        raise _RequiredFrameUnavailable("Exact keyboard focus is unavailable.",
+                            frame=node["frameId"], parent=frame_id)
                     frame_id = node["frameId"]
                     break
                 return (None if node["localName"] in {"body", "html"} else chain[-1]), chain
@@ -359,6 +474,7 @@ class BrowserEvidence:
 
     def _owners_visible(self, binding, frames):
         # Child visibility alone cannot see a hidden containing iframe.
+        self._ancestry(binding.frame, frames)
         current = binding.frame
         while frames[current].parent:
             parent_id = frames[current].parent
@@ -469,10 +585,28 @@ class BrowserEvidence:
         frame_id, root = next((key, value) for key, value in frames.items() if value.parent is None)
         return _DocumentKey(root.session, frame_id, root.loader, root.document)
 
-    def _snapshot(self, target_id, frames):
+    def _accessibility(self, scan):
+        chunks = {}
+        for frame_id, frame in list(scan.frames.items()):
+            if frame_id not in scan.frames:
+                continue
+            try:
+                chunks[frame_id] = self._command("Accessibility.getFullAXTree",
+                    {"frameId": frame_id}, frame.session)["nodes"]
+            except _ProtocolError as error:
+                if frame.parent is None:
+                    if error.frame_unavailable and not error.stale:
+                        raise EvidenceFailure("Required browser root is unavailable.") from None
+                    raise
+                if not (error.frame_unavailable or error.stale):
+                    raise
+                scan.exclude(frame_id, frame.target, frame.parent)
+        return chunks
+
+    def _snapshot_text(self, target_id, scan, chunks):
         lines = []
-        for frame_id, frame in frames.items():
-            nodes = self._command("Accessibility.getFullAXTree", {"frameId": frame_id}, frame.session)["nodes"]
+        for frame_id, frame in scan.frames.items():
+            nodes = chunks[frame_id]
             by_id = {node["nodeId"]: node for node in nodes}
             for node in nodes:
                 owner = node
@@ -493,7 +627,11 @@ class BrowserEvidence:
                         ref = "@s" + str(len(self._refs) + 1)
                         self._refs[ref] = binding
                 lines.append(f"- {role} {json.dumps(name, ensure_ascii=False)}" + (f" [{ref}]" if ref else ""))
-        return "\n".join(lines)
+        return scan.describe("\n".join(lines))
+
+    def _snapshot(self, target_id, scan):
+        chunks = self._accessibility(scan)
+        return self._snapshot_text(target_id, scan, chunks)
 
     def snapshot(self, target_id):
         """Return compact AX text with exact refs for an explicit CDP page target."""
@@ -501,19 +639,29 @@ class BrowserEvidence:
 
     def _page(self, target_id):
         def capture():
-            frames = self._frames(target_id)
+            scan = self._frames(target_id)
+            frames = scan.frames
             key = self._document_key(frames)
             root = frames[key.frame]
-            snapshot = self._snapshot(target_id, frames)
+            chunks = self._accessibility(scan)
             page = self._evaluate(root, "({url:location.href,readyState:document.readyState})")["value"]
             after = self._frames(target_id)
-            identities = lambda values: {name: (f.target, f.session, f.loader, f.document) for name, f in values.items()}
-            if identities(frames) != identities(after):
+            if key != self._document_key(after.frames):
                 raise EvidenceFailure("Browser document changed during observation.")
+            identity = lambda frame: (frame.target, frame.session, frame.loader, frame.document)
+            for name, frame in list(frames.items()):
+                current = after.frames.get(name)
+                if current is None or identity(frame) != identity(current):
+                    scan.exclude(name, frame.target, frame.parent)
+            for name, frame in after.frames.items():
+                if name not in frames:
+                    scan.exclude(name, frame.target, frame.parent)
+            for omission in after.omitted:
+                scan.exclude(omission.frame, omission.target, omission.parent)
             if (not isinstance(page, dict) or not isinstance(page.get("url"), str)
                     or page.get("readyState") not in {"loading", "interactive", "complete"}):
                 raise EvidenceFailure("Required browser page state unavailable.")
-            return _Page(key, snapshot, page["url"], page["readyState"])
+            return _Page(key, self._snapshot_text(target_id, scan, chunks), page["url"], page["readyState"])
         return self._run(capture)
 
     def tabs(self):
@@ -521,12 +669,26 @@ class BrowserEvidence:
         return self._run(lambda: [{"target_id": t["targetId"], "title": t["title"], "url": t["url"]}
             for t in self._command("Target.getTargets")["targetInfos"] if t["type"] == "page"])
 
-    def _context(self, tab, binding, frames, *, keyboard):
+    def _context(self, tab, binding, scan, *, keyboard):
+        frames = scan.frames
         root = next(value for value in frames.values() if value.parent is None)
         page = self._evaluate(root, "({url:location.href,title:document.title})")["value"]
-        focused, chain = self._focus(tab, frames)
+        try:
+            focused, chain = self._focus(tab, frames)
+            focus, focus_relations = self._details(focused, frames) if focused else ({"page_level": True}, ())
+        except _RequiredFrameUnavailable as error:
+            if keyboard:
+                raise
+            scan.exclude(error.frame, parent=error.parent)
+            focus, focus_relations, chain = {"unavailable": True}, (), []
+        except _ProtocolError as error:
+            if not error.frame_unavailable:
+                raise
+            if keyboard:
+                raise _RequiredFrameUnavailable("Exact keyboard focus is unavailable.") from None
+            scan.exclude(None)
+            focus, focus_relations, chain = {"unavailable": True}, (), []
         target, target_relations = self._details(binding, frames) if binding else (None, ())
-        focus, focus_relations = self._details(focused, frames) if focused else ({"page_level": True}, ())
         context = {"page": page, "target": target, "focus": focus}
         comparison = deepcopy(context)
         comparison["active_descendants"] = {"target": target_relations}
@@ -538,11 +700,17 @@ class BrowserEvidence:
         else:
             comparison["focus_binding"] = chain
             comparison["active_descendants"]["focus"] = focus_relations
+        context["inspection"] = scan.summary()
         return context, comparison
 
     def _capture(self, root):
-        viewport = self._evaluate(root, "({width:innerWidth,height:innerHeight,scale:devicePixelRatio})")["value"]
-        raw = self._command("Page.captureScreenshot", {"format": "png", "captureBeyondViewport": False}, root.session)
+        try:
+            viewport = self._evaluate(root, "({width:innerWidth,height:innerHeight,scale:devicePixelRatio})")["value"]
+            raw = self._command("Page.captureScreenshot", {"format": "png", "captureBeyondViewport": False}, root.session)
+        except _ProtocolError as error:
+            if error.frame_unavailable:
+                raise EvidenceFailure("Required viewport capture failed.") from None
+            raise
         screenshot = base64.b64decode(raw["data"], validate=True)
         if (screenshot[:8] != b"\x89PNG\r\n\x1a\n" or struct.unpack(">II", screenshot[16:24]) != (
                 round(viewport["width"] * viewport["scale"]), round(viewport["height"] * viewport["scale"]))):
@@ -572,18 +740,19 @@ class BrowserEvidence:
         if action_type == "keypress" and not action["key"]:
             raise EvidenceRejected("Invalid proposed browser action.")
         def prepare():
-            frames = self._frames(target_id)
+            scan = self._frames(target_id)
+            frames = scan.frames
             binding = None
             focus_chain = None
             if action_type in {"click", "type"}:
                 binding = self._refs.get(action["ref"])
                 if binding is None or binding.tab != target_id:
-                    raise EvidenceRejected("Original browser reference is unavailable.")
+                    raise _RequiredFrameUnavailable("Original browser reference is unavailable.")
             elif action_type == "keypress":
                 binding, focus_chain = self._focus(target_id, frames)
             if binding:
                 self._scroll(binding, frames)
-            context, baseline = self._context(target_id, binding, frames, keyboard=action_type == "keypress")
+            context, baseline = self._context(target_id, binding, scan, keyboard=action_type == "keypress")
             if focus_chain is not None and baseline["focus_binding"] != focus_chain:
                 raise EvidenceRejected("Relevant browser context changed.")
             point = self._point(binding, frames) if binding else None
@@ -593,16 +762,17 @@ class BrowserEvidence:
             if capture:
                 screenshot, context["viewport"] = self._capture(root)
                 inputs.update(screenshot=screenshot, screenshot_mime="image/png", activity=activity)
-            relevant = set()
             current = binding.frame if binding else next(k for k, f in frames.items() if f.parent is None)
-            while current:
-                relevant.add(current)
-                current = frames[current].parent
+            relevant = self._ancestry(current, frames)
             documents = {key: (f.target, f.document, f.loader) for key, f in frames.items() if key in relevant}
-            prepared = PreparedReview(self._owner, target_id, inputs, binding, documents, baseline)
+            prepared = PreparedReview(self._owner, target_id, inputs, binding, documents, baseline, frames)
             # Capture is not atomic with reads; reject observed changes before return.
-            context["interaction_point"] = self._recheck(prepared, action_type, action).interaction_point
-            return prepared
+            checked = self._recheck(prepared, action_type, action)
+            context["interaction_point"] = checked.interaction_point
+            for omission in checked._scan.omitted:
+                scan.exclude(omission.frame, omission.target, omission.parent)
+            context["inspection"] = scan.summary()
+            return replace(prepared, _frames=checked._scan.frames)
         return self._run(prepare)
 
     def _recheck(self, prepared, action_type, action):
@@ -610,16 +780,19 @@ class BrowserEvidence:
                 prepared._input["action_type"], prepared._input["action"]):
             raise EvidenceRejected("Proposed browser action changed.")
         tab = prepared._tab
-        frames = self._frames(tab)
+        scan = self._frames(tab)
+        frames = scan.frames
         for key, identity in prepared._documents.items():
             frame = frames.get(key)
-            if frame is None or (frame.target, frame.document, frame.loader) != identity:
+            if frame is None:
+                raise _RequiredFrameUnavailable()
+            if (frame.target, frame.document, frame.loader) != identity:
                 raise EvidenceRejected("Original browser document changed.")
-        _, comparison = self._context(tab, prepared._binding, frames, keyboard=action_type == "keypress")
+        _, comparison = self._context(tab, prepared._binding, scan, keyboard=action_type == "keypress")
         if comparison != prepared._baseline:
             raise EvidenceRejected("Relevant browser context changed.")
         point = self._point(prepared._binding, frames) if prepared._binding else None
-        return CheckedAction(prepared._binding, point)
+        return CheckedAction(prepared._binding, point, scan)
 
     def recheck(self, prepared, *, action_type, action):
         """Return checked original identity/current point or reject/fail explicitly.

@@ -260,10 +260,19 @@ def test_SR_022_browser_failure_uses_saved_native_logs_redaction_and_best_effort
                 handler.shouldRollover = lambda _: True
         token = 'glpat-' + 'Zx9AbCdEfGhIjKlMnOpQ'
         cdp = cdp_module._CDP.__new__(cdp_module._CDP)
-        cdp.timeout, cdp.sequence = 30, 0
-        cdp.connection = SimpleNamespace(send=lambda _: None, recv=lambda **_: json.dumps({
-            'id':1, 'error':{'code':-32601,'message':'native browser detail ' + token,
-                            'data':'bulk-response-marker'}}))
+        cdp.timeout, cdp.sequence, cdp._observation = 30, 0, None
+        cdp.observation_timeout, cdp.interaction_observation_timeout = 5, .25
+        sent = []
+        def receive(**_):
+            message = sent[-1]
+            value = {'id':message['id'], 'sessionId':message['sessionId']}
+            if message['method'] == 'Page.navigate':
+                value['error'] = {'code':-32601, 'message':'native browser detail ' + token,
+                                  'data':'bulk-response-marker'}
+            else:
+                value['result'] = {}
+            return json.dumps(value)
+        cdp.connection = SimpleNamespace(send=lambda value: sent.append(json.loads(value)), recv=receive)
         browser = gate_module.Browser.__new__(gate_module.Browser)
         browser.settings, browser.ready, browser.failed = config, True, False
         browser.endpoint = 'ws://owned-fixture'
@@ -274,10 +283,11 @@ def test_SR_022_browser_failure_uses_saved_native_logs_redaction_and_best_effort
             browser.ready, browser.failed = False, True
         browser.close = close
         prepared = SimpleNamespace(reviewer_input=lambda: {})
+        checked = SimpleNamespace(_scan=SimpleNamespace(frames={'root':SimpleNamespace(parent=None,session='session')}))
         adapter = SimpleNamespace(tabs=lambda: [{'target_id':'owned'}],
-            prepare=lambda **_: prepared, recheck=lambda *_, **__: object(),
-            _frames=lambda _: {'root':SimpleNamespace(parent=None,session='session')},
-            _command=lambda *_, **__: {}, _cdp=cdp)
+            prepare=lambda **_: prepared, recheck=lambda *_, **__: checked,
+            _frames=lambda _: SimpleNamespace(frames={'root':SimpleNamespace(parent=None,session='session')}),
+            _command=cdp.command, _document_key=lambda _: cdp_module._DocumentKey('session','root','current',1), _cdp=cdp)
         browser.evidence = lambda: adapter
         reviewer = SimpleNamespace(review=lambda **_: gate_module.ReviewResult('approve',None,1,0,{}))
         gate = gate_module.BrowserActionGate(browser, reviewer=reviewer, target_id='owned')

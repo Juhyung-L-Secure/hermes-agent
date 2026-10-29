@@ -71,7 +71,7 @@ def test_SR_022_protocol_detail_is_logged_before_generic_exception(caplog, code,
     with caplog.at_level(logging.INFO), pytest.raises(cdp_module._ProtocolError) as caught:
         cdp.command('DOM.resolveNode', {'text':'bulk-params-marker'})
     assert str(caught.value) == 'Browser inspection protocol failed.'
-    assert vars(caught.value) == {'stale': message == 'No node with given id found',
+    assert vars(caught.value) == {'frame_unavailable': False, 'stale': message == 'No node with given id found',
                                  'no_hit': message == 'No node found at given location'}
     assert message not in repr(caught.value)
     record, = [r for r in caplog.records if r.name == cdp_module.__name__ and r.exc_info]
@@ -132,7 +132,7 @@ def test_SR_022_actual_gate_phases_preserve_result_and_terminal_closure(boundary
         boundary.adapter.recheck = fail
     else:
         monkeypatch.setattr(boundary.gate, '_execute', gate_module.BrowserActionGate._execute.__get__(boundary.gate))
-        boundary.adapter._frames = lambda _: {'root':SimpleNamespace(parent=None,session='owned',loader='old',document=1)}
+        boundary.adapter._frames = lambda _: evidence_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned',loader='old',document=1)})
         boundary.adapter._document_key = evidence_module.BrowserEvidence._document_key
         boundary.adapter._command = lambda *_, **__: {}
         def observe(effect, baseline, inspect, capture, **kwargs):
@@ -143,6 +143,8 @@ def test_SR_022_actual_gate_phases_preserve_result_and_terminal_closure(boundary
         boundary.browser.verify_control = lambda: None
         boundary.adapter._page = fail
         boundary.adapter.snapshot = fail
+        boundary.adapter._snapshot = fail
+        boundary.adapter._run = lambda operation: operation()
     monkeypatch.setattr(gate_module, 'time', SimpleNamespace(monotonic=lambda: 100.0))
     request = {'action':'snapshot','args':{}} if phase == 'explicit_snapshot' else {
         'action':'navigate','args':{'url':'https://bulk-proposal-marker.test/'},'activity':'bulk-activity-marker'}

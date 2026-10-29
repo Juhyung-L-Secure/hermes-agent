@@ -110,7 +110,7 @@ with Browser() as browser:
         action={'ref':reference}; item=prepared(adapter,tab,'click',action)
         checked=adapter.recheck(item,action_type='click',action=action)
         assert checked._binding==binding and checked.interaction_point
-        frame=adapter._frames(tab)[binding.frame]
+        frame=adapter._frames(tab).frames[binding.frame]
         assert adapter._evaluate(frame,"document.querySelector('#child').dataset.clicked")['value']=='false'
         owner='same' if binding.target==tab else 'cross'
         old=checked.interaction_point
@@ -303,7 +303,7 @@ with Browser() as browser:
     for loss in ('node','layout','frame'):
         open_fixture(browser)
         snapshot=adapter.snapshot(tab)
-        frames=adapter._frames(tab)
+        frames=adapter._frames(tab).frames
         target=ref(snapshot,'Open research') if loss!='frame' else next(
           key for key,value in adapter._refs.items() if value.tab==tab and
           value.frame in frames and value.document==frames[value.frame].document and value.target!=tab)
@@ -341,7 +341,7 @@ with Browser() as browser:
     popup=next(t['target_id'] for t in adapter.tabs() if t['target_id']!=main)
     snapshot=adapter.snapshot(popup)
     adapter.snapshot(main) # Active native tab is irrelevant to explicit target ID.
-    frame=next(f for f in adapter._frames(popup).values() if f.parent is None)
+    frame=next(f for f in adapter._frames(popup).frames.values() if f.parent is None)
     before=adapter._evaluate(frame,'({width:innerWidth,height:innerHeight,scale:devicePixelRatio})')['value']
     captures=[]; command=adapter._cdp.command
     def capture(method,params=None,session=None):

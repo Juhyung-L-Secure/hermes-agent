@@ -622,3 +622,147 @@ with Browser() as browser:
     assert lifecycle.checked(["docker", "ps", "-aq", "--filter",
                               "label=com.docker.compose.project=signal-scout-bootstrap", "--filter",
                               "label=com.docker.compose.service=browser"]) == ""
+
+
+def test_AE_007_native_partial_frames_preserve_review_exact_effect_and_mission_continuation(fixture_web):
+    stack, _, _, _ = fixture_web
+    with stack.browser_run() as run:
+        owned = run.container
+        stack.browser_probe(SETUP + FAKE_MAIN + OFFLINE_REVIEWER + r'''
+import struct
+with Browser() as browser:
+    tab=open_fixture(browser)
+    inspector=browser.evidence()
+    initial=inspector.snapshot(tab)
+    cross_ref=next(line.rsplit('[',1)[1][:-1] for line in initial.splitlines()
+        if '- button "Frame button" [@s' in line and inspector._refs[line.rsplit('[',1)[1][:-1]].target!=tab)
+    cross_binding=inspector._refs[cross_ref]
+    cross=inspector._frames(tab).frames[cross_binding.frame]
+    def nested():
+        inspector._evaluate(cross,"""(() => {
+            const frame=document.createElement('iframe');frame.id='transient';
+            frame.srcdoc='<button>Transient nested action</button>';
+            document.body.append(frame);return true;
+        })()""")
+        deadline=time.monotonic()+browser.settings['browser']['command_timeout']
+        while not inspector._evaluate(cross,"Boolean(document.querySelector('#transient').contentDocument.querySelector('button'))")['value']:
+            assert time.monotonic()<deadline,'Controlled nested frame did not load'
+        observed=inspector.snapshot(tab)
+        return inspector._refs[reference(observed,'Transient nested action')]
+    old_nested=nested()
+    armed=[None]
+    actual_errors=[]
+    effects=[]
+    native_command=inspector._cdp.command
+    native_receive=inspector._cdp.connection.recv
+    def receive(**kwargs):
+        raw=native_receive(**kwargs)
+        message=json.loads(raw)
+        if 'error' in message:
+            actual_errors.append({key:message['error'][key] for key in ('code','message')})
+        return raw
+    inspector._cdp.connection.recv=receive
+    def command(method,params=None,session=None):
+        if method=='Page.createIsolatedWorld' and armed[0] is not None and params['frameId']==armed[0].frame:
+            armed[0]=None
+            inspector._evaluate(cross,"document.querySelector('#transient').remove();true")
+        if method=='Input.dispatchMouseEvent':
+            effects.append(params['type'])
+        return native_command(method,params,session)
+    inspector._cdp.command=command
+    reviewer=r.SafetyReviewer()
+    native_review=reviewer.review
+    packets=[]
+    def review(**kwargs):
+        packets.append(kwargs)
+        result=native_review(**kwargs)
+        if len(packets)==2:
+            inspector._evaluate(cross,"document.querySelector('#transient').remove();true")
+        elif len(packets)==3:
+            browser.command('eval',"document.querySelector('#cross').remove();true")
+        return result
+    reviewer.review=review
+    gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
+    refs={}
+    def plan(index,kwargs):
+        previous=[message for message in kwargs['messages'] if message.get('role')=='tool']
+        if index==1:
+            return response([tool({'action':'snapshot','args':{}},call_id='initial-snapshot')],content='')
+        result=model_result(previous[-1])
+        if index==2:
+            assert result['status']=='success'
+            refs['root']=reference(result['data']['snapshot'],'Below fold')
+            refs['lost']=reference(result['data']['snapshot'],'Transient nested action')
+            assert inspector._refs[refs['lost']]==old_nested
+            armed[0]=old_nested
+            return response([tool({'action':'click','args':{'ref':refs['root']},
+                'activity':'Inspect intact root target despite missing nested content'},call_id='partial-click')],content='')
+        if index==3:
+            assert result['status']=='success' and browser.command('eval','window.counts.click')['result']==1
+            assert len(reviews)==len(packets)==1 and effects==['mousePressed','mouseReleased']
+            text=json.loads(reviews[0]['input'][0]['content'][0]['text'])
+            assert text['context']['inspection']=={'complete':False,'omitted_branches':1,'reason':'frame_unavailable'}
+            assert text['action']=={'ref':refs['root']} and text['context']['target']['target']['text']=='Below fold'
+            image=reviews[0]['input'][0]['content'][1]
+            assert image['type']=='input_image' and image['image_url'].startswith('data:image/png;base64,')
+            png=base64.b64decode(image['image_url'].split(',',1)[1])
+            assert png[:8]==b'\x89PNG\r\n\x1a\n' and struct.unpack('>II',png[16:24])==(1280,720)
+            assert old_nested.frame not in json.dumps(text['context']) and old_nested.target not in json.dumps(text['context'])
+            armed[0]=nested()
+            return response([tool({'action':'snapshot','args':{}},call_id='partial-snapshot')],content='')
+        if index==4:
+            assert result['status']=='success'
+            assert result['data']['snapshot'].startswith('[Scout inspection incomplete: 1 unavailable frame branch omitted.]\n'), repr(result['data']['snapshot'].splitlines()[0])
+            assert 'Transient nested action' not in result['data']['snapshot']
+            assert 'Below fold' in result['data']['snapshot']
+            return response([tool({'action':'click','args':{'ref':refs['lost']},
+                'activity':'Inspect previously observed nested target'},call_id='lost-target')],content='')
+        if index==5:
+            assert result=={'status':'rejected','reason':'Required browser target or frame is unavailable.',
+                'execution_started':False,'data':{}}
+            assert len(packets)==1 and effects==['mousePressed','mouseReleased']
+            assert browser.ready and not browser.failed
+            return response([tool({'action':'snapshot','args':{}},call_id='recovery-snapshot')],content='')
+        if index==6:
+            assert result['status']=='success' and 'Below fold' in result['data']['snapshot']
+            refs['root']=reference(result['data']['snapshot'],'Below fold')
+            nested()
+            return response([tool({'action':'click','args':{'ref':refs['root']},
+                'activity':'Inspect root target while unrelated frame changes during review'},call_id='sibling-change')],content='')
+        if index==7:
+            assert result['status']=='success' and browser.command('eval','window.counts.click')['result']==2
+            assert len(packets)==2 and packets[1]['context']['inspection']=={'complete':True,'omitted_branches':0}
+            return response([tool({'action':'click','args':{'ref':cross_ref},
+                'activity':'Inspect originally observed cross-origin target'},call_id='required-recheck-loss')],content='')
+        if index==8:
+            assert result=={'status':'rejected','reason':'Required browser target or frame is unavailable.',
+                'execution_started':False,'data':{}}
+            assert len(packets)==3 and effects==['mousePressed','mouseReleased']*2
+            assert browser.ready and not browser.failed
+            return response([tool({'action':'snapshot','args':{}},call_id='final-snapshot')],content='')
+        assert index==9 and result['status']=='success' and 'Below fold' in result['data']['snapshot']
+        assert browser.ready and not browser.failed
+        return response()
+    native_plan=plan
+    def checked_plan(index,kwargs):
+        try:
+            return native_plan(index,kwargs)
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            raise
+    with fake_main(checked_plan,iterations=10) as (agent,requests), offline_reviewer() as reviews:
+        with adapter.bind_browser(gate,action_reference=action_reference,on_fatal=partial(agent.interrupt,hard_cancel=True)):
+            outcome=agent.run_conversation('Inspect controlled rice sources and continue after unavailable embedded content.')
+            assert outcome.get('completed') and not outcome.get('interrupted')
+            assert browser.ready and not browser.failed
+            assert browser.command('eval','window.counts.click')['result']==2
+        assert len(requests)==9 and len(reviews)==len(packets)==3
+        assert actual_errors==[{'code':-32602,'message':'No frame for given id found'}]*2
+        assert effects==['mousePressed','mouseReleased']*2
+        stable_requests(requests)
+print('actual missing frames, partial PNG review, exact effects and native mission continuation verified')
+''', run=run, timeout=300)
+    assert run.container is None
+    inspected = subprocess.run(['docker','inspect',owned],capture_output=True,timeout=10)
+    assert inspected.returncode != 0 and b'no such object' in inspected.stderr.lower()

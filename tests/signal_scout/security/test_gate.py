@@ -24,11 +24,13 @@ def boundary(monkeypatch):
     browser.ready, browser.failed, browser.endpoint = True, False, 'ws://trusted-owned-browser'
     monkeypatch.setenv('BROWSER_CDP_URL', browser.endpoint)
     calls, effects, closed = [], [], []
-    checked = object()
+    checked = SimpleNamespace(_binding=None, interaction_point=None,
+        _scan=evidence_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned',loader='old',document=1)}))
 
     class Prepared:
         def __init__(self, values):
             self.values = deepcopy(values)
+            self._frames = checked._scan.frames
 
         def reviewer_input(self):
             return deepcopy(self.values)
@@ -44,6 +46,9 @@ def boundary(monkeypatch):
         return checked
 
     adapter = SimpleNamespace(tabs=lambda: [{'target_id': 'owned-page'}], prepare=prepare, recheck=recheck)
+    adapter._document_key = evidence_module.BrowserEvidence._document_key
+    adapter._run = lambda operation: operation()
+    adapter._snapshot = lambda tab, scan: adapter.snapshot(tab)
     browser.evidence = lambda: adapter
     def close():
         browser.ready, browser.failed = False, True
@@ -265,7 +270,7 @@ def test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_hea
     cdp_module = importlib.import_module('plugins.signal-scout.security._cdp')
     monkeypatch.setattr(boundary.gate, '_execute',
                         gate_module.BrowserActionGate._execute.__get__(boundary.gate))
-    boundary.adapter._frames = lambda _: {'root':SimpleNamespace(parent=None,session='owned')}
+    boundary.adapter._frames = lambda _: evidence_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned')})
     snapshots = []
     def snapshot(tab):
         snapshots.append(tab)
@@ -274,7 +279,8 @@ def test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_hea
     boundary.gate._navigation_retries = 0
     boundary.adapter._cdp = object()
     boundary.browser.verify_control = lambda: None
-    def navigation(action, root, effect, invoke):
+    def navigation(action, root, effect, invoke, *, baseline):
+        assert baseline == cdp_module._DocumentKey('owned','root','old',1)
         args = {"url":"http://public.test/attachment/fixture.bin"}
         def operation():
             boundary.effects.append(("Page.navigate", args))

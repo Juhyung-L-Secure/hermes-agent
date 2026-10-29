@@ -284,7 +284,7 @@ with Browser() as browser:
         reviewer.callback=move
         successful(gate,'click',{'ref':button})
         reviewer.callback=None
-        frame=adapter._frames(tab)[binding.frame]
+        frame=adapter._frames(tab).frames[binding.frame]
         assert adapter._evaluate(frame,"document.querySelector('#child').dataset.clicked")['value']=='true'
         input_ref=next(ref for ref,item in adapter._refs.items() if item.frame==binding.frame and
             item.document==binding.document and ref!=button)
@@ -360,7 +360,7 @@ with Browser() as browser:
     assert gate._selected==main
     deadline=time.monotonic()+browser.settings['browser']['command_timeout']
     while True:
-        frame=gate._root(adapter._frames(popup))
+        frame=gate._root(adapter._frames(popup).frames)
         if adapter._evaluate(frame,"document.readyState==='complete' && !!document.querySelector('#click')")['value']: break
         assert time.monotonic()<deadline
     size=adapter._evaluate(frame,'({width:innerWidth,height:innerHeight,scale:devicePixelRatio})')['value']
@@ -372,7 +372,7 @@ with Browser() as browser:
     successful(gate,'switch_tab',{'target_id':main})
     successful(gate,'navigate',{'url':'http://public.test/safe'})
     successful(gate,'back')
-    assert adapter._evaluate(gate._root(adapter._frames(main)),'location.pathname')['value']=='/gate'
+    assert adapter._evaluate(gate._root(adapter._frames(main).frames),'location.pathname')['value']=='/gate'
     assert reviewer.calls==['click','click','click','navigate']
     assert successful(gate,'close')=={'closed':True}
     assert dispatch(gate,'snapshot')['status']=='fatal' and browser.failed and not browser.ready
@@ -514,7 +514,7 @@ with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, op
     assert len(began)==1 and next(iter(began.values()))=='http://public.test/attachment/gate-fixture.bin'
     assert successful(gate,'snapshot')['snapshot']==adapter.snapshot(tab)
     successful(gate,'navigate',{'url':'http://public.test/safe'})
-    assert adapter._evaluate(gate._root(adapter._frames(tab)),'location.pathname')['value']=='/safe'
+    assert adapter._evaluate(gate._root(adapter._frames(tab).frames),'location.pathname')['value']=='/safe'
     assert reviewer.calls==['navigate','navigate'] and len(responses)==2
     assert browser.ready and not browser.failed and gate._selected==tab
 ''', run=run, timeout=150)

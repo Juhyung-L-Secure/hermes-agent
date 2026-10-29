@@ -9,7 +9,7 @@ import time
 
 from ._cdp import _NavigationOutcome, _ObservedEffect, _ProtocolError
 from .browser import Browser
-from .evidence import EvidenceFailure, EvidenceRejected
+from .evidence import EvidenceFailure, EvidenceRejected, _RequiredFrameUnavailable
 from .reviewer import ReviewResult
 from .settings import _ACTION_MODES
 from .urls import validate_url
@@ -241,14 +241,13 @@ class BrowserActionGate:
             raise EvidenceRejected("Browser typing target is not editable.")
         return frame, obj
 
-    def _observe_effect(self, action, root, effect, invoke):
+    def _observe_effect(self, action, root, effect, invoke, *, baseline):
         evidence = self._evidence
         evidence._command("Page.enable", session=root.session)
         evidence._command("Page.setLifecycleEventsEnabled", {"enabled": True}, root.session)
-        baseline = evidence._document_key(evidence._frames(self._selected))
         connection = evidence._cdp
         return invoke(lambda: connection.observe(effect, baseline,
-            lambda: evidence._document_key(evidence._frames(self._selected, root_only=True)),
+            lambda: evidence._document_key(evidence._frames(self._selected, root_only=True).frames),
             lambda: invoke(lambda: self._navigation_page(connection), phase_name="observation"),
             explicit=action == "navigate", interaction=action in {"click", "keypress"}))
 
@@ -285,12 +284,14 @@ class BrowserActionGate:
             invoke(self.close)
             return {"closed": True}
         tab = args["target_id"] if action == "switch_tab" else self._selected
-        frames = evidence._frames(tab)
+        scan = checked._scan if action in _REVIEWED else evidence._frames(tab)
+        frames = scan.frames
         root = self._root(frames)
         command = lambda method, params: invoke(lambda: evidence._command(method, params, root.session))
         if action == "navigate":
             return self._observe_effect(action, root,
-                lambda: evidence._command("Page.navigate", {"url": args["url"]}, root.session), invoke)
+                lambda: evidence._command("Page.navigate", {"url": args["url"]}, root.session), invoke,
+                baseline=evidence._document_key(frames))
         elif action == "click":
             x, y = checked.interaction_point
             def click():
@@ -298,7 +299,7 @@ class BrowserActionGate:
                     self._live()
                     evidence._command("Input.dispatchMouseEvent", {"type": kind, "x": x, "y": y,
                         "button": "left", "buttons": buttons, "clickCount": 1}, root.session)
-            return self._observe_effect(action, root, click, invoke)
+            return self._observe_effect(action, root, click, invoke, baseline=evidence._document_key(frames))
         elif action == "type":
             frame, obj = self._type_target(checked._binding, frames)
             try:
@@ -323,14 +324,15 @@ class BrowserActionGate:
                 self._live()
                 evidence._command("Input.dispatchKeyEvent", {"type": "keyUp", **{
                     key: value for key, value in params.items() if key not in {"text", "unmodifiedText"}}}, root.session)
-            return self._observe_effect(action, root, keypress, invoke)
+            return self._observe_effect(action, root, keypress, invoke, baseline=evidence._document_key(frames))
         elif action == "back":
             history = evidence._command("Page.getNavigationHistory", session=root.session)
             if history["currentIndex"] == 0:
                 raise EvidenceRejected("Browser history is unavailable.")
             params = {"entryId": history["entries"][history["currentIndex"] - 1]["id"]}
             return self._observe_effect(action, root,
-                lambda: evidence._command("Page.navigateToHistoryEntry", params, root.session), invoke)
+                lambda: evidence._command("Page.navigateToHistoryEntry", params, root.session), invoke,
+                baseline=evidence._document_key(frames))
         elif action == "scroll":
             pixels = self._scroll_pixels * (1 if args["direction"] == "down" else -1)
             invoke(lambda: evidence._evaluate(root, f"window.scrollBy(0, {pixels})"))
@@ -338,15 +340,17 @@ class BrowserActionGate:
             invoke(lambda: evidence._command("Target.activateTarget", {"targetId": tab}))
             self._selected = tab
         elif action == "snapshot":
-            return {"snapshot": invoke(lambda: evidence.snapshot(tab)), "target_id": tab}
+            return {"snapshot": invoke(lambda: evidence._run(lambda: evidence._snapshot(tab, scan))), "target_id": tab}
         elif action == "screenshot":
             screenshot, _ = invoke(lambda: evidence._capture(root))
-            return {"screenshot": {"bytes": screenshot, "mime_type": "image/png"}, "target_id": tab}
+            return {"screenshot": {"bytes": screenshot, "mime_type": "image/png"}, "target_id": tab,
+                    **({"inspection": scan.summary()} if scan.omitted else {})}
         elif action == "get_images":
             images = invoke(lambda: evidence._evaluate(root, """[...document.images].map(img => ({
                 src:img.src, alt:img.alt, width:img.naturalWidth, height:img.naturalHeight
             })).filter(img => img.src && !img.src.startsWith('data:'))"""))["value"]
-            return {"images": images, "target_id": tab}
+            return {"images": images, "target_id": tab,
+                    **({"inspection": scan.summary()} if scan.omitted else {})}
         if action in _POST_SNAPSHOT:
             return {"snapshot": invoke(lambda: evidence.snapshot(self._selected), phase_name="observation"),
                     "target_id": self._selected}
@@ -406,7 +410,7 @@ class BrowserActionGate:
                         prepared = self._evidence.prepare(target_id=self._selected, action_type=action,
                             action=args, activity=current.get("activity"), capture=mode == "review_required")
                         if action == "type":
-                            frame, obj = self._type_target(prepared._binding, self._evidence._frames(self._selected))
+                            frame, obj = self._type_target(prepared._binding, prepared._frames)
                             self._evidence._command("Runtime.releaseObject", {"objectId": obj}, frame.session)
                         if mode == "review_required":
                             phase = "review"
@@ -450,13 +454,20 @@ class BrowserActionGate:
                 return self._result("success", started=started, data=data)
         except _Stopped as error:
             return self._fatal(str(error), started)
+        except _RequiredFrameUnavailable as error:
+            if not started:
+                return self._result("rejected", str(error))
+            diagnostic()
+            return self._fatal("Browser action failed.", True)
         except EvidenceRejected:
             if not started:
                 return self._result("rejected", "Browser context changed.")
             diagnostic()
             return self._fatal("Browser action failed.", True)
         except _ProtocolError as error:
-            if error.stale and not started:
+            if error.frame_unavailable and not error.stale and not started:
+                return self._result("rejected", "Required browser target or frame is unavailable.")
+            if (error.stale or error.frame_unavailable) and not started:
                 return self._result("rejected", "Browser context changed.")
             diagnostic()
             return self._fatal("Browser action failed.", started)

@@ -104,7 +104,7 @@ def recovery_boundary(boundary, monkeypatch, outcomes, retries=1):
     boundary.gate._navigation_retries = retries
     boundary.adapter._cdp = object()
     boundary.browser.verify_control = lambda: None
-    boundary.adapter._frames = lambda _: {'root':SimpleNamespace(parent=None,session='owned')}
+    boundary.adapter._frames = lambda _: evidence_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned')})
     boundary.adapter.snapshot = lambda _: '- heading "Current incomplete observation"'
     boundary.adapter._page = lambda target: cdp_module._Page(cdp_module._DocumentKey('owned','root','current',2),
         boundary.adapter.snapshot(target), 'http://public.test/current', 'loading')
@@ -434,11 +434,12 @@ def test_AG_008_page_capture_binds_ax_url_readiness_to_one_document(changed):
     def frame(document):
         return {'root':SimpleNamespace(target='tab',session='owned',loader='current',document=document,parent=None)}
     pending=iter([frame(2),frame(3 if changed else 2)])
-    adapter._frames=lambda _: next(pending)
+    adapter._frames=lambda _: evidence_module._FrameScan(next(pending))
     calls=[]
-    def snapshot(tab,frames):
-        calls.append((tab,frames['root'].document));return '- heading "Coherent AX"'
-    adapter._snapshot=snapshot
+    def accessibility(scan):
+        calls.append(('tab',scan.frames['root'].document));return {}
+    adapter._accessibility=accessibility
+    adapter._snapshot_text=lambda *args: '- heading "Coherent AX"'
     adapter._evaluate=lambda *args: {'value':{'url':'http://public.test/current','readyState':'loading'}}
     if changed:
         with pytest.raises(evidence_module.EvidenceFailure,match='Required browser evidence check failed.'):
@@ -521,7 +522,7 @@ def test_AG_008_explicit_redirect_requires_observed_successor_identity(started,e
 
 
 @pytest.mark.parametrize('unavailable', ['selected-child','other-tab-iframe'])
-def test_AG_008_root_readiness_does_not_relax_required_child_capture(unavailable):
+def test_AG_008_AE_007_root_readiness_and_partial_child_capture(unavailable):
     browser=SimpleNamespace(failed=False)
     adapter=evidence_module.BrowserEvidence(browser)
     def command(method,params=None,session=None):
@@ -539,16 +540,23 @@ def test_AG_008_root_readiness_does_not_relax_required_child_capture(unavailable
         if method=='Page.createIsolatedWorld':
             if params['frameId']!='root': raise cdp_module._ProtocolError({'code':-32602,'message':'No frame for given id found'})
             return {'executionContextId':10}
-        if method=='Runtime.evaluate': return {'result':{'objectId':'root-document'}}
+        if method=='Runtime.evaluate':
+            return {'result':{'objectId':'root-document'}} if params['expression']=='document' else {
+                'result':{'value':{'url':'http://public.test/current','readyState':'complete'}}}
         if method=='DOM.describeNode': return {'node':{'backendNodeId':2}}
+        if method=='Accessibility.getFullAXTree':
+            return {'nodes':[{'nodeId':'heading','frameId':'root','role':{'value':'heading'},'name':{'value':'Available root'}}]}
         assert method=='Runtime.releaseObject'
         return {}
     adapter._command=command
-    key=adapter._document_key(adapter._frames('tab',root_only=True))
+    key=adapter._document_key(adapter._frames('tab',root_only=True).frames)
     assert key==cdp_module._DocumentKey('owned','root','current',2) and not browser.failed
-    with pytest.raises(evidence_module.EvidenceFailure,match='Required browser evidence check failed.'):
-        adapter._page('tab')
-    assert browser.failed
+    page=adapter._page('tab')
+    notice = ('1 unavailable frame branch omitted' if unavailable=='selected-child'
+              else '1 iframe target unavailable or unassociated')
+    assert page.snapshot=='[Scout inspection incomplete: '+notice+'.]\n- heading "Available root"'
+    assert page.key==key and page.url=='http://public.test/current' and page.ready_state=='complete'
+    assert not browser.failed
 
 
 def test_AG_008_gate_observes_ready_root_without_child_inspection(boundary):
@@ -562,7 +570,7 @@ def test_AG_008_gate_observes_ready_root_without_child_inspection(boundary):
     def frames(tab,*,root_only=False):
         if changed and not root_only:
             raise cdp_module._ProtocolError({'code':-32602,'message':'No frame for given id found'})
-        return {'root':SimpleNamespace(parent=None,session='owned',loader='current' if changed else 'old',document=2 if changed else 1)}
+        return evidence_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned',loader='current' if changed else 'old',document=2 if changed else 1)})
     boundary.adapter._frames=frames
     page=cdp_module._Page(cdp_module._DocumentKey('owned','root','current',2),
         '- heading "Selected ready document"','http://public.test/current','interactive')
@@ -573,6 +581,6 @@ def test_AG_008_gate_observes_ready_root_without_child_inspection(boundary):
         changed=True
         connection.command('Page.navigate',{'url':'http://public.test/current'},'owned')
     result=boundary.gate._observe_effect('navigate',SimpleNamespace(session='owned'),effect,
-        lambda operation,**kwargs:operation())
+        lambda operation,**kwargs:operation(), baseline=cdp_module._DocumentKey('owned','root','old',1))
     assert result.outcome.value=='ready' and result.page==page
     assert [entry['method'] for entry in sent]==['Page.enable','Page.setLifecycleEventsEnabled','Page.navigate']
