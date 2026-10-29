@@ -22,7 +22,6 @@ def research(request, config, console):
     from run_agent import AIAgent
     from ..security.browser import Browser
     from ..security.gate import BrowserActionGate
-    from ..security.reviewer import SafetyReviewer
 
     discover_plugins()
     guidance, loaded, missing = build_preloaded_skills_prompt(["signal-scout:browser-research"])
@@ -49,11 +48,10 @@ def research(request, config, console):
             raise RuntimeError("Scout research tool exposure invalid.")
         if agent.run_budget_seconds is not None:
             raise RuntimeError("Scout research budget must be disabled in operating config.")
-        console.progress("Scout mission started. Model %s. Reviewer %s. Research skill loaded.",
-                         model, config["scout_reviewer"]["model"])
+        console.progress("Scout mission started. Model %s. Research skill loaded.", model)
         with Browser() as browser:
             target = browser.evidence().tabs()[0]["target_id"]
-            gate = BrowserActionGate(browser, reviewer=SafetyReviewer(), target_id=target)
+            gate = BrowserActionGate(browser, target_id=target)
             with adapter.bind_browser(gate, on_fatal=partial(agent.interrupt, hard_cancel=True),
                                       action_reference=action_reference):
                 return agent.run_conversation(guidance + "\n\nBrowser action reference:\n" + action_reference

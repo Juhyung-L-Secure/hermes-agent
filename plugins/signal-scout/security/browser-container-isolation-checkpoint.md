@@ -1,5 +1,7 @@
 # Browser-container isolation: fix round 1 checkpoint
 
+Historical document. Reviewer-specific requirements and approval-context checks were superseded by reviewer retirement on 2026-10-29. Current behavior lives in owning `specs.json` and READMEs. Original committed reviewer remains in `archive/scout-safety-reviewer-2026-10-29`. Independent protection and observation requirements remain current where repeated in those contracts.
+
 Historical verification record. Embedded checker paths, selected-ID commands, and checker counts below describe the retired implementation. Use the [standalone checker workflow](../README.md#validate-spec-links) for current setup and validation commands. Past results remain historical evidence.
 
 ## Final handoff — 2026-09-18

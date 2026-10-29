@@ -31,15 +31,9 @@ MAIN = (
     ReplayStep("final-source", 7.0, "success", "navigate", {"url": "http://public.test/inactivity-replay/final"}),
     ReplayStep("final-answer", 0, "success", "answer", {}),
 )
-REVIEWS = (
-    ReplayStep("first-navigation-review", 2.443, "review", "approve", {}),
-    ReplayStep("fresh-recovery-review", 2.543, "review", "deny", {}),
-    ReplayStep("alternate-navigation-review", 1.286, "review", "approve", {}),
-    ReplayStep("final-navigation-review", 2.867, "review", "approve", {}),
-)
 _began = time.monotonic()
 _lock = threading.Lock()
-_main_calls = _review_calls = 0
+_main_calls = 0
 _retry_body = None
 _browser = None
 _installed = False
@@ -207,43 +201,33 @@ def install_observers():
 
 
 def send(self, request, **kwargs):
-    global _main_calls, _review_calls, _retry_body
+    global _main_calls, _retry_body
     if request.url.host != 'chatgpt.com' or request.url.path != '/backend-api/codex/responses':
         if request.url.host in {'127.0.0.1', 'localhost'}:
             return _native_send(self, request, **kwargs)
         raise AssertionError('Unexpected external HTTP request in offline inactivity fixture')
     install_observers()
     body = json.loads(request.content)
-    reviewer = body['model'] == 'gpt-6-luna'
     with _lock:
-        if reviewer:
-            step = REVIEWS[_review_calls]
-            _review_calls += 1
-        else:
-            assert body['model'] == 'gpt-5.6-luna'
-            assert [tool['name'] for tool in body['tools']] == ['browser_scout']
-            step = MAIN[_main_calls]
-            _main_calls += 1
-    if reviewer:
-        assert 'tools' not in body
+        assert body['model'] == 'gpt-5.6-luna'
+        assert [tool['name'] for tool in body['tools']] == ['browser_scout']
+        step = MAIN[_main_calls]
+        _main_calls += 1
     observe('response-start', step=step.name, delay=step.delay, expected=step.expected, **state())
-    if not reviewer:
-        if step.expected == 'initial':
-            assert 'CLI inactivity replay' in json.dumps(body['input'])
-        elif step.expected == 'same-history':
-            assert body == _retry_body, 'Native retry changed completed browser history'
-        else:
-            latest = _result(body)
-            observe('native-tool-result', step=step.name, status=latest['status'],
-                    execution_started=latest['execution_started'])
-            assert latest['status'] == step.expected, (step.name, latest['status'])
-        if step.name == 'stalled-third-call':
-            _retry_body = deepcopy(body)
-            return stalled_response(self, request, body, step, kwargs)
+    if step.expected == 'initial':
+        assert 'CLI inactivity replay' in json.dumps(body['input'])
+    elif step.expected == 'same-history':
+        assert body == _retry_body, 'Native retry changed completed browser history'
+    else:
+        latest = _result(body)
+        observe('native-tool-result', step=step.name, status=latest['status'],
+                execution_started=latest['execution_started'])
+        assert latest['status'] == step.expected, (step.name, latest['status'])
+    if step.name == 'stalled-third-call':
+        _retry_body = deepcopy(body)
+        return stalled_response(self, request, body, step, kwargs)
     time.sleep(step.delay)
     observe('response-return', step=step.name, **state())
-    if reviewer:
-        return _reply(request, body, [_message(json.dumps({'verdict': step.action}))])
     if step.action == 'answer':
         observe('before-final-response', **state())
         deadline = time.monotonic() + 20

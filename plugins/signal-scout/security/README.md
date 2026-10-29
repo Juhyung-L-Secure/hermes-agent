@@ -4,8 +4,7 @@ Run-owned browser protection and guarded action execution. Bootstrap/status
 remain status-only; native model-tool binding is owned by `../browser_tools/`.
 [Original isolation brief](browser-container-isolation-brief.md) is historical;
 current browser-only contracts/Docker guide supersede its Hermes-firewall slice.
-[Action review plan](browser-action-review-plan.md) records earlier proposals;
-[confirmed routing brief](../browser-gate-routing-brief.md) owns this gate slice.
+[Action review plan](browser-action-review-plan.md) and [routing brief](../browser-gate-routing-brief.md) preserve historical reviewer design. Current gate contracts live in `specs.json`.
 Mission control remains unimplemented. Download denial and window sizing persist.
 
 | Artifact | Responsibility |
@@ -21,13 +20,11 @@ Mission control remains unimplemented. Download denial and window sizing persist
 | `browser.py` | Existing native Hermes remote-CDP path and actual sandbox attestation |
 | `runtime_logging.py` | Native diagnostics, fixed protection events, rotation, best-effort delivery |
 | `settings.py` | Validated image-owned values and host/image consistency digest |
-| `reviewer.py` | Fresh safety-only request, native subscription adapter, strict binary verdict/deadline/retry boundary |
 | `../../../docker/signal-scout/browser_run.py` | Trusted host ownership, single-run lock, container creation/removal, bounded smoke |
 | `../../../docker/signal-scout/browser_diagnostics.py` | Current-run collection, native redaction worker, console delivery, and selected container state |
-| `evidence.py` / `_cdp.py` | Compact exact refs, preparation, viewport capture and recheck |
+| `evidence.py` / `_cdp.py` | Compact exact refs, current geometry, explicit PNG and document observations |
 | `gate.py` | Trusted run binding, explicit permissions, exact guarded execution and fatal closure |
-| `reviewer-policy.md` | Single authoritative read-only reviewer instructions |
-| `specs.json` | Browser protection, reviewer, evidence and gate contracts plus uncovered mission security, media quarantine and authenticated-account promises |
+| `specs.json` | Browser protection, ordinary inspection and gate contracts plus uncovered mission security, media quarantine and authenticated-account promises |
 | `../../../tests/signal_scout/security/` | Policy/logging unit checks and real-container boundary/lifetime fixtures |
 
 ## Boundary and control
@@ -76,7 +73,7 @@ bounded Docker-command allowance, including supported grace values above 60s.
 
 Config owns `.2:3128` proxy/`.3` Hermes/`.4` browser on internal `172.30.242.0/29`; host checks Compose agrees. Separate viewer `172.30.243.0/30`/.2 bridge joins only firewall/browser namespace for localhost publication. Firewall permits only its gateway's viewer ingress/established replies; other traffic stays denied on both interfaces. Hermes reaches private `.4:9223`; relay/launcher only owned `127.0.0.1:9222`. Proxy admits browser only. Remaining IPv4/IPv6/direct DNS denied; CDP stays unpublished. Hermes outbound/DNS remain direct, without Hermes host/LAN isolation.
 
-`browser.mode` explicitly selects headless (default) or headed/container-local Xvfb. `browser.viewer` defaults false and requires headed when true. Native x11vnc UNIX socket → websockify/packaged noVNC → host `127.0.0.1:6080`; no host display/device mounts or fifth service. Firewall adds only host-gateway viewer ingress/established replies. HTTP/WS require fresh per-run Basic auth and local Host/Origin; secret lives in tmpfs, never Chrome/Scout environment, process arguments/readiness/logs. Trusted `BrowserRun.viewer_access()` returns operator login after owned readiness; disabled viewer creates no listener/secret. Viewer-tab closure leaves browser/mission running. Human click/type bypasses LLM review, while Scout review and stale-context recheck stay enforced.
+`browser.mode` explicitly selects headless (default) or headed/container-local Xvfb. `browser.viewer` defaults false and requires headed when true. Native x11vnc UNIX socket → websockify/packaged noVNC → host `127.0.0.1:6080`; no host display/device mounts or fifth service. Firewall adds only host-gateway viewer ingress/established replies. HTTP/WS require fresh per-run Basic auth and local Host/Origin; secret lives in tmpfs, never Chrome/Scout environment, process arguments/readiness/logs. Trusted `BrowserRun.viewer_access()` returns operator login after owned readiness; disabled viewer creates no listener/secret. Viewer-tab closure leaves browser/mission running. Human click/type and Scout input use their native paths. Manual changes can stale an observed original reference before its next Scout action.
 Pairing: viewer/launcher/settings/firewall/Docker mapping ↔ SR_011–SR_013 ↔ `test_browser_modes.py`; [Docker guide](../../../docker/signal-scout/README.md) owns access/rebuild steps.
 
 Source-IP checks are not cryptographic authentication. Authorized trusted code
@@ -105,9 +102,9 @@ ownership and deliberately clean before another run.
 
 Hermes diagnostics preserve logger names, formatted messages, session context, exceptions, and stacks under native secret redaction. The Scout-owned WARNING console uses the same native redactor. Other handlers keep their own formatters. Native diagnostics may retain URLs, request/evidence/response content, and provider errors, including SDK DEBUG records. Native secret redaction does not remove all sensitive content.
 
-Unexpected browser failures record action, preparation/review/recheck/execution/observation phase, monotonic elapsed milliseconds, and original exception traceback before generic result conversion. CDP diagnostics add method, configured timeout, response receipt, and send/command-response/navigation-load wait state. Native protocol code/message, navigation `errorText`, and selected Runtime exception text/description/class name are recorded before callers discard them. Evidence inspection also records original exceptions before its generic failure conversion. No command parameters, complete packets, proposals, screenshots, or review evidence are dumped by these diagnostics. Expected stale/no-hit protocol detail uses INFO; other unexpected failures use ERROR. Exact native canceled-download success remains success without an ERROR record. Invalid returned reviewer results produce fixed failure metadata without a fabricated traceback. Diagnostic delivery is best effort and cannot replace results or prevent owned closure. Existing deadlines, retries, and enforcement stay unchanged. `SR_022` owns this contract; diagnostics do not establish the cause of the earlier rice mission failure.
+Unexpected browser failures record action, preparation/execution/observation phase, monotonic elapsed milliseconds, and original exception traceback before generic result conversion. CDP diagnostics add method, configured timeout, response receipt, and send/command-response/navigation-load wait state. Native protocol code/message, navigation `errorText`, and selected Runtime exception text/description/class name are recorded before callers discard them. Evidence inspection also records original exceptions before its generic failure conversion. No command parameters, complete packets, proposals, screenshots, or website bodies are dumped by these diagnostics. Expected stale/no-hit protocol detail uses INFO; other unexpected failures use ERROR. Exact native canceled-download success remains success without an ERROR record. Diagnostic delivery is best effort and cannot replace results or prevent owned closure. Existing deadlines, retries, and enforcement stay unchanged. `SR_022` owns this contract; diagnostics do not establish the cause of the earlier rice mission failure.
 
-Scout protection events retain timestamp, level, component, and fixed event class. Reviewer completion events add only validated verdict, action type, duration in milliseconds, attempt count, and available adapter token counts. These producers do not interpolate raw browser/CDP arguments/results, screenshots, bodies, cookies, credentials, secret configuration, or provider exceptions. Unknown review fields and invalid types are removed before queueing.
+Scout protection events retain timestamp, level, component, and fixed event class. Their producers omit raw browser/CDP arguments/results, screenshots, bodies, cookies, credentials, secret configuration, and provider exceptions.
 
 Hermes writes `agent.log` and `errors.log` at `/var/lib/scout/logs`. Proxy and browser firewall write `proxy.log` and `firewall.log` at `/var/log/scout`. All three services share the writable `scout-logs` volume and can access its files. Browser has no log-volume mount. Renamed firewall appends to `firewall.log`, which can retain older Hermes-firewall events. Historical `browser-firewall.log` and backups remain untouched, with no migration or wiping.
 
@@ -123,87 +120,22 @@ Tests make no model calls or login changes.
 
 Use the [standalone checker workflow](../README.md#validate-spec-links) for setup and full or feature-file validation. Covered and uncovered contracts stay in the same owning spec file. Links prove collection, not test success or assertion quality. Broader IN_001, SR_015–SR_018, SR_020, and SR_021 remain incomplete, including mission/report attestation, whole-mission policy, evidence storage, media quarantine, and authenticated browsing.
 
-## Guarded actions, evidence and reviewer
+## Browser actions and current observations
 
-Trusted started/attested `Browser`, `SafetyReviewer` and exact initial page ID →
-`BrowserActionGate(browser, reviewer=reviewer, target_id=target_id)` → synchronous
-`dispatch({action,args,activity?})`. Validate/copy → fresh preparation/review →
-timely approve → original-context recheck → exact checked execution → fresh AX.
-Model cannot supply browser, evidence, verdict or policy. No reusable approval.
+`BrowserActionGate(browser, target_id=target_id)` binds one started owned Browser and exact initial page ID. `dispatch({action,args,activity?})` copies and validates a proposal, resolves the current original target, executes one native effect and returns current observations. Model input cannot supply browser identity, policy, callback or executor.
 
-`browser.action_permissions`: `blocked`, `review_required`, `allowed_without_review`;
-absent permission blocks. Initial click `{ref}`, navigate `{url}`, type `{ref,text}`,
-keypress `{key}` require review/nonempty activity. Back `{}`, scroll `{direction:
-"up"|"down"}`, snapshot `{}`, screenshot `{}`, get_images `{}`, list_tabs `{}`,
-switch_tab `{target_id}`, close `{}` skip review, never code protections. Unsupported
-review rejects. `browser.scroll_pixels` starts at 500. Popups never auto-select;
-switch requires existing exact ID.
-Results: `status`, fixed sanitized `reason`, `execution_started`, `data`. Rejected
-means no proposed effect/healthy continuation; fatal terminally closes gate/Browser.
-An acknowledged navigation load timeout, exhausted loading errors, or a denied/stale error retry returns `incomplete`, fixed warning, current compact AX, and selected target ID while control stays healthy. `execution_started` remains true after any earlier attempt. Hermes can choose another observation, an explicit retry, or another URL in its next ordinary turn.
-Adapter stops native run; host removes exact owner. `close()` revokes pending calls.
-Started means dispatch began, not server-effect proof. Late review/interrupt/terminal/
-lost control cannot authorize dispatch. Click/nav/type/key/back/scroll/switch return
-fresh `data.snapshot`/selected `target_id`, no automatic main-agent screenshot.
-Explicit screenshot returns in-memory PNG `data.screenshot.bytes`/`mime_type`.
-AX retains normal observed field values, including typed text; never copy private
-requests/review packets into results. Reviewer screenshots remain raw/unmasked.
-`_cdp.py` owns private synchronous transport with existing `browser.command_timeout`
-for connect/commands/close. Evidence monotonic `@s` refs bind original node/tab/
-frame/document/loader. Same-origin sessions and explicit cross-origin targets;
-no label/role fallback/full DOM/HTML/raw-CDP tool. Isolated inspection follows
-closed roots/active descendants' computed AX; `Browser.close` closes connection.
+`browser.action_permissions` accepts `allowed` and `blocked`. Missing entries deny access. Canonical actions start allowed. Optional activity describes progress. Unknown actions, extra fields, invalid references, keys or URLs reject without proposed effect. Selection uses exact existing tab IDs. Popups never auto-select. Scroll distance comes from `browser.scroll_pixels`.
 
-Preparation requires target/action/activity and exact schemas above; exempt
-interaction preparation skips capture/activity, not exact checks. Scroll reveals
-original/focused node without click/type/submit/key/focus effects. Page-level keys
-invent no target; navigation never visits destination. Packet holds action plus
-page/target/AX/link/form/focus/submitter overrides, point and raw viewport PNG.
-Viewport × scale must match dimensions; popup stays native. Private binding/
-baseline separate. No new caps/truncation/crop/shrink/secret masking. Relevant
-secrets may reach provider, never unrelated cookies/auth stores. Preparation keeps evidence in memory and omits it from repr, emitted events, and separate files/archives. Native backend diagnostics follow the logging boundary above.
+Current frame scan, original binding, keyboard focus chain and interaction point stay local to one operation. Immutable `@s` references bind exact original tab/frame/document/loader/node. Click/type reveal that node and verify current visibility, iframe owners, coordinate projection and hit target. Typing verifies editability and exact focus around native replacement/insertion. Keypress resolves actual current focus, including cross-origin frames and closed author shadow roots, and preserves that focus after revealing it. Page-level keys invent no element. No semantic reacquisition, replacement node, action ticket, approval baseline or staged prepare/commit API exists.
 
-Known unavailable iframe branches produce partial inspection rather than browser failure. Snapshots prefix a fixed Scout notice; reviewer context includes inspection completeness and omission counts. Unassociated iframe targets have a separate count and are not claimed as selected-page children. Screenshot and image observations disclose partial inspection in `data.inspection`. Missing required target, ancestor or keyboard focus rejects the proposal and keeps healthy browsing available. Exact identities and hit checks remain required. Previously recognized selected-tab or document loss before effect rejects the proposal; no partial capture substitutes for a missing selected root. Unknown protocol, transport, owned-control and required PNG failures retain fatal handling.
+Known unrelated iframe loss produces an explicit partial-inspection notice while available branches remain usable. Missing required original target or focus rejects before proposed effect. Unknown protocol, lost control, required inspection or requested capture failures remain fatal. The gate verifies owned control and the same private CDP connection before new effects. Fatal closes the gate/Browser, then the native adapter hard-interrupts the agent. Host owner removes the exact browser container and preserves helper state and persistent volumes.
 
-Recheck requires same action and original preparation. Original tab/frame/
-document/node, relevant semantics/destination/form/active descendant and actual keyboard focus must match.
-Current visible unobstructed point is recomputed, including iframe geometry.
-Same-node movement/unrelated pixels pass; whole target need not fit. `CheckedAction`
-carries original private binding/current point and the verified frame scan, never approval. Gate reuses that scan for execution rather than traversing again. Gate consumes it
-directly: type focuses/fills exact node; keys preserve focus/native chord defaults.
-Check is not atomic; hidden JavaScript/server effects remain outside guarantees.
-Expected staleness/detachment/layout loss/change/hidden/covered raises sanitized `EvidenceRejected`,
-leaving healthy browser usable. Required capture/check machinery failure marks
-browser unusable and propagates sanitized `EvidenceFailure` for existing teardown.
-No forced interaction, stale-action retry, replacement, or stale-image fallback.
+Results retain `status`, sanitized `reason`, `execution_started` and `data`. Click/navigate/type/keypress/back/scroll/switch return fresh compact AX and selected target. Native untrusted-tool framing treats page output as data. Explicit screenshot alone captures a full current viewport PNG, validates dimensions and returns native multimodal image content. Ordinary actions capture no implicit screenshot. Independently observed AX values can include typed text. Started means dispatch began, not proof of a completed server effect.
 
-Explicit `navigate`, history `back`, and navigation caused by one approved click or keypress share one synchronous action-scoped observer. It subscribes before execution, retains pre-acknowledgment events, and validates every effect command reply. Mouse press/release and key down/up each require their own response. `browser.command_timeout` remains the independent per-command response deadline, initially60seconds. Missing replies never become incomplete observations.
+Navigation, click, keypress and history share selected-document observation. Each effect command needs its own acknowledgment under `browser.command_timeout`. Matching root/session/loader DOMContentLoaded permits early success while images or application data remain pending. `browser.observation_timeout` bounds document observation after final acknowledgment; `browser.interaction_observation_timeout` bounds ordinary click/key detection. Healthy expiry returns current AX, URL and readiness as `incomplete`, with no replay. Missing acknowledgments remain fatal. Only explicit-navigation loading errors retry the copied original URL, using current permissions and owned control. A stale or blocked recovery attempt returns current incomplete observations without another effect. Same-document recovery after a loading error stays incomplete. Native download cancellation retains its successful enforcement outcome.
 
-`browser.observation_timeout`, initially5seconds, starts after the final effect acknowledgment. The observer stops at matching initial-document `DOMContentLoaded` or that absolute deadline. Redirects and unrelated events cannot restart it. Readiness requires the selected session/root/loader, observed successor lineage where needed, authoritative document inspection, and agreement with the final capture's private document key. Same-document movement and native BFCache restoration use their own facts. An old page or about:blank cannot prove destination readiness. Required AX/URL capture checks identity again; a document change during capture remains fatal.
+## Reviewer retirement
 
-`browser.interaction_observation_timeout`, initially0.25seconds, bounds an ordinary non-navigation click/key observation. Navigation detected during that interval uses the original final-acknowledgment-plus-document-allowance deadline. Later delayed navigation remains possible. Both observation settings are required finite positive numbers no greater than120seconds; the interaction interval cannot exceed the document allowance. Type and scroll retain their existing observation behavior.
+Independent action-level safety adjudication, implicit reviewer screenshots, semantic form/context packets, cross-review comparisons, auxiliary safety requests, reviewer settings/policy, verdict retries/deadlines and review progress/events are retired. Main-agent guidance treats page instructions as untrusted and discourages unauthorized purchases, account creation, posting, messaging, uploads and account changes. This guidance does not independently classify or enforce website effects. Container, network, browser-only tools and native download controls retain their narrower guarantees. Shared frame/Chromium observation failures remain possible.
 
-Observed actions return `data.observation` with actual `url`, native `ready_state`, `document_relation` to the baseline, `state`, `commands_acknowledged`, `action_completed`, configured `timeout_seconds`, and measured `elapsed_seconds`. Explicit navigation also returns separate `data.requested_url`. Initial readiness does not promise images or later application data are complete. Healthy observation expiration returns `incomplete` with current AX/URL and a fixed reason naming the configured duration. Capture and control commands have their own deadlines, so this allowance is not a total-tool SLA. No input or history action automatically replays.
-
-Only explicit `navigate` uses required nonnegative integer `browser.navigation_retries`, initiallyone. It bounds recovery from acknowledged ordinary loading errors. Every retry uses the copied original URL, current permissions, fresh evidence/review, and exact recheck. A denied or stale retry returns current incomplete observations without another effect. A same-document reply after a loading error stays incomplete. Completed exact native download cancellation remains successful policy enforcement, with fresh selected-page AX and no claim that a destination loaded. Missing/malformed replies, lost control/ownership, interruption, and required review/evidence failures remain fatal. No stopLoading, reconnect, browser replacement, or cross-turn result cache is added.
-
-Native transport logs include explicit UTC time, actual local/remote control endpoints, command ID/method/session, send/reply duration and response presence. Selected lifecycle/navigation events log frame/loader/name, dialogs log type, and detachment/crash events log classification. Observation expiration is an INFO event distinct from command-response failure. These records add no raw packet, dialog text, command arguments/results, body, screenshot or review archive. They do not establish the cause of the previously missing second response.
-
-`SafetyReviewer` reads single authoritative `reviewer-policy.md` at construction
-and each fresh review, independently from evidence/history. Missing/unreadable/
-empty/invalid encoding fails explicitly; no caller override or embedded backup.
-Runtime packages root-owned `0444` file on read-only root. Policy permits ordinary
-research, cookie consent including Accept all, and safe login to dedicated Scout
-accounts. Purchases/account creation/uploads/posting/messaging/likes/follows/
-account changes remain forbidden. Uncertainty means deny; relevance is not reviewed.
-
-Fresh native `openai-codex` → completed Responses → strict single approve/deny JSON
-→ sanitized `ReviewResult`. Tools/duplicates/extra fields/failed/incomplete/truncated
-responses fail technically. Defaults remain gpt-6-luna/none/180 seconds per attempt/
-one technical retry; deny never retries. Wrong route/model/SDK retries/effort clamp
-fail. Late results cannot approve. Returned results and main-agent history contain sanitized outcomes and known token metadata. Reviewer creates no separate request/transcript archive, saved review session, or tracing callback. Native backend diagnostics can retain review content under the logging boundary above. Hung daemon may finish late; no memory-erasure/provider-retention/live-quality guarantee. Final failure closes gate/owned Browser.
-
-Pairings: reviewer ↔ RV_001–R007 ↔ reviewer/logging tests; gate/settings ↔
-AG_001–G008 ↔ gate/navigation-recovery tests; evidence/browser/CDP ↔ AE_001–E006 ↔ evidence tests;
-launcher/settings/policy ↔ SR_006–S010 ↔ safeguard/window tests. Required gate
-includes implemented IDs; authentication/mission policy/live quality remain open.
+The previous committed implementation is preserved by local Git tag `archive/scout-safety-reviewer-2026-10-29` at `d41fda0016b58a4d1a8bb460999556ca781e9c6d`. Inspect it with `git show archive/scout-safety-reviewer-2026-10-29:plugins/signal-scout/security/reviewer.py` or create a separate checkout from that tag. No duplicate active reviewer directory or runtime toggle remains. RV_001 through RV_007 and AE_003 retired; AG_009 covers reviewer-free startup and execution. Current evidence/gate contracts retain their ordinary browser guarantees.

@@ -61,9 +61,6 @@ if CHECK_NATIVE_CONSUMERS:
     finally:
         agent.close()
     Browser=importlib.import_module('plugins.signal-scout.security.browser').Browser
-    Reviewer=importlib.import_module('plugins.signal-scout.security.reviewer').SafetyReviewer
-    reviewer=Reviewer()
-    assert reviewer._settings==config['scout_reviewer']
     with Browser() as browser:
         assert browser.settings==config
         assert browser.command('eval','window.innerWidth')['result']==config['browser']['viewport']['width']
@@ -111,7 +108,6 @@ def test_BT_006_selected_file_reaches_real_browser_without_build(scout_stack, tm
     config['model']['default'] = 'gpt-6-luna'
     config['browser']['viewport']['width'] = 1000
     config['logging'].update(max_size_mb=2, backup_count=2)
-    config['scout_reviewer'].update(timeout_seconds=23, retries=2, reasoning_effort='low')
     path = tmp_path / 'operating.yaml'
     path.write_text(yaml.safe_dump(config))
     images = {name: lifecycle.checked(['docker', 'image', 'inspect', definition['image'],

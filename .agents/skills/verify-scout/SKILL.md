@@ -44,7 +44,7 @@ From repository root, run these through the available terminal tool. The helper 
 | Runtime status | `scripts/verify.py status` through the Python invocation above | Native status dispatch, no model call |
 | Runtime operating file | [features/runtime-config.md](features/runtime-config.md) | Fixed per-run settings and same-image changes |
 | Public browser smoke | `scripts/verify.py smoke` through the Python invocation above | Owned Chromium, sandbox, navigation, snapshot, teardown |
-| Reviewed browser actions | [reviewed-browser-actions.md](features/reviewed-browser-actions.md) | Real gate/browser, offline main/reviewer transport |
+| Browser actions | [reviewed-browser-actions.md](features/reviewed-browser-actions.md) | Real gate/browser, offline main transport |
 | Local headed viewer | [browser-viewer.md](features/browser-viewer.md) | Real noVNC, disposable host browser, no provider |
 | Spec traceability | [spec-traceability.md](features/spec-traceability.md) | Link validation, not test execution |
 
@@ -84,7 +84,7 @@ Choose the feature's exact commands from the map. Primary smoke and status use t
 .venv/bin/python .agents/skills/verify-scout/scripts/verify.py smoke
 ```
 
-For an authorized different public page, use `smoke --url https://www.wikipedia.org/`. This changes the observed journey; record it. This operator smoke is not a reviewed model action and must never be used as an alternate model executor.
+For an authorized different public page, use `smoke --url https://www.wikipedia.org/`. This changes the observed journey; record it. This operator smoke is not a model-requested action and must never be used as an alternate model executor.
 
 For pytest recipes, always use `scripts/run_tests.sh`, an explicit file and `-k` selection, one worker, and zero automatic file retries. Docker fixtures serialize the existing stack; some require temporary helper recreation and take minutes. Never replace these with direct `pytest`, shorten security assertions, or resume a previously stopped broad suite implicitly.
 
@@ -96,7 +96,7 @@ Default helper receipts live in a newly created `/tmp/scout-verification-*` dire
 
 Exercise the real user entry point. Capture action and outcome, plus relevant stored/network/container effects. Do not substitute internal setters or test-only shortcuts for the feature under test. Existing provider transport doubles in integration tests stand at the external model boundary; they do not prove provider availability, quality, billing, or live image support. If using a dry-run, observe what it actually skips rather than trust its name.
 
-Smoke output proves sandbox/navigation/observation completed and the browser was removed. It contains no raw page or screenshot, so it does not prove specific page text, reviewed clicks, downloads, viewer input, or a research mission. Test proofs retain the exact runner output and exit code outside scratch cleanup; report deselections, skips, and uncovered entry points. Do not retain auth data, viewer passwords, full Docker environment dumps, or raw private review packets.
+Smoke output proves sandbox/navigation/observation completed and the browser was removed. It contains no raw page or screenshot, so it does not prove specific page text, native click effects, downloads, viewer input, or a research mission. Test proofs retain the exact runner output and exit code outside scratch cleanup; report deselections, skips, and uncovered entry points. Do not retain auth data, viewer passwords, full Docker environment dumps, or raw private request packets.
 
 ### Cleanup
 
@@ -115,7 +115,7 @@ The executable [scripts/verify.py](scripts/verify.py) supports `doctor`, `status
 - Status still returns `research` and `research_security` as `not_implemented`. Do not interpret `status: ready` as mission readiness.
 - Live subscription `chat` is status-only and consumes usage; none of these baseline checks starts it.
 - Viewer connection and framebuffer readiness do not prove input readiness. The fixture waits until the canvas receives the hit test before sending real mouse input; see its feature's Gotchas.
-- Do not settle deferred recovery, selected-tab closure, evidence caps, messaging, or reviewer-provider choices while verifying.
+- Do not settle deferred recovery, selected-tab closure, evidence caps, messaging, or reviewer-restoration choices while verifying.
 
 ## Verification
 

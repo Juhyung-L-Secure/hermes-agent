@@ -1,5 +1,7 @@
 # Browser action format guidance
 
+Historical document. Reviewer-specific requirements and approval-context checks were superseded by reviewer retirement on 2026-10-29. Current behavior lives in owning `specs.json` and READMEs. Original committed reviewer remains in `archive/scout-safety-reviewer-2026-10-29`. Independent protection and observation requirements remain current where repeated in those contracts.
+
 Planning brief from the 2026-10-28 saute-me discussion. Base commit `ace826f919d50002bc4c3b8cc9854af572b99a35`. This brief and BR_006 record desired behavior; implementation and new tests are not started.
 
 ## Outcome

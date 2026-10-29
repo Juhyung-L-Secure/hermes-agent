@@ -109,8 +109,9 @@ def recovery_boundary(boundary, monkeypatch, outcomes, retries=1):
     boundary.adapter._page = lambda target: cdp_module._Page(cdp_module._DocumentKey('owned','root','current',2),
         boundary.adapter.snapshot(target), 'http://public.test/current', 'loading')
     pending = iter(outcomes)
-    def execute(action, args, checked, invoke):
+    def execute(action, args, invoke):
         def effect():
+            boundary.calls.append(("execute",deepcopy(args)))
             boundary.effects.append((action,deepcopy(args)))
             value = next(pending)
             if isinstance(value,Exception):
@@ -127,15 +128,11 @@ def recovery_boundary(boundary, monkeypatch, outcomes, retries=1):
 @pytest.mark.parametrize('retries', [0,1,4])
 def test_AG_008_timeout_returns_first_observation_without_retry(boundary, monkeypatch, retries):
     request = recovery_boundary(boundary,monkeypatch,['observation_timeout']*(retries+1),retries)
-    snapshots=[];reviews=[]
+    snapshots=[]
     def snapshot(target):
         snapshots.append(target)
         return f'- heading "Navigation observation {len(snapshots)}"'
     boundary.adapter.snapshot=snapshot
-    def review(**values):
-        reviews.append(deepcopy(values))
-        return gate_module.ReviewResult('approve',None,1,0,{})
-    boundary.reviewer.review=review
     result=boundary.gate.dispatch(request)
     assert result['status']=='incomplete' and result['execution_started'] is True
     assert result['data']['snapshot']=='- heading "Navigation observation 1"'
@@ -144,8 +141,7 @@ def test_AG_008_timeout_returns_first_observation_without_retry(boundary, monkey
     assert result['data']['observation']['state']=='observation_timeout'
     assert snapshots==['owned-page']
     assert boundary.effects==[('navigate',{'url':'http://public.test/original'})]
-    assert [item[0] for item in boundary.calls]==['prepare','recheck']
-    assert [values['action'] for values in reviews]==[{'url':'http://public.test/original'}]
+    assert [item[0] for item in boundary.calls]==['execute']
     assert not boundary.closed and boundary.browser.ready
 
 
@@ -159,89 +155,28 @@ def test_AG_008_configured_budget_exhausts_with_current_ax(boundary, monkeypatch
     assert result['data']['target_id']=='owned-page'
     assert result['data']['requested_url']=='http://public.test/original'
     assert boundary.effects == [('navigate',{'url':'http://public.test/original'})]*(retries+1)
-    assert [item[0] for item in boundary.calls] == ['prepare','recheck']*(retries+1)
+    assert [item[0] for item in boundary.calls] == ['execute']*(retries+1)
     assert not boundary.closed and boundary.browser.ready
 
 
-@pytest.mark.parametrize('last,status', [('ready','success'),('download_denied','success'),('same_document','incomplete')])
-def test_AG_008_fresh_retry_preserves_original_copy_and_completion_truth(boundary, monkeypatch, last, status):
-    request = recovery_boundary(boundary,monkeypatch,['loading_error',last])
-    calls=[]
-    def review(**values):
-        calls.append(deepcopy(values))
-        request['args']['url']='http://public.test/caller-mutation'
-        values['action']['url']='http://public.test/reviewer-mutation'
-        return gate_module.ReviewResult('approve',None,1,0,{})
-    boundary.reviewer.review=review
-    result=boundary.gate.dispatch(request)
-    assert result['status']==status and result['execution_started'] is True
-    assert result['data']['observation']['action_completed'] is (status=='success')
-    assert boundary.effects==[('navigate',{'url':'http://public.test/original'})]*2
-    assert [values['action'] for values in calls]==[{'url':'http://public.test/original'}]*2
-    assert all(values['screenshot']==b'private-viewport' for values in calls)
 
 
-@pytest.mark.parametrize('change', ['deny','stale','recheck_stale','blocked','review_failure','control',
-    'evidence','recheck_failure','connection','interrupt'])
-def test_AG_008_retry_rejection_is_incomplete_technical_failure_fatal(boundary, monkeypatch, change):
-    request=recovery_boundary(boundary,monkeypatch,['loading_error','ready'])
-    reviews=[]
-    native=boundary.adapter.prepare
-    def prepare(**values):
-        if reviews:
-            if change=='stale': raise evidence_module.EvidenceRejected('private stale')
-            if change=='evidence': raise evidence_module.EvidenceFailure('private evidence')
-        return native(**values)
-    boundary.adapter.prepare=prepare
-    native_recheck=boundary.adapter.recheck
-    def recheck(*args,**values):
-        if len(reviews)==2:
-            if change=='recheck_stale': raise evidence_module.EvidenceRejected('private stale')
-            if change=='recheck_failure': raise evidence_module.EvidenceFailure('private recheck')
-        return native_recheck(*args,**values)
-    boundary.adapter.recheck=recheck
-    def review(**values):
-        reviews.append(values)
-        if len(reviews)==1:
-            if change=='blocked': boundary.gate._permissions['navigate']='blocked'
-            if change=='control': boundary.browser.verify_control=lambda: (_ for _ in ()).throw(OSError('private control'))
-            if change=='connection': boundary.adapter._cdp=None
-            if change=='interrupt':
-                from tools.interrupt import set_interrupt
-                original=boundary.browser.verify_control
-                boundary.browser.verify_control=lambda: (original(),set_interrupt(True))
-        if len(reviews)==2 and change=='review_failure': return gate_module.ReviewResult(None,'timeout',2,0,{})
-        return gate_module.ReviewResult('deny' if len(reviews)==2 and change=='deny' else 'approve',None,1,0,{})
-    boundary.reviewer.review=review
-    result=boundary.gate.dispatch(request)
-    assert result['status']==('incomplete' if change in {'deny','stale','recheck_stale','blocked'} else 'fatal')
-    assert result['execution_started'] is True and len(boundary.effects)==1
-    if result['status']=='incomplete':
-        assert result['data']['snapshot']=='- heading "Current incomplete observation"'
-        assert result['data']['target_id']=='owned-page' and result['reason']
-    assert 'private' not in repr(result)
-    assert bool(boundary.closed)==(result['status']=='fatal')
 
 
 def test_AG_008_load_error_then_timeout_returns_timeout_observation(boundary, monkeypatch):
     request=recovery_boundary(boundary,monkeypatch,['loading_error','observation_timeout','ready'],4)
-    snapshots=[];reviews=[]
+    snapshots=[]
     def snapshot(target):
         snapshots.append(target)
         return f'- heading "Navigation observation {len(snapshots)}"'
     boundary.adapter.snapshot=snapshot
-    def review(**values):
-        reviews.append(deepcopy(values))
-        return gate_module.ReviewResult('approve',None,1,0,{})
-    boundary.reviewer.review=review
     result=boundary.gate.dispatch(request)
     assert result['status']=='incomplete' and result['execution_started'] is True
     assert result['data']['snapshot']=='- heading "Navigation observation 2"'
     assert result['data']['observation']['state']=='observation_timeout'
     assert snapshots==['owned-page','owned-page']
     assert boundary.effects==[('navigate',{'url':'http://public.test/original'})]*2
-    assert [item[0] for item in boundary.calls]==['prepare','recheck']*2
-    assert [values['action'] for values in reviews]==[{'url':'http://public.test/original'}]*2
+    assert [item[0] for item in boundary.calls]==['execute']*2
     assert not boundary.closed and boundary.browser.ready
 
 
@@ -283,15 +218,6 @@ def test_AG_008_timeout_observation_failure_remains_terminal(boundary, monkeypat
     ('keypress',{'key':'Enter'}),('back',{}),('scroll',{'direction':'down'}),('snapshot',{})])
 def test_AG_008_other_action_errors_never_retry(boundary, monkeypatch, action, args):
     request=recovery_boundary(boundary,monkeypatch,[TimeoutError('native deadline')])
-    if action=='type':
-        native=boundary.adapter.prepare
-        def prepare(**values):
-            prepared=native(**values)
-            prepared._binding=boundary.checked
-            return prepared
-        boundary.adapter.prepare=prepare
-        boundary.adapter._command=lambda *_,**__: {}
-        monkeypatch.setattr(boundary.gate,'_type_target',lambda *_,**__: (SimpleNamespace(session='owned'),'object'))
     request.update(action=action,args=args)
     result=boundary.gate.dispatch(request)
     assert result['status']=='fatal' and result['execution_started'] is True
@@ -305,7 +231,7 @@ def test_AG_008_first_complete_attempt_returns_without_retry(boundary, monkeypat
     assert result['status']=='success' and result['reason'] is None and result['execution_started'] is True
     assert result['data']['snapshot']=='- heading "Current incomplete observation"'
     assert result['data']['observation']['state']==outcome
-    assert len(boundary.effects)==1 and [item[0] for item in boundary.calls]==['prepare','recheck']
+    assert len(boundary.effects)==1 and [item[0] for item in boundary.calls]==['execute']
 
 
 def test_AG_008_later_execution_failure_preserves_aggregate_started(boundary,monkeypatch):
@@ -584,3 +510,26 @@ def test_AG_008_gate_observes_ready_root_without_child_inspection(boundary):
         lambda operation,**kwargs:operation(), baseline=cdp_module._DocumentKey('owned','root','old',1))
     assert result.outcome.value=='ready' and result.page==page
     assert [entry['method'] for entry in sent]==['Page.enable','Page.setLifecycleEventsEnabled','Page.navigate']
+
+
+@pytest.mark.parametrize('change', ['blocked', 'control', 'connection', 'interrupt'])
+def test_AG_008_retry_rejection_is_incomplete_technical_failure_fatal(boundary, monkeypatch, change):
+    from tools.interrupt import set_interrupt
+    request = recovery_boundary(boundary, monkeypatch, ['loading_error', 'ready'])
+    native = boundary.gate._execute
+    def execute(action, args, invoke):
+        result = native(action, args, invoke)
+        if len(boundary.effects) == 1:
+            if change == 'blocked': boundary.gate._permissions['navigate'] = 'blocked'
+            if change == 'control': boundary.browser.verify_control = lambda: (_ for _ in ()).throw(OSError('private control'))
+            if change == 'connection': boundary.adapter._cdp = None
+            if change == 'interrupt': set_interrupt(True)
+        return result
+    monkeypatch.setattr(boundary.gate, '_execute', execute)
+    result = boundary.gate.dispatch(request)
+    assert result['status'] == ('incomplete' if change == 'blocked' else 'fatal')
+    assert result['execution_started'] is True
+    assert boundary.effects == [('navigate', {'url':'http://public.test/original'})]
+    assert bool(boundary.closed) is (change != 'blocked')
+    if change == 'blocked':
+        assert result['data']['snapshot'] == '- heading "Current incomplete observation"'

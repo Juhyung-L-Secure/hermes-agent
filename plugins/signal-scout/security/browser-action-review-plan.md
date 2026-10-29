@@ -1,5 +1,7 @@
 # Signal Scout: browser review and security planning record
 
+Historical document. Reviewer-specific requirements and approval-context checks were superseded by reviewer retirement on 2026-10-29. Current behavior lives in owning `specs.json` and READMEs. Original committed reviewer remains in `archive/scout-safety-reviewer-2026-10-29`. Independent protection and observation requirements remain current where repeated in those contracts.
+
 Updated: 2026-09-16. Status: interview/design, not a confirmed coding brief.
 
 This document consolidates the browser-action and security discussion, with

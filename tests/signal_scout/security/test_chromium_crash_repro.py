@@ -121,11 +121,10 @@ with Browser() as browser:
     print('REPRO_SANDBOX_VERIFIED',flush=True)
     evidence=browser.evidence()
     tab=evidence.tabs()[0]['target_id']
-    reviewer=Reviewer()
-    gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
+    gate=g.BrowserActionGate(browser,target_id=tab)
     print('REPRO_NAVIGATION_STARTED',flush=True)
     outcome=dispatch(gate,'navigate',{'url':url},'Inspect public Google discovery page')
-    print('REPRO_RESULT='+json.dumps({k:outcome[k] for k in ('status','reason','execution_started')}|{'review_calls':reviewer.calls}),flush=True)
+    print('REPRO_RESULT='+json.dumps({k:outcome[k] for k in ('status','reason','execution_started')}),flush=True)
 '''
                 (directory/'probe.py.txt').write_text(probe)
                 options = [v for k,s in run.scout_environment().items() for v in ('-e',k+'='+s)]

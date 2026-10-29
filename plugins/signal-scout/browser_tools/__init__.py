@@ -11,11 +11,11 @@ import threading
 _SCHEMA = {
     "name": "browser_scout",
     "description": (
-        "Use the run-owned reviewed browser. Exact args by action: click {ref}; "
+        "Use the run-owned browser. Exact args by action: click {ref}; "
         "navigate {url}; type {ref,text} replaces field contents; keypress {key}; "
         "scroll {direction:up|down}; switch_tab {target_id} selects an existing tab; "
         "back, snapshot, screenshot, get_images, list_tabs, close {}. "
-        "Supply a brief activity for actions requiring safety review. "
+        "Optional activity describes browsing progress. "
         "Use exact references from returned snapshots and IDs from list_tabs. "
         "Rejected actions did not execute; fatal outcomes stop the run. "
         "Incomplete navigation returns current page content; choose another URL if needed. "

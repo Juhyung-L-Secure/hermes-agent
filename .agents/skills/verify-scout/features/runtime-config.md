@@ -5,7 +5,7 @@ Operators edit `docker/signal-scout/config.yaml` or select `mission_run.py --con
 ## Sub-features
 
 - `config-current-next` keeps the active run fixed through source edits and atomic replacement. The next run adopts the new values.
-- `config-consumers` gives host, native Hermes, reviewer, browser, proxy, and firewall the same settings. Helper metadata records startup-consumed values.
+- `config-consumers` gives host, native Hermes, browser, proxy, and firewall the same settings. Helper metadata records startup-consumed values.
 - `config-readonly` exposes only the canonical operating file and rejects missing, malformed, writable, shadowed, or mismatched delivery before work.
 - `config-lifetime` retains one private project file for stopped/running helper restarts. Constructor-only doctor writes nothing.
 
@@ -26,7 +26,7 @@ scripts/run_tests.sh tests/signal_scout/integration/test_container.py --include-
 .venv/bin/python .agents/skills/verify-scout/scripts/verify.py doctor
 ```
 
-Require the selected tests to pass. The runtime-config path exercises actual native/main/reviewer/browser/logging readers, fixed current-run values after in-place and atomic original-source changes, next-run changes, unchanged image IDs, read-only application writes, startup helper metadata, and restart after the disposable override disappears. Existing mission CLI and headed-viewer recipes provide actual conversation/cancellation and viewer proof with offline model transports.
+Require the selected tests to pass. The runtime-config path exercises actual native/main/browser/logging readers, fixed current-run values after in-place and atomic original-source changes, next-run changes, unchanged image IDs, read-only application writes, startup helper metadata, and restart after the disposable override disappears. Existing mission CLI and headed-viewer recipes provide actual conversation/cancellation and viewer proof with offline model transports.
 
 ## Gotchas
 

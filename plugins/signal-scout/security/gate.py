@@ -10,7 +10,6 @@ import time
 from ._cdp import _NavigationOutcome, _ObservedEffect, _ProtocolError
 from .browser import Browser
 from .evidence import EvidenceFailure, EvidenceRejected, _RequiredFrameUnavailable
-from .reviewer import ReviewResult
 from .settings import _ACTION_MODES
 from .urls import validate_url
 
@@ -24,8 +23,7 @@ _FIELDS = {
     "snapshot": set(), "screenshot": set(), "get_images": set(),
     "list_tabs": set(), "switch_tab": {"target_id"}, "close": set(),
 }
-_REVIEWED = frozenset({"click", "navigate", "type", "keypress"})
-_POST_SNAPSHOT = _REVIEWED | {"back", "scroll", "switch_tab"}
+_POST_SNAPSHOT = frozenset({"click", "navigate", "type", "keypress", "back", "scroll", "switch_tab"})
 
 
 class _FormatRule(Enum):
@@ -42,7 +40,6 @@ class _FormatRule(Enum):
     KEY_NONEMPTY = ("key_nonempty", "args.key", "args.key must be a nonempty key or chord string.")
     SCROLL_DIRECTION = ("scroll_direction", "args.direction", "args.direction must be up or down.")
     TARGET_ID_NONEMPTY = ("target_id_nonempty", "args.target_id", "args.target_id must be a nonempty ID from list_tabs.")
-    ACTIVITY_REQUIRED = ("activity_required", "activity", "activity must be nonempty for actions requiring safety review.")
 
     def __init__(self, code, field, explanation):
         self.code, self.field, self.explanation = code, field, explanation
@@ -114,18 +111,9 @@ def _key_params(value):
 
 
 class BrowserActionGate:
-    """Bind trusted reviewer and exact selected page to an attested owned Browser.
-
-    Model input can supply only action/args/activity to dispatch(). Each review
-    is fresh; checked bindings never leave the gate as approvals. Browser must
-    already be started. close() revokes pending calls before owner teardown.
-    Fake reviewers are trusted injection for offline tests only.
-    """
-
-    def __init__(self, browser, *, reviewer, target_id):
+    def __init__(self, browser, *, target_id):
         if (not isinstance(browser, Browser) or not browser.ready or browser.failed
-                or not isinstance(target_id, str) or not target_id
-                or not callable(getattr(reviewer, "review", None))):
+                or not isinstance(target_id, str) or not target_id):
             raise ValueError("Invalid trusted browser gate binding.")
         policy = browser.settings["browser"]
         permissions = policy["action_permissions"]
@@ -134,7 +122,7 @@ class BrowserActionGate:
                 or type(policy["scroll_pixels"]) is not int or policy["scroll_pixels"] <= 0
                 or type(policy["navigation_retries"]) is not int or policy["navigation_retries"] < 0):
             raise ValueError("Invalid Scout operating settings.")
-        self._browser, self._reviewer = browser, reviewer
+        self._browser = browser
         self._permissions = dict(permissions)
         self._scroll_pixels = policy["scroll_pixels"]
         self._navigation_retries = policy["navigation_retries"]
@@ -171,7 +159,7 @@ class BrowserActionGate:
         return self._result("fatal", self._fatal_reason, started=started)
 
     def close(self):
-        """Revoke this binding before closing its Browser, including waiting reviews.
+        """Revoke this binding before closing its Browser.
 
         Trusted adapter uses this at scope exit. Host BrowserRun remains owner
         of container removal; closing never selects or closes another tab.
@@ -216,13 +204,7 @@ class BrowserActionGate:
                 validate_url(args["url"])
             except ValueError:
                 raise _FormatRejected(_FormatRule.URL_SYNTAX) from None
-        mode = self._permissions[action]
-        if mode == "review_required":
-            if not request.get("activity", "").strip():
-                raise _FormatRejected(_FormatRule.ACTIVITY_REQUIRED)
-            if action not in _REVIEWED:
-                raise EvidenceRejected("Browser action review is unsupported.")
-        return deepcopy(request), mode
+        return deepcopy(request)
 
     def _root(self, frames):
         return next(frame for frame in frames.values() if frame.parent is None)
@@ -276,7 +258,7 @@ class BrowserActionGate:
             data["requested_url"] = args["url"]
         return data
 
-    def _execute(self, action, args, checked, invoke):
+    def _execute(self, action, args, invoke):
         evidence = self._evidence
         if action == "list_tabs":
             return {"tabs": invoke(evidence.tabs)}
@@ -284,16 +266,29 @@ class BrowserActionGate:
             invoke(self.close)
             return {"closed": True}
         tab = args["target_id"] if action == "switch_tab" else self._selected
-        scan = checked._scan if action in _REVIEWED else evidence._frames(tab)
+        scan = evidence._frames(tab)
         frames = scan.frames
         root = self._root(frames)
+        binding, point = None, None
+        focus_chain = None
+        if action in {"click", "type"}:
+            binding = evidence._refs.get(args["ref"])
+            if binding is None or binding.tab != tab:
+                raise _RequiredFrameUnavailable("Original browser reference is unavailable.")
+        elif action == "keypress":
+            binding, focus_chain = evidence._focus(tab, frames)
+        if binding:
+            evidence._scroll(binding, frames)
+            point = evidence._point(binding, frames)
+        if focus_chain is not None and evidence._focus(tab, frames) != (binding, focus_chain):
+            raise EvidenceRejected("Exact browser keyboard focus changed.")
         command = lambda method, params: invoke(lambda: evidence._command(method, params, root.session))
         if action == "navigate":
             return self._observe_effect(action, root,
                 lambda: evidence._command("Page.navigate", {"url": args["url"]}, root.session), invoke,
                 baseline=evidence._document_key(frames))
         elif action == "click":
-            x, y = checked.interaction_point
+            x, y = point
             def click():
                 for kind, buttons in (("mousePressed", 1), ("mouseReleased", 0)):
                     self._live()
@@ -301,17 +296,17 @@ class BrowserActionGate:
                         "button": "left", "buttons": buttons, "clickCount": 1}, root.session)
             return self._observe_effect(action, root, click, invoke, baseline=evidence._document_key(frames))
         elif action == "type":
-            frame, obj = self._type_target(checked._binding, frames)
+            frame, obj = self._type_target(binding, frames)
             try:
                 invoke(lambda: evidence._call(frame, obj, "function() { this.focus(); }"))
-                if evidence._focus(tab, frames)[0] != checked._binding:
+                if evidence._focus(tab, frames)[0] != binding:
                     raise EvidenceFailure("Exact browser typing focus changed.")
                 invoke(lambda: evidence._call(frame, obj, """function() {
                     if (this.isContentEditable) this.textContent='';
                     else { this.select && this.select(); this.value=''; }
                     this.dispatchEvent(new Event('input', {bubbles:true}));
                 }"""))
-                if evidence._focus(tab, frames)[0] != checked._binding:
+                if evidence._focus(tab, frames)[0] != binding:
                     raise EvidenceFailure("Exact browser typing focus changed.")
                 command("Input.insertText", {"text": args["text"]})
             finally:
@@ -357,7 +352,7 @@ class BrowserActionGate:
         raise EvidenceFailure("Browser action execution unavailable.")
 
     def dispatch(self, request):
-        """Validate/copy one proposal, review/recheck as configured, then execute.
+        """Validate/copy one proposal, resolve current target, then execute.
 
         Always return status/reason/execution_started/data. Rejection has no
         proposed effect and leaves healthy browsing usable. Technical failure
@@ -369,6 +364,8 @@ class BrowserActionGate:
             nonlocal started, phase
             phase = phase_name
             self._live()
+            if self._evidence._cdp is not connection:
+                raise EvidenceFailure("Browser control unavailable.")
             started = True
             return operation()
         def diagnostic(*, failure=None):
@@ -389,7 +386,7 @@ class BrowserActionGate:
         try:
             self._live()
             try:
-                request, mode = self._request(request)
+                request = self._request(request)
             except _FormatRejected as error:
                 return self._result("rejected", str(error), data={"error": {
                     "kind": "request_format", "code": error.rule.code, "field": error.rule.field}})
@@ -403,38 +400,18 @@ class BrowserActionGate:
             for attempt in range(attempts):
                 phase = "preparation"
                 try:
-                    current, mode = self._request(request)
+                    current = self._request(request)
                     args = current["args"]
-                    checked = None
-                    if action in _REVIEWED:
-                        prepared = self._evidence.prepare(target_id=self._selected, action_type=action,
-                            action=args, activity=current.get("activity"), capture=mode == "review_required")
-                        if action == "type":
-                            frame, obj = self._type_target(prepared._binding, prepared._frames)
-                            self._evidence._command("Runtime.releaseObject", {"objectId": obj}, frame.session)
-                        if mode == "review_required":
-                            phase = "review"
-                            result = self._reviewer.review(**prepared.reviewer_input())
-                            self._live()
-                            if (not isinstance(result, ReviewResult) or result.failure is not None
-                                    or result.verdict not in {"approve", "deny"}):
-                                diagnostic(failure="invalid_review_result")
-                                return self._fatal("Browser review failed.", started)
-                            if result.verdict == "deny":
-                                if failed_navigation:
-                                    return incomplete()
-                                return self._result("rejected", "Browser action denied.")
-                        self._live()
-                        phase = "recheck"
-                        checked = self._evidence.recheck(prepared, action_type=action, action=args)
+                    self._browser.verify_control()
+                    if connection is None or self._evidence._cdp is not connection:
+                        raise EvidenceFailure("Browser control unavailable.")
+                    self._live()
+                    data = self._execute(action, args, invoke)
                 except (EvidenceRejected, _ProtocolError) as error:
-                    if (failed_navigation and phase in {"preparation", "recheck"}
+                    if (failed_navigation and phase == "preparation"
                             and (isinstance(error, EvidenceRejected) or error.stale)):
                         return incomplete()
                     raise
-                self._live()
-                phase = "execution"
-                data = self._execute(action, args, checked, invoke)
                 if isinstance(data, _ObservedEffect):
                     last_observation = data
                     outcome = data.outcome

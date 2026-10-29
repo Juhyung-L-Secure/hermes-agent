@@ -76,7 +76,7 @@ def test_BR_006_required_reference_load_fails_closed(native_plugin, monkeypatch,
 def test_BR_006_reference_examples_match_registered_schema_and_real_validator(native_plugin):
     gate_module = importlib.import_module("plugins.signal-scout.security.gate")
     gate = gate_module.BrowserActionGate.__new__(gate_module.BrowserActionGate)
-    gate._permissions = {action: "review_required" if action in gate_module._REVIEWED else "allowed_without_review"
+    gate._permissions = {action: "allowed"
                          for action in gate_module._FIELDS}
     reference = native_plugin.load_action_reference()
     examples = [json.loads(block) for block in re.findall(r"```json\n(.*?)\n```", reference, re.S)]
@@ -85,9 +85,8 @@ def test_BR_006_reference_examples_match_registered_schema_and_real_validator(na
     assert set(actions) == set(gate_module._FIELDS) == set(
         native_plugin._SCHEMA["parameters"]["properties"]["action"]["enum"])
     for example in examples:
-        parsed, mode = gate._request(example)
+        parsed = gate._request(example)
         assert parsed == example and parsed is not example
-        assert mode == gate._permissions[example["action"]]
         assert set(example["args"]) == gate_module._FIELDS[example["action"]]
         for key in example["args"]:
             missing = deepcopy(example)

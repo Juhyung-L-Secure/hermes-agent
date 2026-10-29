@@ -1,5 +1,7 @@
 # Browser failure diagnostics
 
+Historical document. Reviewer-specific requirements and approval-context checks were superseded by reviewer retirement on 2026-10-29. Current behavior lives in owning `specs.json` and READMEs. Original committed reviewer remains in `archive/scout-safety-reviewer-2026-10-29`. Independent protection and observation requirements remain current where repeated in those contracts.
+
 ## Outcome and scope
 
 Make the next browser-action failure explain itself in existing persistent Hermes logs. This slice adds diagnostics and repeatable tests, not a navigation fix, mission launcher, Discord reporting, new logging service, recovery policy or provider change. Requirements gathering is complete without additional user questions. Implementation follows the selected boundary-local design below.

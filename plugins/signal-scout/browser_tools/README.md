@@ -12,13 +12,12 @@ the existing status-only bootstrap unchanged. No mission launcher is added.
 | `../../../tests/signal_scout/browser_tools/test_adapter.py` | Native discovery/dispatch with contract-shaped gates and fake main transport |
 | `../../../tests/signal_scout/browser_tools/test_native_integration.py` | Real gate, owned Chromium, native model/tool loop and exact host cleanup |
 | `../../../tests/signal_scout/browser_tools/model_fixture.py` | In-memory fake main transport; no provider calls |
-| `../security/gate.py` | Request/permission validation, exact evidence/review/recheck, execution and fresh feedback |
+| `../security/gate.py` | Request/permission validation, current target resolution, execution and fresh feedback |
 | `../../../docker/signal-scout/browser_run.py` | Trusted host container ownership and normal teardown |
 
 ## Flow and binding
 
-Already-started owned Browser → trusted gate with initial explicit page ID and
-reviewer → `bind_browser(gate, on_fatal=..., action_reference=...)` on the native-loaded plugin's
+Already-started owned Browser → trusted gate with initial explicit page ID → `bind_browser(gate, on_fatal=..., action_reference=...)` on the native-loaded plugin's
 `browser_tools` module → explicitly selected `signal_scout_browser` → native
 `browser_scout` dispatch → captured gate → text or native image observation.
 
@@ -32,8 +31,7 @@ the model to stop cannot replace this callback.
 Scope exit first marks the binding inactive, then closes that exact gate,
 then releases the binding. The enclosing host `BrowserRun` still owns removal
 of the exact browser container. Delayed calls keep their captured gate and stop
-callback and action reference; they never consult a newer run after dispatch. Closing a gate revokes
-waiting approvals before Browser transport cleanup.
+callback and action reference; they never consult a newer run after dispatch. Closing a gate revokes later calls before Browser transport cleanup.
 
 Use the module loaded by native plugin discovery: importing another namespace
 creates another Python module and does not bind the registered handler. No
@@ -47,8 +45,7 @@ repair exposes the original native browser or another execution handler.
 ## Request and feedback
 
 Model supplies `action`, exact action-specific `args`, and optional `activity`.
-Activity is mandatory when image-owned operating policy requires review. The
-handler forwards these values unchanged; browser identity, reviewer, callback
+Activity describes progress. The handler forwards these values unchanged; browser identity, callback
 and operating policy never come from model arguments. The gate validates every
 field and owns the selected page ID and fresh compact post-action snapshot.
 
@@ -66,10 +63,10 @@ Ordinary feedback serializes gate status, reason, execution_started and data.
 Success includes the applicable observation; rejection confirms no proposed
 effect and permits healthy continuation. Fatal ends the enclosing run.
 
-Request-format rejection adds `data.error = {kind: "request_format", code, field}` and the full retained reference in `data.action_reference`. Rule codes, fields and reasons come from gate-owned rules. Exact expected keys derive only from the known action's existing grammar; submitted values and unknown key names never enter diagnostic feedback. Permission, safety, stale-context and fatal outcomes keep their existing data. Invalid JSON intercepted by native Hermes remains outside this adapter's validation path.
+Request-format rejection adds `data.error = {kind: "request_format", code, field}` and the full retained reference in `data.action_reference`. Rule codes, fields and reasons come from gate-owned rules. Exact expected keys derive only from the known action's existing grammar; submitted values and unknown key names never enter diagnostic feedback. Permission, stale-reference and fatal outcomes keep their existing data. Invalid JSON intercepted by native Hermes remains outside this adapter's validation path.
 
 Nested `data.error` also lets the native failure detector recognize format rejection before repeated-result stubbing. The ordinary wrapper still marks all tool contents as untrusted data; system prompt and tool definitions remain stable. Native next-request tests cover repeated identical malformed calls, a representative two-error batch and history without earlier guidance. Existing native warnings, guardrails and context-scaled result budgets remain active. Arbitrarily large batches can still exceed inherited budgets. The main model chooses its next proposal; no correction model, automatic rewriting, replay or new retry cap is added.
-Navigation-aware click/key/navigate/back feedback includes current compact AX, selected target, actual URL, native readiness and sanitized deadline facts under `data.observation`; explicit navigate keeps `data.requested_url` separate. Matching initial-document DOMContentLoaded permits early success while media remains pending. A healthy5second observation expiration returns `incomplete` with its configured duration after effect acknowledgment, with no automatic repeat or fatal callback. Ordinary dropdowns use a bounded0.25second interaction interval; delayed future navigation remains possible. Each command retains its independent60second response deadline, and missing acknowledgment/control/evidence/reviewer failure remains fatal. The main model chooses later observations or another action. Only explicit navigation loading errors retain bounded fresh-reviewed recovery.
+Navigation-aware click/key/navigate/back feedback includes current compact AX, selected target, actual URL, native readiness and sanitized deadline facts under `data.observation`; explicit navigate keeps `data.requested_url` separate. Matching initial-document DOMContentLoaded permits early success while media remains pending. A healthy5second observation expiration returns `incomplete` with its configured duration after effect acknowledgment, with no automatic repeat or fatal callback. Ordinary dropdowns use a bounded0.25second interaction interval; delayed future navigation remains possible. Each command retains its independent60second response deadline, and missing acknowledgment/control/inspection failure remains fatal. The main model chooses later observations or another action. Only explicit navigation loading errors retain bounded original-URL recovery.
 Execution_started is not proof that a server-side effect completed.
 Adapter returns raw JSON text, not a custom warning wrapper. Hermes's native
 `make_tool_result_message` recognizes the actual `browser_scout` name and frames
@@ -80,10 +77,9 @@ The same native path frames multimodal text while preserving image parts. No
 Screenshot feedback alone packages in-memory PNG bytes into native `_multimodal`
 text/image content. Text summary retains MIME and other public result metadata,
 with bytes carried only in the image part. No automatic main screenshot,
-temporary screenshot file, auxiliary vision model or private review packet is
+temporary screenshot file or auxiliary vision model is
 added. Normal independently observed AX field values remain, including Scout's
-typed text. Request/action packets are not copied into results; reviewer receives
-raw viewport PNG without masking. Observation reaches main context; this is not a new
+typed text. Request/action packets are not copied into results. Observation reaches main context; this is not a new
 conversation-retention system. Native/provider image support is not proven by
 offline verification.
 
@@ -99,8 +95,8 @@ Real integration uses the same serialized fixture and owned stack as security
 tests. Fake-only unit checks cannot establish real-gate completion.
 
 Native integration covers click/key effects, retained typed AX values, PNG,
-external delimiter defanging, deny/stale/late and fatal/exact host cleanup.
+external delimiter defanging, blocked/stale requests and fatal/exact host cleanup.
 BR_006 also covers actual `research()` startup into the first native inference and failure before provider resolution when the reference is unavailable. Offline transports prove wiring and effects on controlled pages, not live model correction quality.
-No user mission launcher, Discord, live activation, login, account provisioning,
+Foreground missions use the existing host launcher. No Discord, account provisioning,
 outer tool-timeout recovery, selected-tab closure policy, evidence caps,
 supervisor recovery or independent host-loss cleanup is introduced.

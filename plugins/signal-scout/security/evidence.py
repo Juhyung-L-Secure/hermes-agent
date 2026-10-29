@@ -1,15 +1,11 @@
-"""Scout-owned exact references, in-memory action evidence and context checks."""
-
 import base64
-from copy import deepcopy
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass
 import json
 import logging
 import struct
 import time
 
 from ._cdp import _CDP, _DocumentKey, _Page, _ProtocolError
-from .urls import validate_url
 
 
 logger = logging.getLogger(__name__)
@@ -97,73 +93,6 @@ class _FrameScan:
         return text
 
 
-@dataclass(frozen=True, repr=False)
-class PreparedReview:
-    """Hold reviewer input separately from private identity and baseline state.
-
-    Call reviewer.review(**prepared.reviewer_input()). No raw evidence is saved;
-    repr omits it. Only the originating adapter may recheck this preparation.
-    """
-
-    _owner: object = field(repr=False)
-    _tab: str = field(repr=False)
-    _input: dict = field(repr=False)
-    _binding: _Binding | None = field(repr=False)
-    _documents: dict = field(repr=False)
-    _baseline: dict = field(repr=False)
-    _frames: dict = field(repr=False)
-
-    def reviewer_input(self):
-        """Return an independent input copy, without private CDP identity metadata."""
-        return deepcopy(self._input)
-
-
-@dataclass(frozen=True, repr=False)
-class CheckedAction:
-    """Return the same checked binding and current viewport point, never approval.
-
-    Execution gate consumes this binding directly. This check does
-    not make execution atomic or attest hidden JavaScript/server-side effects.
-    """
-
-    _binding: _Binding | None = field(repr=False)
-    interaction_point: tuple[float, float] | None
-    _scan: _FrameScan = field(repr=False)
-
-
-# Isolated-world DOM reads keep page JavaScript from replacing inspection code.
-# Values are scoped to the target and its form; no cookie/auth-store inspection.
-_DETAILS = r"""function() {
-  if (!this.isConnected || this.ownerDocument !== document) return null;
-  const describe = e => ({tag:e.localName, text:e.innerText ?? e.textContent,
-    attributes:Object.fromEntries(['role','aria-label','aria-labelledby','aria-describedby',
-      'title','type','name','placeholder','autocomplete','href','target','download',
-      'form','formaction','formmethod','formtarget','formenctype','formnovalidate',
-      'contenteditable','aria-disabled','aria-checked','aria-expanded','aria-pressed',
-      'aria-activedescendant','aria-selected']
-      .filter(k=>e.hasAttribute(k)).map(k=>[k,e.getAttribute(k)])),
-    labels:e.labels ? Array.from(e.labels,l=>l.innerText) : [],
-    // Relative submitter destinations can change when document base changes.
-    formOverrides:'formAction' in e ? Object.fromEntries([
-      ['action','formaction','formAction'],['method','formmethod','formMethod'],
-      ['target','formtarget','formTarget'],['enctype','formenctype','formEnctype'],
-      ['noValidate','formnovalidate','formNoValidate']]
-      .filter(([,attribute])=>e.hasAttribute(attribute)).map(([key,,property])=>[key,e[property]])) : null,
-    value:'value' in e ? e.value : null, checked:'checked' in e ? e.checked : null,
-    disabled:!!e.matches(':disabled'), readOnly:!!e.readOnly,
-    selection:'selectionStart' in e ? [e.selectionStart,e.selectionEnd,e.selectionDirection] : null,
-    selected:e.localName==='select' ? Array.from(e.options,o=>({text:o.text,value:o.value,selected:o.selected,disabled:o.disabled})) : null});
-  const anchor=this.closest('a[href]'), form=this.form ?? this.closest('form');
-  return {target:describe(this),
-    link:anchor ? {href:anchor.href,target:anchor.target,download:anchor.download,text:anchor.innerText} : null,
-    form:form ? {action:form.action,method:form.method,target:form.target,enctype:form.enctype,
-      noValidate:form.noValidate,controls:Array.from(form.elements,describe)} : null,
-    visible:this.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}),
-    viewport:{width:innerWidth,height:innerHeight,scale:devicePixelRatio},
-    page:{url:location.href,title:document.title}};
-}"""
-
-
 def _clip(points, width, height):
     for axis, bound, greater in ((0, 0, True), (0, width, False),
                                  (1, 0, True), (1, height, False)):
@@ -228,7 +157,6 @@ class BrowserEvidence:
         self._cdp = None
         self._sessions = {}
         self._refs = {}
-        self._owner = object()
 
     def _command(self, method, params=None, session=None):
         if not self._browser.ready or self._browser.failed:
@@ -397,47 +325,6 @@ class BrowserEvidence:
             raise EvidenceFailure("Required browser evidence check failed.")
         return result["result"].get("value") if value else result["result"]
 
-    def _details(self, binding, frames):
-        frame, obj = self._resolve(binding, frames)
-        def accessibility(node_id):
-            ax = self._command("Accessibility.getPartialAXTree", {"backendNodeId": node_id,
-                "fetchRelatives": False}, frame.session)["nodes"]
-            node = next((n for n in ax if n.get("backendDOMNodeId") == node_id), None)
-            return node, {"role": node.get("role", {}).get("value"),
-                "name": node.get("name", {}).get("value"),
-                "description": node.get("description", {}).get("value"),
-                "properties": {p["name"]: p["value"].get("value") for p in node.get("properties", ())
-                               if p["name"] != "focused"}} if node else None
-        try:
-            details = self._call(frame, obj, _DETAILS)
-            if details is None:
-                raise EvidenceRejected("Original browser target is unavailable.")
-            node, details["accessibility"] = accessibility(binding.node)
-            identities = []
-            # AX active descendants encode node identity outside their value.
-            # Bind privately; reviewer sees only the actual descendant's state.
-            for prop in node.get("properties", ()) if node else ():
-                if prop["name"] != "activedescendant":
-                    continue
-                descendants = []
-                for related in prop["value"].get("relatedNodes", ()):
-                    identity = self._binding(binding.tab, binding.frame, frame, related["backendDOMNodeId"])
-                    related_frame, related_obj = self._resolve(identity, frames)
-                    try:
-                        state = self._call(related_frame, related_obj, _DETAILS)
-                        if state is None:
-                            raise EvidenceRejected("Original browser target is unavailable.")
-                        _, semantics = accessibility(identity.node)
-                        descendants.append({**state["target"], "visible": state["visible"],
-                                            "accessibility": semantics})
-                        identities.append(identity)
-                    finally:
-                        self._command("Runtime.releaseObject", {"objectId": related_obj}, frame.session)
-                details["accessibility"]["properties"]["activedescendant"] = descendants
-            return details, tuple(identities)
-        finally:
-            self._command("Runtime.releaseObject", {"objectId": obj}, frame.session)
-
     def _focus(self, tab, frames):
         frame_id = next(key for key, value in frames.items() if value.parent is None)
         chain = []
@@ -492,8 +379,8 @@ class BrowserEvidence:
         self._owners_visible(binding, frames)
         frame, obj = self._resolve(binding, frames)
         try:
-            details = self._call(frame, obj, _DETAILS)
-            if not details or not details["visible"]:
+            visible = self._call(frame, obj, "function() { return this.isConnected && this.ownerDocument===document && this.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}); }")
+            if not visible:
                 raise EvidenceRejected("Original browser target is hidden.")
             self._command("DOM.scrollIntoViewIfNeeded", {"objectId": obj}, frame.session)
         finally:
@@ -520,8 +407,8 @@ class BrowserEvidence:
         self._owners_visible(binding, frames)
         frame, obj = self._resolve(binding, frames)
         try:
-            details = self._call(frame, obj, _DETAILS)
-            if not details or not details["visible"]:
+            visible = self._call(frame, obj, "function() { return this.isConnected && this.ownerDocument===document && this.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}); }")
+            if not visible:
                 raise EvidenceRejected("Original browser target is hidden.")
             quads = self._command("DOM.getContentQuads", {"objectId": obj}, frame.session)["quads"]
             root = next(key for key, value in frames.items() if value.parent is None)
@@ -669,40 +556,6 @@ class BrowserEvidence:
         return self._run(lambda: [{"target_id": t["targetId"], "title": t["title"], "url": t["url"]}
             for t in self._command("Target.getTargets")["targetInfos"] if t["type"] == "page"])
 
-    def _context(self, tab, binding, scan, *, keyboard):
-        frames = scan.frames
-        root = next(value for value in frames.values() if value.parent is None)
-        page = self._evaluate(root, "({url:location.href,title:document.title})")["value"]
-        try:
-            focused, chain = self._focus(tab, frames)
-            focus, focus_relations = self._details(focused, frames) if focused else ({"page_level": True}, ())
-        except _RequiredFrameUnavailable as error:
-            if keyboard:
-                raise
-            scan.exclude(error.frame, parent=error.parent)
-            focus, focus_relations, chain = {"unavailable": True}, (), []
-        except _ProtocolError as error:
-            if not error.frame_unavailable:
-                raise
-            if keyboard:
-                raise _RequiredFrameUnavailable("Exact keyboard focus is unavailable.") from None
-            scan.exclude(None)
-            focus, focus_relations, chain = {"unavailable": True}, (), []
-        target, target_relations = self._details(binding, frames) if binding else (None, ())
-        context = {"page": page, "target": target, "focus": focus}
-        comparison = deepcopy(context)
-        comparison["active_descendants"] = {"target": target_relations}
-        for key in ("target", "focus"):
-            if comparison[key] and "visible" in comparison[key]:
-                del comparison[key]["visible"], comparison[key]["viewport"]
-        if not keyboard:
-            del comparison["focus"]
-        else:
-            comparison["focus_binding"] = chain
-            comparison["active_descendants"]["focus"] = focus_relations
-        context["inspection"] = scan.summary()
-        return context, comparison
-
     def _capture(self, root):
         try:
             viewport = self._evaluate(root, "({width:innerWidth,height:innerHeight,scale:devicePixelRatio})")["value"]
@@ -716,93 +569,6 @@ class BrowserEvidence:
                 round(viewport["width"] * viewport["scale"]), round(viewport["height"] * viewport["scale"]))):
             raise EvidenceFailure("Required viewport capture failed.")
         return screenshot, viewport
-
-    def prepare(self, *, target_id, action_type, action, activity, capture=True):
-        """Resolve/reveal without click/type/key/focus changes; capture raw viewport.
-
-        Exact schemas: click {ref}; type {ref,text}; keypress {key}; navigate
-        {url}. Keys inspect existing focus; navigation never visits destination.
-        Returns reviewer-compatible in-memory input with separate private state.
-        Trusted gate uses capture=False only for configured review exemptions;
-        exact identity/context checks still apply, without inventing activity.
-        """
-        fields = {"click": {"ref"}, "type": {"ref", "text"}, "keypress": {"key"}, "navigate": {"url"}}
-        if (not isinstance(action_type, str) or action_type not in fields or not isinstance(action, dict) or set(action) != fields[action_type]
-                or not all(isinstance(v, str) for v in action.values())
-                or type(capture) is not bool
-                or (capture and (not isinstance(activity, str) or not activity.strip()))):
-            raise EvidenceRejected("Invalid proposed browser action.")
-        if action_type == "navigate":
-            try:
-                validate_url(action["url"])
-            except ValueError:
-                raise EvidenceRejected("Invalid proposed browser action.") from None
-        if action_type == "keypress" and not action["key"]:
-            raise EvidenceRejected("Invalid proposed browser action.")
-        def prepare():
-            scan = self._frames(target_id)
-            frames = scan.frames
-            binding = None
-            focus_chain = None
-            if action_type in {"click", "type"}:
-                binding = self._refs.get(action["ref"])
-                if binding is None or binding.tab != target_id:
-                    raise _RequiredFrameUnavailable("Original browser reference is unavailable.")
-            elif action_type == "keypress":
-                binding, focus_chain = self._focus(target_id, frames)
-            if binding:
-                self._scroll(binding, frames)
-            context, baseline = self._context(target_id, binding, scan, keyboard=action_type == "keypress")
-            if focus_chain is not None and baseline["focus_binding"] != focus_chain:
-                raise EvidenceRejected("Relevant browser context changed.")
-            point = self._point(binding, frames) if binding else None
-            context["interaction_point"] = point
-            root = next(value for value in frames.values() if value.parent is None)
-            inputs = {"action_type": action_type, "action": deepcopy(action), "context": context}
-            if capture:
-                screenshot, context["viewport"] = self._capture(root)
-                inputs.update(screenshot=screenshot, screenshot_mime="image/png", activity=activity)
-            current = binding.frame if binding else next(k for k, f in frames.items() if f.parent is None)
-            relevant = self._ancestry(current, frames)
-            documents = {key: (f.target, f.document, f.loader) for key, f in frames.items() if key in relevant}
-            prepared = PreparedReview(self._owner, target_id, inputs, binding, documents, baseline, frames)
-            # Capture is not atomic with reads; reject observed changes before return.
-            checked = self._recheck(prepared, action_type, action)
-            context["interaction_point"] = checked.interaction_point
-            for omission in checked._scan.omitted:
-                scan.exclude(omission.frame, omission.target, omission.parent)
-            context["inspection"] = scan.summary()
-            return replace(prepared, _frames=checked._scan.frames)
-        return self._run(prepare)
-
-    def _recheck(self, prepared, action_type, action):
-        if prepared._owner is not self._owner or (action_type, action) != (
-                prepared._input["action_type"], prepared._input["action"]):
-            raise EvidenceRejected("Proposed browser action changed.")
-        tab = prepared._tab
-        scan = self._frames(tab)
-        frames = scan.frames
-        for key, identity in prepared._documents.items():
-            frame = frames.get(key)
-            if frame is None:
-                raise _RequiredFrameUnavailable()
-            if (frame.target, frame.document, frame.loader) != identity:
-                raise EvidenceRejected("Original browser document changed.")
-        _, comparison = self._context(tab, prepared._binding, scan, keyboard=action_type == "keypress")
-        if comparison != prepared._baseline:
-            raise EvidenceRejected("Relevant browser context changed.")
-        point = self._point(prepared._binding, frames) if prepared._binding else None
-        return CheckedAction(prepared._binding, point, scan)
-
-    def recheck(self, prepared, *, action_type, action):
-        """Return checked original identity/current point or reject/fail explicitly.
-
-        No scrolling, re-review, retries or execution. Harmless movement alone
-        passes; changed document/node/context/focus or obstruction rejects.
-        """
-        if not isinstance(prepared, PreparedReview):
-            raise EvidenceRejected("Invalid prepared browser action.")
-        return self._run(lambda: self._recheck(prepared, action_type, action))
 
     def close(self):
         """Close only this private connection; Browser/host retain teardown ownership."""

@@ -1,5 +1,7 @@
 # Browser-process failure diagnostics
 
+Historical document. Reviewer-specific requirements and approval-context checks were superseded by reviewer retirement on 2026-10-29. Current behavior lives in owning `specs.json` and READMEs. Original committed reviewer remains in `archive/scout-safety-reviewer-2026-10-29`. Independent protection and observation requirements remain current where repeated in those contracts.
+
 ## Outcome and current stage
 
 Preserve evidence explaining why Scout's browser-control connection ended. Original failure was `ConnectionClosedError: no close frame received or sent` during `Page.navigate`, about7.2 seconds after dispatch. Existing logs locate the broken Scout-to-relay-to-Chromium connection but do not identify which process or transport ended it. Two controlled integration replays reproduced native helper cleanup and a recoverable model-call stall, not the fatal disconnect. Both replay missions completed; their lifecycle assertions remain red. Diagnostic implementation must not be presented as reproduction or repair of that original failure.

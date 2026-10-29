@@ -1,5 +1,7 @@
 # Partial frame inspection brief
 
+Historical document. Reviewer-specific requirements and approval-context checks were superseded by reviewer retirement on 2026-10-29. Current behavior lives in owning `specs.json` and READMEs. Original committed reviewer remains in `archive/scout-safety-reviewer-2026-10-29`. Independent protection and observation requirements remain current where repeated in those contracts.
+
 ## Goal and scope
 
 User authorizes scoped implementation of tolerating unavailable iframe branches. Missing unrelated content must not end an otherwise healthy research mission. Collect available evidence and full viewport screenshot, disclose incomplete inspection to reviewer and Hermes. If current target or required evidence is unavailable, reject only proposal and let ordinary Hermes loop choose another action. Known frame-loss errors only; preserve fatal technical/control/reviewer handling. No whole-codebase failure rewrite.

@@ -1,5 +1,7 @@
 # Earlier browser observations and navigation diagnostics
 
+Historical document. Reviewer-specific requirements and approval-context checks were superseded by reviewer retirement on 2026-10-29. Current behavior lives in owning `specs.json` and READMEs. Original committed reviewer remains in `archive/scout-safety-reviewer-2026-10-29`. Independent protection and observation requirements remain current where repeated in those contracts.
+
 Implementation brief from the 2026-10-28 saute-me discussion, implemented by the delegated owner after a fresh instruction. Base commit `29f56ebfbdc92146209af45b6d1529c155d855fb`. The discarded direct patch was not reused. Final execution receipts and source provenance live under `/tmp/scout-early-observation-XpB1oM`.
 
 ## Outcome and boundaries

@@ -1,6 +1,6 @@
 # Signal Scout verification map
 
-Maintained recipes for Scout's Docker/operator and browser surfaces. Primary current entry is the deterministic public browser CLI, not a research mission launcher. Upstream Hermes CLI/TUI/gateway/desktop exist but are outside this Scout-focused map.
+Maintained recipes for Scout's Docker/operator and browser surfaces. Deterministic browser CLI and controlled offline foreground mission fixtures provide current entry points. Upstream Hermes CLI/TUI/gateway/desktop exist but are outside this Scout-focused map.
 
 ## Baseline preconditions
 
@@ -10,7 +10,7 @@ Docker and browser routes require these prerequisites.
 
 - Use repository root, existing development virtual environment, current validated Compose, and built runtime/browser/network images.
 - Require Linux Docker and unused configured network ranges. Real fixture tests additionally require host `openssl` and `ip`; noVNC tests require host `google-chrome`.
-- Run the read-only doctor first. Refuse an active or leftover Scout/browser or a held run/test lock; never share a mission browser.
+- Refuse an active or leftover Scout/browser or a held run/test lock; never share a mission browser.
 - Anonymous status/smoke need no account or data seeds. Controlled integration fixtures supply their own explicitly required web state. Missing prerequisites are failures or reported blocks, never a reason to weaken assertions.
 - Keep current safety settings in the runtime operating file. Baseline is headless with viewer disabled. Mapped viewer tests supply disposable runtime variants and restore canonical helpers without configuration-only image builds.
 - No model calls, login, external messages, purchase, upload, or deployment needed for these recipes.
@@ -19,7 +19,7 @@ Docker and browser routes require these prerequisites.
 
 - Invoke the helper through `.venv/bin/python .agents/skills/verify-scout/scripts/verify.py`.
 - Run pytest through `scripts/run_tests.sh`; select exact files and `-k`, set one worker for shared Docker, and disable file retries.
-- Use existing controlled pages, accessible names, and exact snapshot references for model action tests. Do not substitute coordinates for the reviewed element binding.
+- Use existing controlled pages, accessible names, and exact snapshot references for model action tests. Do not substitute coordinates for the original element binding.
 - Fresh browser/profile per run. Preserve shared volumes/logs and existing helper running state. Fixtures may recreate helpers; do not run them concurrently with any mission.
 
 ## Proof and skip reporting
@@ -27,7 +27,7 @@ Docker and browser routes require these prerequisites.
 - Helper output names `/tmp/scout-verification-*` evidence directories. Preserve receipt, commands, actual stdout/stderr, exit codes, image IDs, source hashes, and before/after state.
 - For test commands, keep runner transcript and exit code in a separate evidence directory, outside pytest scratch. Record exact feature ID, entry point, selections, failures/skips/deselections, and cleanup.
 - A successful receipt proves only its selected path. Skipped routes are unverified, not indirectly passed.
-- Offline model/reviewer doubles do not establish live model behavior. Spec-link collection does not execute tests or assess assertions.
+- Offline main-model doubles do not establish live model behavior. Spec-link collection does not execute tests or assess assertions.
 - For an unreachable path, retain attempted command and unmet precondition. Never silently substitute an easier route.
 
 ## Feature entry contract
@@ -40,6 +40,6 @@ Each feature uses `Sub-features`, `How to get to it (user POV)`, `Driving it wit
 - [Runtime operating file](runtime-config.md) checks fixed capture, all-service delivery, same-image changes, and retained helper restart sources.
 - [Public browser smoke](browser-smoke.md) checks real owned browser navigation, observation, sandbox and teardown.
 - [Browser process diagnostics](browser-diagnostics.md) checks bounded process/relay logging, selected container state, native redaction, and final collection after Scout exits.
-- [Reviewed browser actions](reviewed-browser-actions.md) checks approved effects, rejected requests, and fatal cleanup through native Hermes dispatch using offline provider boundaries.
-- [Headed browser viewer](browser-viewer.md) checks local authenticated noVNC, trusted manual input, stale Scout approval rejection, and continued browser use after viewer closure.
+- [Browser actions](reviewed-browser-actions.md) checks allowed effects, rejected requests, and fatal cleanup through native Hermes dispatch using offline provider boundaries.
+- [Headed browser viewer](browser-viewer.md) checks local authenticated noVNC, trusted manual input, stale original-reference rejection, and continued browser use after viewer closure.
 - [Spec traceability](spec-traceability.md) checks the external CLI, whole feature documents, and honest full-inventory gaps independently of test-body execution.

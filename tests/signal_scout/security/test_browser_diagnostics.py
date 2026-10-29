@@ -119,17 +119,13 @@ def test_SR_022_navigation_native_error_and_exact_download_success(caplog, resul
     assert 'bulk-' not in caplog.text
 
 
-@pytest.mark.parametrize('phase', ['preparation','review','recheck','execution','observation','explicit_snapshot'])
+@pytest.mark.parametrize('phase', ['inspection','execution','observation','explicit_snapshot'])
 def test_SR_022_actual_gate_phases_preserve_result_and_terminal_closure(boundary, monkeypatch, caplog, phase):
     error = RuntimeError('original phase exception')
     def fail(*_, **__):
         raise error
-    if phase == 'preparation':
-        boundary.adapter.prepare = fail
-    elif phase == 'review':
-        boundary.reviewer.review = fail
-    elif phase == 'recheck':
-        boundary.adapter.recheck = fail
+    if phase == 'inspection':
+        monkeypatch.setattr(boundary.gate, '_execute', fail)
     else:
         monkeypatch.setattr(boundary.gate, '_execute', gate_module.BrowserActionGate._execute.__get__(boundary.gate))
         boundary.adapter._frames = lambda _: evidence_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned',loader='old',document=1)})
@@ -154,7 +150,7 @@ def test_SR_022_actual_gate_phases_preserve_result_and_terminal_closure(boundary
     assert result == {'status':'fatal','reason':'Browser action failed.','execution_started':started,'data':{}}
     record, = [r for r in caplog.records if r.name == gate_module.__name__]
     assert f"action={request['action']}" in record.getMessage()
-    assert f"phase={'execution' if phase == 'explicit_snapshot' else phase}" in record.getMessage()
+    assert f"phase={'execution' if phase == 'explicit_snapshot' else 'preparation' if phase == 'inspection' else phase}" in record.getMessage()
     assert 'elapsed_ms=0' in record.getMessage() and record.exc_info[1] is error
     assert record.exc_info[2] is not None and record.levelno == logging.ERROR
     assert 'bulk-' not in caplog.text and 'exception' not in repr(result)
@@ -163,17 +159,6 @@ def test_SR_022_actual_gate_phases_preserve_result_and_terminal_closure(boundary
     assert boundary.closed == [True]
 
 
-@pytest.mark.parametrize('value', [None, gate_module.ReviewResult('approve','timeout',2,0,{}),
-                                 gate_module.ReviewResult('unknown',None,1,0,{})])
-def test_SR_022_returned_review_failure_has_fixed_diagnostic_without_fake_exception(boundary, caplog, value):
-    boundary.reviewer.review = lambda **_: value
-    with caplog.at_level(logging.INFO):
-        result = boundary.gate.dispatch({'action':'navigate','args':{'url':'https://example.test/'},'activity':'Inspect'})
-    assert result == {'status':'fatal','reason':'Browser review failed.','execution_started':False,'data':{}}
-    record, = [r for r in caplog.records if r.name == gate_module.__name__]
-    assert 'action=navigate' in record.getMessage() and 'phase=review' in record.getMessage()
-    assert 'invalid_review_result' in record.getMessage() and record.exc_info is None
-    assert record.levelno == logging.ERROR and boundary.closed == [True] and boundary.effects == []
 
 
 def test_SR_022_evidence_conversion_logs_original_before_suppression(caplog):
@@ -234,10 +219,10 @@ def test_SR_022_invalid_transport_json_keeps_original_parser_error(caplog):
     assert 'response_received=False' in record.getMessage() and 'wait_state=command_response' in record.getMessage()
 
 
-@pytest.mark.parametrize('kind', ['denial','rejected','stale','no_hit'])
+@pytest.mark.parametrize('kind', ['blocked','rejected','stale','no_hit'])
 def test_SR_022_expected_rejections_keep_healthy_gate_without_error(boundary, caplog, kind):
-    if kind == 'denial':
-        boundary.reviewer.review = lambda **_: gate_module.ReviewResult('deny',None,1,0,{})
+    if kind == 'blocked':
+        boundary.gate._permissions['navigate'] = 'blocked'
     else:
         def reject(*_, **__):
             if kind == 'rejected':
@@ -250,10 +235,10 @@ def test_SR_022_expected_rejections_keep_healthy_gate_without_error(boundary, ca
                 if error.no_hit:
                     raise evidence_module.EvidenceRejected('No visible target') from None
                 raise
-        boundary.adapter.recheck = reject
+        boundary.gate._execute = reject
     with caplog.at_level(logging.INFO):
         result = boundary.gate.dispatch({'action':'navigate','args':{'url':'https://example.test/'},'activity':'Inspect'})
-    assert result == {'status':'rejected','reason':'Browser action denied.' if kind == 'denial' else 'Browser context changed.',
+    assert result == {'status':'rejected','reason':'Browser action is blocked.' if kind == 'blocked' else 'Browser context changed.',
                       'execution_started':False,'data':{}}
     assert not boundary.closed and boundary.browser.ready
     assert [r for r in caplog.records if r.levelno >= logging.ERROR] == []
@@ -263,7 +248,7 @@ def test_SR_022_expected_rejections_keep_healthy_gate_without_error(boundary, ca
 
 def test_SR_022_post_started_stale_retains_native_detail_and_fatal_closure(boundary, monkeypatch, caplog):
     cdp, _ = transport([{'id':1,'error':{'code':-32000,'message':'No node with given id found'}}])
-    def execute(action, args, checked, invoke):
+    def execute(action, args, invoke):
         return invoke(lambda: cdp.command('DOM.resolveNode'))
     monkeypatch.setattr(boundary.gate, '_execute', execute)
     with caplog.at_level(logging.INFO):
@@ -292,7 +277,7 @@ def test_SR_022_broken_logging_cannot_replace_failure_or_cleanup(boundary, monke
     def fail(*_, **__):
         raise original
     if boundary_name == 'gate':
-        boundary.adapter.prepare = fail
+        boundary.gate._execute = fail
         assert boundary.gate.dispatch({'action':'navigate','args':{'url':'https://example.test/'},'activity':'Inspect'}) == {
             'status':'fatal','reason':'Browser action failed.','execution_started':False,'data':{}}
         assert boundary.closed == [True]

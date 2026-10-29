@@ -67,37 +67,3 @@ def fake_main(plan, *, iterations=6):
         finally:
             agent.close()
 '''
-
-
-OFFLINE_REVIEWER = r'''
-import httpx
-from agent import auxiliary_client as auxiliary
-native_review_resolver=auxiliary.resolve_provider_client
-
-@contextmanager
-def offline_reviewer():
-    calls=[]
-    def handle(request):
-        body=json.loads(request.content)
-        calls.append(body)
-        assert str(request.url)=='https://chatgpt.com/backend-api/codex/responses'
-        assert body['model']==r.load_settings()['scout_reviewer']['model']
-        assert body['store'] is False and body['stream'] is True
-        assert 'tools' not in body and body['instructions'].startswith(r.load_policy())
-        final={'id':'offline-review','model':body['model'],'status':'completed',
-            'output':[{'type':'message','role':'assistant',
-                'content':[{'type':'output_text','text':'{"verdict":"approve"}'}]}]}
-        events=[{'type':'response.output_item.done','output_index':0,'item':final['output'][0]},
-                {'type':'response.completed','response':final}]
-        return httpx.Response(200,headers={'content-type':'text/event-stream'},
-            content=''.join('data: '+json.dumps(event)+'\n\n' for event in events))
-    def resolve(provider, *, model):
-        assert provider=='openai-codex' and model==r.load_settings()['scout_reviewer']['model']
-        return native_review_resolver(provider,model=model)
-    with patch('agent.auxiliary_client.resolve_provider_client',side_effect=resolve), \
-         patch('agent.auxiliary_client._select_pool_entry',return_value=(False,None)), \
-         patch('agent.auxiliary_client._read_codex_access_token',return_value='offline-test-token'), \
-         patch('agent.auxiliary_client._openai_http_client_kwargs',
-             side_effect=lambda _: {'http_client':httpx.Client(transport=httpx.MockTransport(handle))}):
-        yield calls
-'''

@@ -1,5 +1,3 @@
-"""AG_001–AG_007: request/review/execution boundary, with trusted offline doubles."""
-
 from copy import deepcopy
 import importlib
 import json
@@ -24,28 +22,8 @@ def boundary(monkeypatch):
     browser.ready, browser.failed, browser.endpoint = True, False, 'ws://trusted-owned-browser'
     monkeypatch.setenv('BROWSER_CDP_URL', browser.endpoint)
     calls, effects, closed = [], [], []
-    checked = SimpleNamespace(_binding=None, interaction_point=None,
-        _scan=evidence_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned',loader='old',document=1)}))
-
-    class Prepared:
-        def __init__(self, values):
-            self.values = deepcopy(values)
-            self._frames = checked._scan.frames
-
-        def reviewer_input(self):
-            return deepcopy(self.values)
-
-    def prepare(**values):
-        calls.append(('prepare', deepcopy(values)))
-        return Prepared(dict(action=values['action'], action_type=values['action_type'],
-            activity=values['activity'], context={}, screenshot=b'private-viewport', screenshot_mime='image/png'))
-
-    def recheck(prepared, **values):
-        calls.append(('recheck', deepcopy(values)))
-        assert prepared.values['action'] == values['action']
-        return checked
-
-    adapter = SimpleNamespace(tabs=lambda: [{'target_id': 'owned-page'}], prepare=prepare, recheck=recheck)
+    adapter = SimpleNamespace(tabs=lambda: [{'target_id': 'owned-page'}], _cdp=object())
+    browser.verify_control = lambda: None
     adapter._document_key = evidence_module.BrowserEvidence._document_key
     adapter._run = lambda operation: operation()
     adapter._snapshot = lambda tab, scan: adapter.snapshot(tab)
@@ -54,15 +32,14 @@ def boundary(monkeypatch):
         browser.ready, browser.failed = False, True
         closed.append(True)
     browser.close = close
-    reviewer = SimpleNamespace(review=lambda **_: gate_module.ReviewResult('approve', None, 1, 0, {}))
-    gate = gate_module.BrowserActionGate(browser, reviewer=reviewer, target_id='owned-page')
-    def execute(action, args, binding, invoke):
-        assert binding is checked
+    gate = gate_module.BrowserActionGate(browser, target_id='owned-page')
+    def execute(action, args, invoke):
+        calls.append(('execute', deepcopy(args)))
         invoke(lambda: effects.append((action, deepcopy(args))))
         return {'snapshot': '- heading "Current observation"', 'target_id': 'owned-page'}
     monkeypatch.setattr(gate, '_execute', execute)
-    yield SimpleNamespace(gate=gate, browser=browser, adapter=adapter, reviewer=reviewer,
-                          calls=calls, effects=effects, closed=closed, checked=checked)
+    yield SimpleNamespace(gate=gate, browser=browser, adapter=adapter,
+                          calls=calls, effects=effects, closed=closed)
     set_interrupt(False)
 
 
@@ -85,10 +62,6 @@ def boundary(monkeypatch):
      'ref_syntax', 'args.ref', 'args.ref must match @s followed by a positive integer, from a current snapshot.'),
     ({'action':'click','args':{'ref':'@s0'},'activity':'Inspect'},
      'ref_syntax', 'args.ref', 'args.ref must match @s followed by a positive integer, from a current snapshot.'),
-    ({'action':'navigate','args':{'url':'http://public.test/'}},
-     'activity_required', 'activity', 'activity must be nonempty for actions requiring safety review.'),
-    ({'action':'navigate','args':{'url':'http://public.test/'},'activity':'  '},
-     'activity_required', 'activity', 'activity must be nonempty for actions requiring safety review.'),
     ({'action':'navigate','args':{'url':'http://user:secret@public.test/'},'activity':'Inspect'},
      'url_syntax', 'args.url', 'args.url must be an absolute HTTP(S) URL without embedded credentials.'),
     ({'action':'navigate','args':{'url':'file:///private-poison'},'activity':'Inspect'},
@@ -124,89 +97,28 @@ def test_AG_001_missing_permission_never_grants_access(boundary, mode):
     assert not boundary.calls and not boundary.effects and not boundary.closed
 
 
-def test_BR_006_blocked_permission_and_unavailable_reference_are_not_format_errors(boundary):
-    boundary.gate._permissions['click'] = 'blocked'
-    assert boundary.gate.dispatch({'action':'click','args':{'private-poison':False}}) == {
-        'status':'rejected','reason':'Browser action is blocked.','execution_started':False,'data':{}}
-    boundary.gate._permissions['click'] = 'review_required'
-    def missing(**_):
-        raise evidence_module.EvidenceRejected('private-reference-poison')
-    boundary.adapter.prepare = missing
-    assert boundary.gate.dispatch({'action':'click','args':{'ref':'@s999'},'activity':'Inspect'}) == {
-        'status':'rejected','reason':'Browser context changed.','execution_started':False,'data':{}}
-    assert boundary.calls == boundary.effects == boundary.closed == []
 
 
-def test_AG_002_AG_003_fresh_review_copy_and_checked_original_execution(boundary):
-    request = {'action':'navigate','args':{'url':'http://public.test/original'},'activity':'Inspect original'}
-    reviews = []
-    def review(**values):
-        reviews.append(deepcopy(values))
-        request['args']['url'] = 'http://public.test/replacement'
-        values['action']['url'] = 'http://public.test/reviewer-mutation'
-        return gate_module.ReviewResult('approve', None, 1, 0, {})
-    boundary.reviewer.review = review
-    assert boundary.gate.dispatch(request)['status'] == 'success'
-    assert boundary.effects == [('navigate', {'url':'http://public.test/original'})]
-    assert boundary.calls[1] == ('recheck', {'action_type':'navigate','action':{'url':'http://public.test/original'}})
-    assert boundary.gate.dispatch(request)['status'] == 'success'
-    assert len(reviews) == 2 and reviews[1]['action']['url'] == 'http://public.test/replacement'
-    assert len([call for call in boundary.calls if call[0] == 'prepare']) == 2
 
 
-def test_AG_002_denial_rejects_then_healthy_request_can_continue(boundary):
-    boundary.reviewer.review = lambda **_: gate_module.ReviewResult('deny', None, 1, 0, {})
-    request = {'action':'navigate','args':{'url':'http://public.test/'},'activity':'Inspect'}
-    result = boundary.gate.dispatch(request)
-    assert result == {'status':'rejected','reason':'Browser action denied.','execution_started':False,'data':{}}
-    assert not boundary.effects and not boundary.closed
-    assert [call[0] for call in boundary.calls] == ['prepare']
-    boundary.reviewer.review = lambda **_: gate_module.ReviewResult('approve', None, 1, 0, {})
-    assert boundary.gate.dispatch(request)['status'] == 'success'
 
 
-def test_AG_003_stale_context_has_no_retry_or_effect(boundary):
-    def stale(*_, **__):
-        raise evidence_module.EvidenceRejected('private-context-poison')
-    boundary.adapter.recheck = stale
-    result = boundary.gate.dispatch({'action':'navigate','args':{'url':'http://public.test/'},'activity':'Inspect'})
-    assert result == {'status':'rejected','reason':'Browser context changed.','execution_started':False,'data':{}}
-    assert len(boundary.calls) == 1 and not boundary.effects and not boundary.closed
 
 
-def test_AG_004_explicit_review_exemption_keeps_exact_preparation(boundary):
-    boundary.gate._permissions['navigate'] = 'allowed_without_review'
-    boundary.reviewer.review = lambda **_: pytest.fail('Exempt action reviewed')
-    result = boundary.gate.dispatch({'action':'navigate','args':{'url':'http://public.test/'}})
-    assert result['status'] == 'success'
-    assert boundary.calls[0][1]['capture'] is False and boundary.calls[0][1]['activity'] is None
-    assert [call[0] for call in boundary.calls] == ['prepare','recheck']
-    assert boundary.effects == [('navigate', {'url':'http://public.test/'})]
 
 
-@pytest.mark.parametrize('action', ['back','scroll','snapshot','screenshot','get_images','list_tabs','switch_tab','close'])
-def test_AG_001_AG_004_configured_unsupported_review_cannot_bypass(boundary, action):
-    boundary.gate._permissions[action] = 'review_required'
-    args = {'direction':'down'} if action == 'scroll' else {'target_id':'owned-page'} if action == 'switch_tab' else {}
-    result = boundary.gate.dispatch({'action':action,'args':args,'activity':'Inspect'})
-    assert result == {'status':'rejected','reason':'Browser action review is unsupported.',
-                      'execution_started':False,'data':{}}
-    assert not boundary.calls and not boundary.effects and not boundary.closed
 
 
-@pytest.mark.parametrize('failure', ['review','capture','recheck','dispatch','observation'])
+@pytest.mark.parametrize('failure', ['inspection','dispatch','observation'])
 def test_AG_005_AG_006_fatal_tracks_started_execution_and_is_terminal(boundary, monkeypatch, failure):
     def broken(*_, **__):
         raise RuntimeError('private-packet-poison')
-    if failure == 'review':
-        boundary.reviewer.review = broken
-    elif failure in {'capture','recheck'}:
-        setattr(boundary.adapter, 'prepare' if failure == 'capture' else 'recheck', broken)
-    else:
-        def execute(action, args, checked, invoke):
-            invoke(broken if failure == 'dispatch' else lambda: boundary.effects.append(action))
+    def execute(action, args, invoke):
+        if failure == 'inspection':
             broken()
-        monkeypatch.setattr(boundary.gate, '_execute', execute)
+        invoke(broken if failure == 'dispatch' else lambda: boundary.effects.append(action))
+        broken()
+    monkeypatch.setattr(boundary.gate, '_execute', execute)
     result = boundary.gate.dispatch({'action':'navigate','args':{'url':'http://public.test/'},'activity':'Inspect'})
     assert result['status'] == 'fatal' and result['execution_started'] is (failure in {'dispatch','observation'})
     assert result['data'] == {} and 'poison' not in repr(result)
@@ -217,45 +129,10 @@ def test_AG_005_AG_006_fatal_tracks_started_execution_and_is_terminal(boundary, 
     assert boundary.calls == before and boundary.closed == [True]
 
 
-@pytest.mark.parametrize('value', [None, {}, SimpleNamespace(verdict='approve', failure=None),
-    gate_module.ReviewResult('approve','timeout',2,0,{}), gate_module.ReviewResult('unknown',None,1,0,{})])
-def test_AG_006_invalid_or_failed_review_never_authorizes(boundary, value):
-    boundary.reviewer.review = lambda **_: value
-    result = boundary.gate.dispatch({'action':'navigate','args':{'url':'http://public.test/'},'activity':'Inspect'})
-    assert result == {'status':'fatal','reason':'Browser review failed.','execution_started':False,'data':{}}
-    assert not boundary.effects and boundary.closed == [True]
 
 
-@pytest.mark.parametrize('stage', ['before','during_review','after_recheck','closed_review'])
-def test_AG_006_native_interrupt_and_scope_close_prevent_effect(boundary, stage):
-    if stage == 'before':
-        set_interrupt(True)
-    elif stage in {'during_review','closed_review'}:
-        def review(**_):
-            boundary.gate.close() if stage == 'closed_review' else set_interrupt(True)
-            return gate_module.ReviewResult('approve', None, 1, 0, {})
-        boundary.reviewer.review = review
-    else:
-        native = boundary.adapter.recheck
-        def recheck(*args, **kwargs):
-            result = native(*args, **kwargs)
-            set_interrupt(True)
-            return result
-        boundary.adapter.recheck = recheck
-    result = boundary.gate.dispatch({'action':'navigate','args':{'url':'http://public.test/'},'activity':'Inspect'})
-    assert result['status'] == 'fatal' and result['execution_started'] is False
-    assert not boundary.effects and boundary.closed == [True]
 
 
-def test_AG_007_private_action_and_policy_mutation_are_not_retained(boundary):
-    boundary.browser.settings['browser']['action_permissions']['navigate'] = 'allowed_without_review'
-    request = {'action':'navigate','args':{'url':'http://private-action-poison.test/'},'activity':'private-activity-poison'}
-    boundary.reviewer.review = lambda **_: gate_module.ReviewResult('deny', None, 1, 0, {})
-    result = boundary.gate.dispatch(request)
-    assert result['status'] == 'rejected' and len(boundary.calls) == 1
-    assert 'poison' not in repr(result) + repr(boundary.gate)
-    assert set(vars(boundary.gate)) - {'_execute'} == {'_browser','_reviewer','_permissions','_scroll_pixels','_navigation_retries',
-                                                    '_selected','_terminal','_fatal_reason','_evidence'}
 
 
 @pytest.mark.parametrize('response', [
@@ -270,7 +147,7 @@ def test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_hea
     cdp_module = importlib.import_module('plugins.signal-scout.security._cdp')
     monkeypatch.setattr(boundary.gate, '_execute',
                         gate_module.BrowserActionGate._execute.__get__(boundary.gate))
-    boundary.adapter._frames = lambda _: evidence_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned')})
+    boundary.adapter._frames = lambda _: evidence_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned',loader='old',document=1)})
     snapshots = []
     def snapshot(tab):
         snapshots.append(tab)
@@ -319,7 +196,7 @@ def test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_hea
 def test_AG_007_required_file_policy_fails_without_fallback(tmp_path):
     original = yaml.safe_load(CONFIG.read_text())
     target = tmp_path / 'config.yaml'
-    for key, value in [('action_permissions',None), ('action_permissions',{'eval':'allowed_without_review'}),
+    for key, value in [('action_permissions',None), ('action_permissions',{'eval':'allowed'}),
         ('action_permissions',{'click':None}), ('scroll_pixels',None), ('scroll_pixels',0), ('scroll_pixels',True)]:
         config = deepcopy(original)
         if value is None:
@@ -369,3 +246,56 @@ def test_AG_005_navigation_observation_matches_native_document(case):
     assert len(sent)==1
     assert result.outcome.value=={'same_document':'same_document','history_hash':'same_document',
         'bfcache':'restored','error':'loading_error'}.get(case,'ready')
+
+
+def test_AG_002_AG_003_AG_004_AG_007_copied_request_and_policy_keep_original_effect(boundary, monkeypatch):
+    request = {'action':'navigate','args':{'url':'http://public.test/original'}}
+    boundary.browser.settings['browser']['action_permissions']['navigate'] = 'blocked'
+    def execute(action, args, invoke):
+        request['args']['url'] = 'http://public.test/replacement'
+        invoke(lambda: boundary.effects.append((action, deepcopy(args))))
+        return {'snapshot':'- heading "Observed"'}
+    monkeypatch.setattr(boundary.gate, '_execute', execute)
+    assert boundary.gate.dispatch(request)['status'] == 'success'
+    assert boundary.effects == [('navigate', {'url':'http://public.test/original'})]
+    assert 'original' not in repr(boundary.gate)
+
+
+@pytest.mark.parametrize('stage', ['before', 'inspection', 'closed'])
+def test_AG_006_native_interrupt_and_scope_close_prevent_effect(boundary, monkeypatch, stage):
+    if stage == 'before':
+        set_interrupt(True)
+    def execute(action, args, invoke):
+        boundary.gate.close() if stage == 'closed' else set_interrupt(True)
+        invoke(lambda: boundary.effects.append(action))
+    monkeypatch.setattr(boundary.gate, '_execute', execute)
+    result = boundary.gate.dispatch({'action':'navigate','args':{'url':'http://public.test/'}})
+    assert result['status'] == 'fatal' and result['execution_started'] is False
+    assert not boundary.effects and boundary.closed == [True]
+
+
+def test_BR_006_blocked_permission_and_unavailable_reference_are_not_format_errors(boundary, monkeypatch):
+    boundary.gate._permissions['click'] = 'blocked'
+    assert boundary.gate.dispatch({'action':'click','args':{'private-poison':False}}) == {
+        'status':'rejected','reason':'Browser action is blocked.','execution_started':False,'data':{}}
+    boundary.gate._permissions['click'] = 'allowed'
+    def missing(*_):
+        raise evidence_module.EvidenceRejected('private-reference-poison')
+    monkeypatch.setattr(boundary.gate,'_execute',missing)
+    assert boundary.gate.dispatch({'action':'click','args':{'ref':'@s999'}}) == {
+        'status':'rejected','reason':'Browser context changed.','execution_started':False,'data':{}}
+    assert boundary.effects == boundary.closed == []
+
+
+def test_AE_002_AE_004_current_keyboard_focus_change_during_reveal_rejects_without_key(boundary, monkeypatch):
+    binding = SimpleNamespace(tab='owned-page')
+    frame = SimpleNamespace(parent=None,session='owned',loader='current',document=1)
+    boundary.adapter._frames = lambda _: evidence_module._FrameScan({'root':frame})
+    focus = iter([(binding,[binding]), (None,[])])
+    boundary.adapter._focus = lambda *_: next(focus)
+    boundary.adapter._scroll = lambda *_: None
+    boundary.adapter._point = lambda *_: (12,18)
+    monkeypatch.setattr(boundary.gate,'_execute',gate_module.BrowserActionGate._execute.__get__(boundary.gate))
+    result=boundary.gate.dispatch({'action':'keypress','args':{'key':'Enter'}})
+    assert result=={'status':'rejected','reason':'Browser context changed.','execution_started':False,'data':{}}
+    assert boundary.effects == boundary.closed == [] and boundary.browser.ready

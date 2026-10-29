@@ -31,11 +31,6 @@ logging:
 scout_diagnostics:
   max_record_bytes: 65536
   max_pending_bytes: 1048576
-scout_reviewer:
-  model: gpt-6-luna
-  reasoning_effort: none
-  timeout_seconds: 180
-  retries: 1
 browser:
   mode: headless
   viewer: false
@@ -49,18 +44,18 @@ browser:
   navigation_retries: 1
   scroll_pixels: 500
   action_permissions:
-    click: review_required
-    navigate: review_required
-    type: review_required
-    keypress: review_required
-    back: allowed_without_review
-    scroll: allowed_without_review
-    snapshot: allowed_without_review
-    screenshot: allowed_without_review
-    get_images: allowed_without_review
-    list_tabs: allowed_without_review
-    switch_tab: allowed_without_review
-    close: allowed_without_review
+    click: allowed
+    navigate: allowed
+    type: allowed
+    keypress: allowed
+    back: allowed
+    scroll: allowed
+    snapshot: allowed
+    screenshot: allowed
+    get_images: allowed
+    list_tabs: allowed
+    switch_tab: allowed
+    close: allowed
   viewport:
     width: 1280
     height: 720

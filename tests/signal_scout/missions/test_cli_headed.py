@@ -79,7 +79,7 @@ def test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotatio
         text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
     prefix = ""
     try:
-        prefix = wait_for_text(child, "started pending")
+        prefix = wait_for_text(child, "fixture native diagnostic")
         assert "Scout local viewer opened." in prefix, prefix
         active_profiles = set(Path(tempfile.gettempdir()).glob("scout-mission-viewer-*")) - profiles
         assert len(active_profiles) == 1
@@ -101,7 +101,6 @@ def test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotatio
         saved = lifecycle.checked(["docker", "exec", scout, "python", "-c",
             "from pathlib import Path; print(Path('/var/lib/scout/logs/agent.log').read_text())"])
         assert "fixture native diagnostic" in saved
-        assert "event=review_attempt" not in saved and "event=review_completed" not in saved
         from websockets.sync.client import connect
 
         port, endpoint = (Path(owned) / "DevToolsActivePort").read_text().splitlines()

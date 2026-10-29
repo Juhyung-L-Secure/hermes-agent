@@ -8,7 +8,6 @@ import httpx
 
 _native_send = httpx.Client.send
 _main_calls = 0
-_review_calls = 0
 _scenario = None
 _retry_body = None
 
@@ -58,24 +57,12 @@ def _result(body):
 
 
 def _send(self, request, **kwargs):
-    global _main_calls, _review_calls, _scenario, _retry_body
+    global _main_calls, _scenario, _retry_body
     if request.url.host != "chatgpt.com" or request.url.path != "/backend-api/codex/responses":
         if request.url.host in {"127.0.0.1", "localhost"}:
             return _native_send(self, request, **kwargs)
         raise AssertionError("Unexpected external HTTP request in offline CLI fixture")
     body = json.loads(request.content)
-    if body["model"] == "gpt-6-luna":
-        _review_calls += 1
-        assert "tools" not in body
-        if _scenario in {"cancel", "headed"}:
-            time.sleep(90)
-        if _scenario == "fatal" or _review_calls == 1:
-            text = "malformed technical response"
-        elif _scenario == "deny":
-            text = '{"verdict":"deny"}'
-        else:
-            text = '{"verdict":"approve"}'
-        return _reply(request, body, [_message(text)])
     assert body["model"] == "gpt-5.6-luna"
     _main_calls += 1
     names = [item["name"] for item in body["tools"]]
@@ -83,7 +70,7 @@ def _send(self, request, **kwargs):
     if _main_calls == 1:
         assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0), "Research inherited a process alarm"
         initial = json.dumps(body["input"], ensure_ascii=False)
-        for scenario in ("success", "exhaust", "fatal", "deny", "cancel", "headed", "startupfail"):
+        for scenario in ("success", "exhaust", "fatal", "blocked", "cancel", "headed", "startupfail"):
             if "CLI fixture " + scenario in initial:
                 _scenario = scenario
                 break
@@ -99,12 +86,26 @@ def _send(self, request, **kwargs):
             raise ValueError(detail)
         except ValueError:
             logger.exception("fixture native diagnostic")
+        if _scenario in {"cancel", "headed"}:
+            time.sleep(90)
+        if _scenario == "fatal":
+            import importlib
+            evidence = importlib.import_module('plugins.signal-scout.security.evidence')
+            native = evidence.BrowserEvidence._command
+            def command(self, method, params=None, session=None):
+                if method == 'Page.navigate':
+                    return native(self, 'Scout.requiredBrowserFailure', {}, session)
+                return native(self, method, params, session)
+            evidence.BrowserEvidence._command = command
+        if _scenario == "blocked":
+            from hermes_cli.plugins import get_plugin_manager
+            adapter = get_plugin_manager()._plugins['signal-scout'].module.browser_tools
+            adapter._binding.gate._permissions['navigate'] = 'blocked'
         return _reply(request, body, [_tool("navigate", {"url": "http://public.test/cli-mission"}, "Read controlled research source")])
     latest = _result(body)
-    if _scenario == "deny":
+    if _scenario == "blocked":
         assert latest["status"] == "rejected" and latest["execution_started"] is False
-        assert _review_calls == 2
-        return _reply(request, body, [_message("Controlled denial preserved healthy conversation.")])
+        return _reply(request, body, [_message("Controlled blocked action preserved healthy conversation.")])
     assert latest["status"] == "success"
     if _main_calls == 2:
         snapshot = latest["data"]["snapshot"]
@@ -113,7 +114,7 @@ def _send(self, request, **kwargs):
         reference = matches[0].rsplit("[", 1)[1][:-1]
         return _reply(request, body, [_tool("click", {"ref": reference}, "Inspect controlled source control")])
     outputs = [item for item in body["input"] if item.get("type") == "function_call_output"]
-    assert len(outputs) == (3 if _main_calls == 5 else 2) and _review_calls == 3
+    assert len(outputs) == (3 if _main_calls == 5 else 2)
     if _main_calls == 3:
         _retry_body = deepcopy(body)
         return _broken(request)

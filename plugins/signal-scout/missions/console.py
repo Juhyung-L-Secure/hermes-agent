@@ -90,14 +90,7 @@ class MissionConsole(logging.Handler):
 
     def emit(self, record):
         try:
-            code = getattr(record, "scout_event", None)
-            metadata = getattr(record, "scout_review", {})
-            if code == "review_attempt":
-                self.progress("Scout review %s pending for %s (attempt %s).",
-                    "retry" if metadata["attempts"] > 1 else "started", metadata["action_type"], metadata["attempts"])
-            elif code == "review_completed":
-                self.progress("Scout review %s after %s attempt(s).", metadata.get("verdict"), metadata.get("attempts"))
-            if record.levelno >= self.threshold and (self.verbose or code not in {"review_attempt", "review_completed"}):
+            if record.levelno >= self.threshold:
                 print(self.format(record), file=self.stream, flush=True)
         except Exception:
             diagnostic(self.stream)

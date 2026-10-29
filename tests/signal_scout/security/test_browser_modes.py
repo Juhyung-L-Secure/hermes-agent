@@ -221,14 +221,14 @@ assert not any(Path(p).exists() for p in ('/var/lib/scout','/opt/hermes','/var/r
             assert subprocess.run(['docker','inspect',owned],capture_output=True).returncode != 0
 
 
-def test_SR_012_SR_013_real_noVNC_mouse_keys_bypass_review_and_stale_scout_action_rejects(headed_web, tmp_path):
+def test_SR_012_SR_013_real_noVNC_mouse_keys_and_stale_scout_reference_rejects(headed_web, tmp_path):
     stack, _, _, _ = headed_web
     with stack.browser_run() as run:
         options = [value for key,setting in run.scout_environment().items() for value in ('-e',key+'='+setting)]
         code = SETUP + r'''
 with Browser() as browser:
-    adapter=browser.evidence();tab=adapter.tabs()[0]['target_id'];reviewer=Reviewer()
-    gate=g.BrowserActionGate(browser,reviewer=reviewer,target_id=tab)
+    adapter=browser.evidence();tab=adapter.tabs()[0]['target_id']
+    gate=g.BrowserActionGate(browser,target_id=tab)
     successful(gate,'navigate',{'url':'http://public.test/gate'});wait_ready(browser)
     snapshot=successful(gate,'snapshot')['snapshot']
     points=browser.command('eval',"""(() => {
@@ -247,24 +247,22 @@ with Browser() as browser:
               focus:document.activeElement.id,innerWidth,innerHeight,outerWidth,outerHeight,screenX,screenY};
     })()""")['result']
     assert actual['clicks']==1 and actual['query']=='initialhuman',actual
-    assert reviewer.calls==['navigate'], 'Human input entered Scout review'
     print('manual-ok',flush=True)
-    def pending(_):
-        print('review-wait',flush=True);input()
-        deadline=time.monotonic()+10
-        while browser.command('eval','window.clicks')['result']!=2:
-            assert time.monotonic()<deadline,'Manual click did not arrive during review'
-            time.sleep(.05)
-    reviewer.callback=pending
-    result=dispatch(gate,'keypress',{'key':'Enter'})
+    print('manual-wait',flush=True);input()
+    deadline=time.monotonic()+10
+    while browser.command('eval','window.clicks')['result']!=2:
+        assert time.monotonic()<deadline,'Manual click did not arrive'
+        time.sleep(.05)
+    browser.command('eval',"document.querySelector('#click').replaceWith(document.querySelector('#click').cloneNode(true));true")
+    result=dispatch(gate,'click',{'ref':reference(snapshot,'Controlled click')})
     assert result['status']=='rejected' and result['execution_started'] is False
     assert browser.command('eval','window.submits')['result']==0
     assert browser.command('eval','window.clicks')['result']==2
     print('stale-ok',flush=True);input()
-    reviewer.callback=None
+    snapshot=successful(gate,'snapshot')['snapshot']
+    browser.command('eval',"document.querySelector('#click').onclick=()=>window.clicks++;true")
     successful(gate,'click',{'ref':reference(snapshot,'Controlled click')})
     assert browser.command('eval','window.clicks')['result']==3
-    assert reviewer.calls==['navigate','keypress','click']
     print('done',flush=True)
 '''
         child = subprocess.Popen(run.compose+['run','--rm','--no-deps','-T',*options,
@@ -301,7 +299,7 @@ with Browser() as browser:
                 assert frame['width']==1280 and frame['height']>=720 and frame['colored']>10000, frame
                 viewer.click(*points['click'])
                 viewer.click(*points['query']);viewer.type('human')
-                resume();assert line()=='manual-ok';assert line()=='review-wait'
+                resume();assert line()=='manual-ok';assert line()=='manual-wait'
                 viewer.click(*points['click'])
                 resume();assert line()=='stale-ok'
             # Viewer disconnect is independent of browser mission lifetime.

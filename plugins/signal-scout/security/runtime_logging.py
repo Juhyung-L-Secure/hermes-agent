@@ -13,7 +13,6 @@ EVENTS = frozenset({
     "sandbox_verified", "sandbox_failed", "connection_allowed", "connection_failed",
     "dns_failed", "private_destination", "peer_mismatch", "destination_port",
     "invalid_request", "client_denied", "denied_ipv4", "denied_ipv6",
-    "review_attempt", "review_completed",
 })
 COMPONENTS = {"scout", "proxy", "firewall"}
 
@@ -91,46 +90,6 @@ def event(component, code, level="INFO"):
         raise ValueError("Invalid operational event.")
     logging.getLogger("signal_scout." + component).log(getattr(logging, level), "event=" + code,
                                                       extra={"scout_component": component, "scout_event": code})
-
-
-def _review_metadata(value):
-    if not isinstance(value, dict):
-        return {}
-    result = {}
-    for key, allowed in {
-        "action_type": {"click", "navigate", "type", "keypress"},
-        "verdict": {"approve", "deny", "technical_failure"},
-    }.items():
-        candidate = value.get(key)
-        if isinstance(candidate, str) and candidate in allowed:
-            result[key] = candidate
-    for key in ("duration_ms", "attempts", "prompt_tokens", "completion_tokens", "total_tokens"):
-        candidate = value.get(key)
-        if type(candidate) is int and candidate >= 0:
-            result[key] = candidate
-    return result
-
-
-def review_event(action_type, verdict, failure, duration_ms, attempts, usage):
-    """Persist only validated verdict/action/timing/attempt/token metadata.
-
-    Provider errors and raw evidence never become fields of this event.
-    Validation precedes native queue/rotation; delivery remains best effort.
-    """
-    metadata = _review_metadata({**usage, "action_type": action_type,
-        "verdict": "technical_failure" if failure else verdict,
-        "duration_ms": duration_ms, "attempts": attempts})
-    logging.getLogger("signal_scout.scout").log(logging.WARNING if failure else logging.INFO,
-        "event=review_completed " + json.dumps(metadata, sort_keys=True), extra={"scout_component": "scout",
-                                        "scout_event": "review_completed", "scout_review": metadata})
-
-
-def review_attempt(action_type, attempts):
-    """Observe the real attempt before its worker can complete."""
-    metadata = _review_metadata({"action_type": action_type, "attempts": attempts})
-    logging.getLogger("signal_scout.scout").info(
-        "event=review_attempt " + json.dumps(metadata, sort_keys=True),
-        extra={"scout_component": "scout", "scout_event": "review_attempt", "scout_review": metadata})
 
 
 def _writer_path(run):

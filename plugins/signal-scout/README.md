@@ -4,7 +4,7 @@ Bootstrap's native Hermes tool, `signal_scout`, accepts exactly `{"action": "sta
 It returns the discovered manifest's version and explicit readiness: status is
 ready; research and research security readiness remain unchanged.
 The separate `signal_scout_browser` toolset registers one `browser_scout` tool
-for trusted, run-bound reviewed browsing; bootstrap does not select it.
+for trusted, run-bound browsing; bootstrap does not select it.
 
 | File | Owns |
 | --- | --- |
@@ -15,8 +15,8 @@ for trusted, run-bound reviewed browsing; bootstrap does not select it.
 | `../../tests/signal_scout/integration/` | Real discovery/dispatch and container checks |
 | `specs.json` | Native integration and bootstrap contracts, including uncovered promises |
 | `missions/specs.json` | Mission execution, stop, checkpoint/resume |
-| `security/` | Browser/proxy/firewall/logging/settings and standalone safety reviewer; broader security specs |
-| `browser_tools/` | Native reviewed-browser registration, trusted binding, feedback and BR_001–BR_005 |
+| `security/` | Browser/proxy/firewall/logging/settings and current target resolution; broader security specs |
+| `browser_tools/` | Native browser registration, trusted binding, feedback and BR_001–BR_005 |
 | `evidence/specs.json` | Source inventory, evidence, findings, deduplication |
 | `media/specs.json` | Video/audio analysis and limitations |
 | `budget/specs.json` | Usage measurement and enforcement |
@@ -28,7 +28,7 @@ separate toolsets → bootstrap selects only `signal_scout` → native dispatch 
 action and returns readiness. Disablement removes the callable tool; unexpected
 actions or fields return an error without side effects.
 
-Reviewed-browser flow: trusted owner starts its isolated Browser and gate →
+Browser flow: trusted owner starts its isolated Browser and gate →
 selects only `signal_scout_browser` (plus status if explicitly wanted) → binds
 the gate and mandatory native hard-stop callback → native `browser_scout`
 dispatch forwards the unchanged proposal → gate returns an observation or
@@ -83,15 +83,8 @@ Deterministic public-web protection harness lives under
 [`security/`](security/README.md). SR_019 and
 SR_001–SR_005 cover only network, sandbox/control, protection logging,
 separate browser container, and disposable single-run lifetime. Trusted host
-smoke uses existing native remote-CDP driver path; operator entrypoints remain status-only.
+smoke uses existing native remote-CDP driver path; bootstrap readiness remains status-only. The existing foreground mission launcher uses its separate browser binding.
 Independent teardown after coordinator/host loss remains deferred.
-Research missions, live model browsing activation, evidence, reports, messaging, scheduling, and
-budget engines remain future work. Native Hermes extension boundaries remain
+Durable missions/resume, broader evidence/reporting, messaging, scheduling and budget engines remain future work. Native Hermes extension boundaries remain
 available for later explicit messaging integration; no abstraction is added.
-Standalone safety-reviewer contracts RV_001–RV_006 now cover prepared in-memory
-evidence, fixed safety policy, fresh native subscription requests, strict verdicts,
-configured deadlines/retries and sanitized rotating metadata. Browser-action gate
-and adapter contracts live with their owning features; live reviewer quality,
-account availability and main-model image support remain unverified. No mission
-launcher or live browsing command is added. Status readiness stays unchanged.
-[Reviewer ownership](security/README.md#standalone-safety-reviewer).
+Independent action-level safety review is retired. Ordinary target resolution, observations and deterministic allowed/blocked permissions remain. Main-agent behavioral guidance does not replace that retired enforcement. The previous implementation remains in local Git tag `archive/scout-safety-reviewer-2026-10-29`; inspect with `git show archive/scout-safety-reviewer-2026-10-29:plugins/signal-scout/security/reviewer.py`. [Current security ownership](security/README.md#reviewer-retirement) records retained boundaries and retired contracts. Existing foreground missions remain available through the Docker guide; live provider availability and research quality remain unverified by offline tests.

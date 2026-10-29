@@ -1,4 +1,4 @@
-"""Expose bootstrap status and separately selected reviewed browser routing."""
+"""Expose bootstrap status and separately selected run-owned browser routing."""
 
 import json
 from pathlib import Path

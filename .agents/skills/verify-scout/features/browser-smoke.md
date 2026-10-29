@@ -1,6 +1,6 @@
 # Public browser smoke
 
-Operator supplies a public URL, Scout starts a fresh isolated browser, verifies sandbox, navigates and observes the page, then removes the owned browser. No LLM or action reviewer is invoked by this trusted operator smoke.
+Operator supplies a public URL, Scout starts a fresh isolated browser, verifies sandbox, navigates and observes the page, then removes the owned browser. This trusted operator smoke makes no model request.
 
 ## Sub-features
 
@@ -28,6 +28,6 @@ Preconditions:
 ## Gotchas
 
 - Public site/network failure is a failed journey. Report it; do not claim an offline substitute proves this entry.
-- Download denial, click review, viewport behavior, and viewer control need their own focused browser tests. Smoke does not cover those whole contracts.
+- Download denial, exact-target input, viewport behavior, and viewer control need their own focused browser tests. Smoke does not cover those whole contracts.
 - `BrowserRun` deliberately refuses leftover runs. Inspect exact ownership before any authorized manual cleanup; never remove a foreign browser to make the check pass.
 - Normal CLI removes its browser; host/launcher loss can still strand one. No independent recovery promise.

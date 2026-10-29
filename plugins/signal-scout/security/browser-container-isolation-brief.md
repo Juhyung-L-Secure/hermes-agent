@@ -1,5 +1,7 @@
 # Slice 1: browser-container isolation — implementation brief
 
+Historical document. Reviewer-specific requirements and approval-context checks were superseded by reviewer retirement on 2026-10-29. Current behavior lives in owning `specs.json` and READMEs. Original committed reviewer remains in `archive/scout-safety-reviewer-2026-10-29`. Independent protection and observation requirements remain current where repeated in those contracts.
+
 Historical checker instructions below are superseded by the [standalone checker workflow](../README.md#validate-spec-links). Embedded checker paths and per-ID selectors describe the former implementation; use current whole-file CLI validation. This notice preserves the original implementation record without renewing its commands.
 
 Prepared: 2026-09-17. Status: user confirmed complete inline brief on 2026-09-17;

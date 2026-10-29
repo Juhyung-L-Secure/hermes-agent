@@ -16,7 +16,6 @@ import yaml
 
 from tests.signal_scout.browser_tools.test_adapter import FakeGate, dispatch, native_plugin
 from tests.signal_scout.security.test_logging import isolated
-from tests.signal_scout.security.test_reviewer import configured, evidence, response, transport
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "docker/signal-scout"))
@@ -101,7 +100,6 @@ def test_MI_032_BR_006_startup_uses_registered_adapter_and_one_reference_copy(na
     runner = importlib.import_module("plugins.signal-scout.missions.__main__")
     browser_module = importlib.import_module("plugins.signal-scout.security.browser")
     gate_module = importlib.import_module("plugins.signal-scout.security.gate")
-    reviewer_module = importlib.import_module("plugins.signal-scout.security.reviewer")
     reference_path = tmp_path / "action-reference.md"
     guide = "# Required fixture reference\n\nExact Unicode guidance 雪.\n"
     reference_path.write_text(guide)
@@ -116,7 +114,6 @@ def test_MI_032_BR_006_startup_uses_registered_adapter_and_one_reference_copy(na
     monkeypatch.setattr(browser_module, "Browser", lambda: nullcontext(SimpleNamespace(
         evidence=lambda: SimpleNamespace(tabs=lambda: [{"target_id":"owned-tab"}]))))
     monkeypatch.setattr(gate_module, "BrowserActionGate", lambda *args, **kwargs: gate)
-    monkeypatch.setattr(reviewer_module, "SafetyReviewer", lambda: object())
     class Agent:
         valid_tool_names = {"browser_scout"}
         run_budget_seconds = None
@@ -143,31 +140,6 @@ def test_MI_032_BR_006_startup_uses_registered_adapter_and_one_reference_copy(na
     assert captured["options"]["enabled_toolsets"] == ["signal_scout_browser"]
 
 
-def test_MI_033_review_pending_and_retry_precede_real_transport_at_error_level(configured, monkeypatch):
-    create, config, _ = configured
-    config["logging"]["level"] = "ERROR"
-    stream = io.StringIO()
-    reviewer = create(retries=1)
-
-    def handler(number, _body):
-        text = stream.getvalue()
-        assert f"(attempt {number})." in text
-        assert "after" not in text
-        return response("invalid" if number == 1 else '{"verdict":"deny"}')
-
-    calls = transport(monkeypatch, handler)
-    with console_module.MissionConsole(config, stream=stream) as console:
-        runtime.configure_logging("scout", config)
-        assert sum(bool(getattr(item, "_scout_console", False)) for item in logging.getLogger().handlers) == 1
-        result = reviewer.review(**evidence())
-        console.tool_start("one", "browser_scout", {"action": "navigate", "activity": "Find public history"})
-        console.tool_complete("one", "browser_scout", {"action": "navigate"},
-                              json.dumps({"status": "rejected", "reason": "Review denied."}))
-    assert result.verdict == "deny" and result.attempts == len(calls) == 2
-    text = stream.getvalue()
-    assert text.index("started pending") < text.index("retry pending") < text.index("review deny")
-    assert "Activity \"Find public history\"" in text and "navigate rejected. Review denied." in text
-    assert "viewport-poison" not in text and "button-poison" not in text
 
 
 def test_MI_034_native_console_preserves_saved_handlers_levels_redaction_and_traceback(tmp_path):
@@ -370,24 +342,6 @@ def test_MI_032_bootstrap_retains_explicit_native_bounds(native_plugin, monkeypa
     assert captured["enabled_toolsets"] == ["signal_scout"] and captured["fallback_model"] == []
 
 
-def test_MI_033_observer_failure_does_not_change_actual_review_verdict(configured, monkeypatch):
-    create, config, _ = configured
-
-    class FailingOnce(io.StringIO):
-        remaining = 1
-
-        def write(self, value):
-            if self.remaining:
-                self.remaining -= 1
-                raise OSError("Fixture display failure")
-            return super().write(value)
-
-    stream = FailingOnce()
-    calls = transport(monkeypatch, lambda *_: response())
-    with console_module.MissionConsole(config, stream=stream):
-        result = create(retries=0).review(**evidence())
-    assert result.verdict == "approve" and result.failure is None and len(calls) == 1
-    assert "Scout diagnostic observer failed." in stream.getvalue()
 
 
 @pytest.mark.parametrize("fault,expected", [("create-error", 1), ("cancel", 130), ("cancel-browser", 130)])
@@ -503,10 +457,8 @@ def test_MI_032_stale_scout_refuses_before_attach_or_inference(monkeypatch, caps
     assert ["docker", "rm", "a" * 64] in operations and owner.child is None
 
 
-@pytest.mark.parametrize("verdict", ["approve", "deny"])
-def test_MI_034_file_observer_failure_is_visible_and_stops_without_changing_review(configured, monkeypatch, tmp_path, verdict):
-    create, config, _ = configured
-    reviewer = create(retries=0)
+def test_MI_034_file_observer_failure_is_visible_and_stops_without_changing_actions(monkeypatch, tmp_path):
+    config = yaml.safe_load((ROOT / "docker/signal-scout/config.yaml").read_text())
     stream = io.StringIO()
     (tmp_path / "proxy.log").write_text("prior run\n")
     repeated = threading.Event()
@@ -533,11 +485,24 @@ def test_MI_034_file_observer_failure_is_visible_and_stops_without_changing_revi
             cursor.file = FailedRead(cursor.file)
 
     monkeypatch.setattr(console_module.NetworkCursor, "_open", open_cursor)
-    calls = transport(monkeypatch, lambda *_: response(json.dumps({"verdict": verdict})))
     with console_module.MissionConsole(config, verbose=True, stream=stream, log_dir=tmp_path) as console:
         assert repeated.wait(timeout=3), "Actual follower never attempted failed reads"
-        result = reviewer.review(**evidence())
-    assert result.verdict == verdict and result.failure is None and len(calls) == 1
+        console.tool_complete("one", "browser_scout", {"action":"snapshot"}, {"status":"success"})
+    assert "Scout browser result snapshot success." in stream.getvalue()
     assert stream.getvalue().count("Scout diagnostic observer failed.") == 1
     assert console.stopped.is_set() and not console.worker.is_alive()
     assert all(cursor.file is None for cursor in console.cursors)
+
+
+def test_MI_033_model_action_and_result_progress_at_error_level():
+    config = yaml.safe_load((ROOT / 'docker/signal-scout/config.yaml').read_text())
+    config['logging']['level'] = 'ERROR'
+    stream = io.StringIO()
+    with console_module.MissionConsole(config, stream=stream) as console:
+        console.step(1, None)
+        console.tool_start('one', 'browser_scout', {'action':'navigate', 'activity':'Find public history'})
+        console.tool_complete('one', 'browser_scout', {'action':'navigate'},
+                              {'status':'rejected', 'reason':'Browser action is blocked.'})
+    assert stream.getvalue() == ('Scout model working (step 1).\n'
+        'Scout action proposed navigate. Activity "Find public history".\n'
+        'Scout browser result navigate rejected. Browser action is blocked.\n')

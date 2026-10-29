@@ -184,7 +184,7 @@ def test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose
     assert "browser ready (headless)" in text and "Research skill loaded" in text
     assert "model working" in text and "action proposed navigate" in text
     assert "model working (step 4)" in text
-    assert text.index("started pending") < text.index("retry pending") < text.index("review approve")
+    assert "Scout review" not in text and "Reviewer" not in text
     assert "browser result click success" in text and "mission completed" in text
     assert text.count("Retrying API call in") == 1
     assert text.count("ValueError: fixture native multiline detail") == 1
@@ -203,8 +203,8 @@ def test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose
     assert counts().get("cli-effects", 0) == effects + 1
 
 
-@pytest.mark.parametrize("scenario", ["exhaust", "fatal", "deny"])
-def test_MI_033_MI_035_actual_cli_failed_native_outcome_and_denial(cli_stack, scenario, tmp_path):
+@pytest.mark.parametrize("scenario", ["exhaust", "fatal", "blocked"])
+def test_MI_033_MI_035_actual_cli_failed_native_outcome_and_blocked_action(cli_stack, scenario, tmp_path):
     """SR_023 SR_024 MI_034"""
     stack, command, counts, _ = cli_stack
     before = helper_state(stack)
@@ -212,12 +212,12 @@ def test_MI_033_MI_035_actual_cli_failed_native_outcome_and_denial(cli_stack, sc
     prior = browser_runs(stack)
     result = subprocess.run([*command, "CLI fixture " + scenario], text=True, capture_output=True, timeout=180)
     receipt(tmp_path, result)
-    expected = 0 if scenario == "deny" else 1
+    expected = 0 if scenario == "blocked" else 1
     assert result.returncode == expected, result.stderr
-    assert result.stdout.strip() == ("Controlled denial preserved healthy conversation." if scenario == "deny" else "")
+    assert result.stdout.strip() == ("Controlled blocked action preserved healthy conversation." if scenario == "blocked" else "")
     assert ("mission completed" if expected == 0 else "mission failed") in result.stderr
     if scenario == "fatal":
-        assert "review technical_failure after 2 attempt(s)" in result.stderr
+        assert "Browser action failed." in result.stderr
         assert "browser result navigate fatal" in result.stderr
         assert result.stderr.count("Scout model working") == 1
         assert counts().get("cli-effects", 0) == effects
@@ -250,7 +250,7 @@ def wait_for_text(child, text, prefix=""):
 
 
 def wait_pending(child):
-    return wait_for_text(child, "started pending")
+    return wait_for_text(child, "Scout model working (step 1).")
 
 
 @pytest.mark.parametrize('sink_failure', [False, True], ids=('healthy','killed-writer'))

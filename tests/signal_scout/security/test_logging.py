@@ -89,105 +89,6 @@ def test_SR_003_native_diagnostics_redact_rotate_and_honor_settings(tmp_path):
     assert 'connection_allowed' not in output  # INFO suppresses DEBUG.
 
 
-def test_SR_003_RV_006_reviewer_events_validate_metadata_and_preserve_native_diagnostics(tmp_path):
-    result = isolated(tmp_path, """
-        import importlib, json, logging, os, httpx
-        from pathlib import Path
-        from unittest.mock import patch
-        from agent import auxiliary_client as auxiliary
-        reviewer = importlib.import_module('plugins.signal-scout.security.reviewer')
-        runtime = importlib.import_module('plugins.signal-scout.security.runtime_logging')
-        directory = Path(os.environ['HERMES_HOME'])
-        modes = iter(('approve', 'deny', 'malformed', 'provider_error'))
-        def handle(request):
-            mode = next(modes)
-            if mode == 'provider_error':
-                raise httpx.ConnectError('provider exception poison')
-            text = '{"verdict":"' + mode + '"}' if mode != 'malformed' else 'transcript poison'
-            item = {'type':'message', 'role':'assistant', 'content':[{'type':'output_text', 'text':text}]}
-            final = {'id':'offline-poison', 'model':'gpt-6-luna', 'status':'completed', 'output':[item],
-                     'usage':{'input_tokens':9, 'output_tokens':2, 'total_tokens':11}}
-            events = ({'type':'response.output_item.done', 'output_index':0, 'item':item},
-                      {'type':'response.completed', 'response':final})
-            return httpx.Response(200, headers={'content-type':'text/event-stream'},
-                content=''.join('data: ' + json.dumps(event) + '\\n\\n' for event in events))
-        def http_client(_):
-            return {'http_client':httpx.Client(transport=httpx.MockTransport(handle))}
-        config_path = directory / 'config.yaml'
-        import yaml
-        config = yaml.safe_load(config_path.read_text())
-        config['scout_reviewer']['retries'] = 0
-        config['logging']['level'] = 'DEBUG'
-        config_path.write_text(yaml.safe_dump(config))
-        with patch.object(auxiliary, '_select_pool_entry', return_value=(False, None)), \\
-             patch.object(auxiliary, '_read_codex_access_token', return_value='offline-poison-token'), \\
-             patch.object(auxiliary, '_openai_http_client_kwargs', side_effect=http_client):
-            client = reviewer.SafetyReviewer(settings_path=config_path)
-            logging.getLogger('openai._base_client').setLevel(logging.DEBUG)
-            outcomes = []
-            for _ in range(4):
-                outcomes.append(client.review(screenshot=b'screenshot-poison', screenshot_mime='image/png',
-                    activity='activity poison', action_type='type', action={'text':'password poison'},
-                    context={'url':'https://page-poison.test', 'cookie':'cookie poison'}))
-            assert [value.verdict for value in outcomes] == ['approve', 'deny', None, None]
-            assert [value.failure for value in outcomes] == [None, None, 'invalid_response', 'provider_error']
-            assert all('poison' not in repr(value) for value in outcomes)
-            assert set(vars(client)) == {'_settings'}
-        import hermes_logging
-        hermes_logging.flush_log_queue()
-        files = list((directory / 'logs').glob('*.log'))
-        combined = ''.join(path.read_text() for path in files)
-        assert '"verdict": "approve"' in combined and '"verdict": "deny"' in combined
-        assert '"verdict": "technical_failure"' in combined
-        assert '"action_type": "type"' in combined and '"attempts": 1' in combined
-        assert '"prompt_tokens": 9' in combined and '"duration_ms":' in combined
-        assert 'openai._base_client:' in combined and 'activity poison' in combined
-        assert 'provider exception poison' in combined and 'Traceback (most recent call last):' in combined
-        review_lines = [line for line in (directory / 'logs/agent.log').read_text().splitlines()
-                        if ' signal_scout.scout: event=review_completed ' in line]
-        assert len(review_lines) == 4 and all('poison' not in line for line in review_lines)
-        captured = []
-        capture = logging.Handler()
-        capture.emit = captured.append
-        logging.getLogger().addHandler(capture)
-        def poisoned_event():
-            runtime.review_event({'text':'poison'}, 'verdict poison', None, 'time poison', True,
-                {'prompt_tokens':{'text':'poison'}, 'completion_tokens':'2', 'total_tokens':3,
-                 'raw':'page poison', 'action_type':'type', 'duration_ms':1})
-        poisoned_event()
-        record = captured[-1]
-        assert record.getMessage() == 'event=review_completed {"total_tokens": 3}'
-        assert record.scout_review == {'total_tokens':3}
-        assert record.scout_component == 'scout' and record.scout_event == 'review_completed'
-        assert record.levelno == logging.INFO
-        runtime.review_event('click', 'approve', 'provider exception poison', False, -1,
-            {'prompt_tokens':True, 'completion_tokens':-1, 'total_tokens':False})
-        record = captured[-1]
-        assert record.getMessage() == 'event=review_completed {"action_type": "click", "verdict": "technical_failure"}'
-        assert record.levelno == logging.WARNING
-        hermes_logging.flush_log_queue()
-        for _ in range(3):
-            for handler in hermes_logging.rotating_file_handlers():
-                path = Path(handler.baseFilename)
-                with path.open('ab') as stream:
-                    stream.write(b' ' * (handler.maxBytes - 1 - path.stat().st_size))
-            runtime.review_event('click', 'deny', None, 12, 1, {'total_tokens':3})
-            poisoned_event()
-            runtime.event('scout', 'started', 'WARNING')
-            hermes_logging.flush_log_queue()
-        artifacts = {p.relative_to(directory).as_posix() for p in directory.rglob('*') if p.is_file()}
-        assert artifacts == {'config.yaml', 'SOUL.md',
-            *(f'logs/{name}.log{suffix}' for name in ('agent', 'errors') for suffix in ('', '.1', '.2'))}, artifacts
-        assert 'poison' not in (directory / 'SOUL.md').read_text()
-        print('reviewer events and native diagnostics verified')
-    """)
-    files = sorted((tmp_path / 'logs').glob('*.log*'))
-    output = result.stdout + result.stderr + ''.join(path.read_text() for path in files)
-    assert 'event=review_completed' in output and '"verdict": "deny"' in output
-    review_lines = [line for line in output.splitlines() if 'event=review_completed ' in line]
-    assert all('poison' not in line for line in review_lines)
-    assert 'event=review_completed {"total_tokens": 3}' in output
-    assert len(files) == 6 and all(0 < path.stat().st_size <= 1024 ** 2 for path in files)
 
 
 def test_SR_003_native_write_failure_has_fixed_diagnostic_and_keeps_events_safe(tmp_path):
@@ -282,17 +183,14 @@ def test_SR_022_browser_failure_uses_saved_native_logs_redaction_and_best_effort
             closed.append(True)
             browser.ready, browser.failed = False, True
         browser.close = close
-        prepared = SimpleNamespace(reviewer_input=lambda: {})
-        checked = SimpleNamespace(_scan=SimpleNamespace(frames={'root':SimpleNamespace(parent=None,session='session')}))
         adapter = SimpleNamespace(tabs=lambda: [{'target_id':'owned'}],
-            prepare=lambda **_: prepared, recheck=lambda *_, **__: checked,
             _frames=lambda _: SimpleNamespace(frames={'root':SimpleNamespace(parent=None,session='session')}),
             _command=cdp.command, _document_key=lambda _: cdp_module._DocumentKey('session','root','current',1), _cdp=cdp)
         browser.evidence = lambda: adapter
-        reviewer = SimpleNamespace(review=lambda **_: gate_module.ReviewResult('approve',None,1,0,{}))
-        gate = gate_module.BrowserActionGate(browser, reviewer=reviewer, target_id='owned')
+        browser.verify_control = lambda: None
+        gate = gate_module.BrowserActionGate(browser, target_id='owned')
         result = gate.dispatch({'action':'navigate','args':{'url':'https://bulk-params-marker.test/'},
-                                'activity':'bulk-review-marker'})
+                                'activity':'bulk-activity-marker'})
         assert result == {'status':'fatal','reason':'Browser action failed.','execution_started':True,'data':{}}
         assert closed == [True] and gate._terminal and browser.failed and not browser.ready
         assert 'native browser detail' not in repr(result) + repr(gate)
