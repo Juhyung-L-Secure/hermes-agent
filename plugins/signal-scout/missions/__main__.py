@@ -28,6 +28,8 @@ def research(request, config, console):
     guidance, loaded, missing = build_preloaded_skills_prompt(["signal-scout:browser-research"])
     if missing or loaded != ["signal-scout:browser-research"] or not guidance.strip():
         raise RuntimeError("Scout browser-research skill unavailable or disabled.")
+    adapter = get_plugin_manager()._plugins["signal-scout"].module.browser_tools
+    action_reference = adapter.load_action_reference()
     provider, model = config["model"]["provider"], config["model"]["default"]
     runtime = resolve_runtime_provider(requested=provider, target_model=model)
     if runtime["provider"] != provider:
@@ -52,9 +54,10 @@ def research(request, config, console):
         with Browser() as browser:
             target = browser.evidence().tabs()[0]["target_id"]
             gate = BrowserActionGate(browser, reviewer=SafetyReviewer(), target_id=target)
-            adapter = get_plugin_manager()._plugins["signal-scout"].module.browser_tools
-            with adapter.bind_browser(gate, on_fatal=partial(agent.interrupt, hard_cancel=True)):
-                return agent.run_conversation(guidance + "\n\nResearch mission:\n" + request.text)
+            with adapter.bind_browser(gate, on_fatal=partial(agent.interrupt, hard_cancel=True),
+                                      action_reference=action_reference):
+                return agent.run_conversation(guidance + "\n\nBrowser action reference:\n" + action_reference
+                                              + "\n\nResearch mission:\n" + request.text)
     except KeyboardInterrupt:
         agent.interrupt(hard_cancel=True)
         raise

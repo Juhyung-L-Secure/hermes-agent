@@ -20,17 +20,23 @@ def tool(request, name='browser_scout', call_id='fixture-call'):
     return SimpleNamespace(id=call_id,type='function',
         function=SimpleNamespace(name=name,arguments=json.dumps(request,ensure_ascii=False)))
 
-def model_result(message):
+def model_result(message, *, allow_guardrail=False):
     assert message['name']=='browser_scout'
     content=message['content']
     text=content[0]['text'] if isinstance(content,list) else content
     assert text.startswith('<untrusted_tool_result source="browser_scout">\n')
     assert text.count('<untrusted_tool_result')==text.count('</untrusted_tool_result>')==1
     assert text.endswith('\n</untrusted_tool_result>')
-    return json.loads(text.split('\n\n',1)[1].rsplit('\n</untrusted_tool_result>',1)[0])
+    body=text.split('\n\n',1)[1].rsplit('\n</untrusted_tool_result>',1)[0]
+    if not allow_guardrail:
+        return json.loads(body)
+    parsed,end=json.JSONDecoder().raw_decode(body)
+    suffix=body[end:]
+    assert not suffix or suffix.startswith('\n\n[Tool loop warning: ') or suffix.startswith('\n\n[hermes note: ')
+    return parsed
 
 @contextmanager
-def fake_main(plan, *, iterations=6):
+def offline_main(plan):
     client=MagicMock()
     requests=[]
     def create(**kwargs):
@@ -41,6 +47,11 @@ def fake_main(plan, *, iterations=6):
          patch('agent.agent_init.fetch_model_metadata',return_value={}), \
          patch('agent.model_metadata.fetch_model_metadata',return_value={}), \
          patch('agent.auxiliary_client.resolve_provider_client',side_effect=AssertionError('Unexpected auxiliary model')):
+        yield client,requests
+
+@contextmanager
+def fake_main(plan, *, iterations=6):
+    with offline_main(plan) as (client,requests):
         agent=AIAgent(api_key='offline-test',base_url='https://openrouter.ai/api/v1',
             provider='openrouter',requested_provider='openrouter',model='offline/scout',
             enabled_toolsets=['signal_scout_browser'],max_iterations=iterations,
@@ -55,4 +66,38 @@ def fake_main(plan, *, iterations=6):
             yield agent,requests
         finally:
             agent.close()
+'''
+
+
+OFFLINE_REVIEWER = r'''
+import httpx
+from agent import auxiliary_client as auxiliary
+native_review_resolver=auxiliary.resolve_provider_client
+
+@contextmanager
+def offline_reviewer():
+    calls=[]
+    def handle(request):
+        body=json.loads(request.content)
+        calls.append(body)
+        assert str(request.url)=='https://chatgpt.com/backend-api/codex/responses'
+        assert body['model']==r.load_settings()['scout_reviewer']['model']
+        assert body['store'] is False and body['stream'] is True
+        assert 'tools' not in body and body['instructions'].startswith(r.load_policy())
+        final={'id':'offline-review','model':body['model'],'status':'completed',
+            'output':[{'type':'message','role':'assistant',
+                'content':[{'type':'output_text','text':'{"verdict":"approve"}'}]}]}
+        events=[{'type':'response.output_item.done','output_index':0,'item':final['output'][0]},
+                {'type':'response.completed','response':final}]
+        return httpx.Response(200,headers={'content-type':'text/event-stream'},
+            content=''.join('data: '+json.dumps(event)+'\n\n' for event in events))
+    def resolve(provider, *, model):
+        assert provider=='openai-codex' and model==r.load_settings()['scout_reviewer']['model']
+        return native_review_resolver(provider,model=model)
+    with patch('agent.auxiliary_client.resolve_provider_client',side_effect=resolve), \
+         patch('agent.auxiliary_client._select_pool_entry',return_value=(False,None)), \
+         patch('agent.auxiliary_client._read_codex_access_token',return_value='offline-test-token'), \
+         patch('agent.auxiliary_client._openai_http_client_kwargs',
+             side_effect=lambda _: {'http_client':httpx.Client(transport=httpx.MockTransport(handle))}):
+        yield calls
 '''

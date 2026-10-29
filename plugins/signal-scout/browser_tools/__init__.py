@@ -4,6 +4,7 @@ import base64
 from contextlib import contextmanager
 from dataclasses import dataclass
 import json
+from pathlib import Path
 import threading
 
 
@@ -52,6 +53,7 @@ _SCHEMA = {
 class _Binding:
     gate: object
     on_fatal: object
+    action_reference: str
     active: bool = True
     stopped: bool = False
 
@@ -60,22 +62,37 @@ _binding = None
 _binding_lock = threading.Lock()
 
 
+def load_action_reference():
+    """Load the complete required reference before starting a research run."""
+    try:
+        reference = Path(__file__).with_name("action-reference.md").read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        raise RuntimeError("Scout browser action reference unavailable or empty.") from None
+    if not reference.strip():
+        raise RuntimeError("Scout browser action reference unavailable or empty.")
+    return reference
+
+
 @contextmanager
-def bind_browser(gate, *, on_fatal):
+def bind_browser(gate, *, on_fatal, action_reference):
     """Bind one trusted gate and mandatory stop callback for a scoped run.
 
     The caller supplies an already-owned BrowserActionGate, selects only the
     signal_scout_browser toolset (plus status if explicitly wanted), and binds
     its AIAgent.interrupt(hard_cancel=True) callback. Scope exit closes this
     gate; the enclosing BrowserRun owner still removes the owned container.
-    Binding overlap fails explicitly. A delayed call retains this gate/callback.
+    The caller loads the full action reference once before inference. A delayed
+    call retains this gate, callback and reference, including after scope exit.
+    Binding overlap fails explicitly.
     """
     global _binding
     if not callable(on_fatal):
         raise TypeError("Scout fatal stop callback is required.")
+    if not isinstance(action_reference, str) or not action_reference.strip():
+        raise TypeError("Scout browser action reference is required.")
     if not callable(getattr(gate, "dispatch", None)) or not callable(getattr(gate, "close", None)):
         raise TypeError("Scout browser action gate is required.")
-    binding = _Binding(gate, on_fatal)
+    binding = _Binding(gate, on_fatal, action_reference)
     with _binding_lock:
         if _binding is not None:
             raise RuntimeError("A Scout browser run is already bound.")
@@ -123,6 +140,8 @@ def _handle(args, **_context):
             return _unavailable("fatal", "Scout browser run has stopped.")
     # Capture before dispatch: a late worker must never borrow the next run.
     result = binding.gate.dispatch(args)
+    if result["data"].get("error", {}).get("kind") == "request_format":
+        result = {**result, "data": {**result["data"], "action_reference": binding.action_reference}}
     if result["status"] == "fatal":
         with _binding_lock:
             stop = not binding.stopped

@@ -1,6 +1,7 @@
 """Execute one exact browser proposal through the run-owned safety boundary."""
 
 from copy import deepcopy
+from enum import Enum
 import logging
 import os
 import re
@@ -25,6 +26,37 @@ _FIELDS = {
 }
 _REVIEWED = frozenset({"click", "navigate", "type", "keypress"})
 _POST_SNAPSHOT = _REVIEWED | {"back", "scroll", "switch_tab"}
+
+
+class _FormatRule(Enum):
+    REQUEST_OBJECT = ("request_object", "request", "Request must be an object.")
+    REQUEST_FIELDS = ("request_fields", "request", "Request requires action and args; only optional activity is allowed.")
+    ACTION_STRING = ("action_string", "action", "action must be a string.")
+    ACTION_SUPPORTED = ("action_supported", "action", "action must name a supported browser_scout action.")
+    ARGS_OBJECT = ("args_object", "args", "args must be an object.")
+    ARGS_FIELDS = ("args_fields", "args", None)
+    ARGS_STRINGS = ("args_strings", "args", "Every value in args must be a string.")
+    ACTIVITY_STRING = ("activity_string", "activity", "activity must be a string when supplied.")
+    REF_SYNTAX = ("ref_syntax", "args.ref", "args.ref must match @s followed by a positive integer, from a current snapshot.")
+    URL_SYNTAX = ("url_syntax", "args.url", "args.url must be an absolute HTTP(S) URL without embedded credentials.")
+    KEY_NONEMPTY = ("key_nonempty", "args.key", "args.key must be a nonempty key or chord string.")
+    SCROLL_DIRECTION = ("scroll_direction", "args.direction", "args.direction must be up or down.")
+    TARGET_ID_NONEMPTY = ("target_id_nonempty", "args.target_id", "args.target_id must be a nonempty ID from list_tabs.")
+    ACTIVITY_REQUIRED = ("activity_required", "activity", "activity must be nonempty for actions requiring safety review.")
+
+    def __init__(self, code, field, explanation):
+        self.code, self.field, self.explanation = code, field, explanation
+
+
+class _FormatRejected(EvidenceRejected):
+    def __init__(self, rule, *, action=None):
+        self.rule = rule
+        explanation = rule.explanation
+        if rule is _FormatRule.ARGS_FIELDS:
+            fields = sorted(_FIELDS[action])
+            expected = "exactly: " + ", ".join(fields) if fields else "no fields"
+            explanation = f"args for {action} must contain {expected}."
+        super().__init__(explanation)
 
 
 class _Stopped(Exception):
@@ -152,30 +184,42 @@ class BrowserActionGate:
                 raise RuntimeError("Browser gate cleanup failed.") from None
 
     def _request(self, request):
-        if (type(request) is not dict or not {"action", "args"} <= request.keys()
-                or request.keys() - {"action", "args", "activity"}
-                or not isinstance(request["action"], str) or type(request["args"]) is not dict
-                or ("activity" in request and not isinstance(request["activity"], str))):
-            raise EvidenceRejected("Invalid browser request.")
+        if type(request) is not dict:
+            raise _FormatRejected(_FormatRule.REQUEST_OBJECT)
+        if not {"action", "args"} <= request.keys() or request.keys() - {"action", "args", "activity"}:
+            raise _FormatRejected(_FormatRule.REQUEST_FIELDS)
+        if not isinstance(request["action"], str):
+            raise _FormatRejected(_FormatRule.ACTION_STRING)
+        if type(request["args"]) is not dict:
+            raise _FormatRejected(_FormatRule.ARGS_OBJECT)
+        if "activity" in request and not isinstance(request["activity"], str):
+            raise _FormatRejected(_FormatRule.ACTIVITY_STRING)
         action, args = request["action"], request["args"]
-        if action not in _FIELDS or self._permissions.get(action, "blocked") == "blocked":
+        if action not in _FIELDS:
+            raise _FormatRejected(_FormatRule.ACTION_SUPPORTED)
+        if self._permissions.get(action, "blocked") == "blocked":
             raise EvidenceRejected("Browser action is blocked.")
-        if set(args) != _FIELDS[action] or not all(isinstance(value, str) for value in args.values()):
-            raise EvidenceRejected("Invalid browser request.")
-        if (action in {"click", "type"} and not re.fullmatch(r"@s[1-9][0-9]*", args["ref"])
-                or action == "keypress" and not args["key"]
-                or action == "scroll" and args["direction"] not in {"up", "down"}
-                or action == "switch_tab" and not args["target_id"]):
-            raise EvidenceRejected("Invalid browser request.")
+        if set(args) != _FIELDS[action]:
+            raise _FormatRejected(_FormatRule.ARGS_FIELDS, action=action)
+        if not all(isinstance(value, str) for value in args.values()):
+            raise _FormatRejected(_FormatRule.ARGS_STRINGS)
+        if action in {"click", "type"} and not re.fullmatch(r"@s[1-9][0-9]*", args["ref"]):
+            raise _FormatRejected(_FormatRule.REF_SYNTAX)
+        if action == "keypress" and not args["key"]:
+            raise _FormatRejected(_FormatRule.KEY_NONEMPTY)
+        if action == "scroll" and args["direction"] not in {"up", "down"}:
+            raise _FormatRejected(_FormatRule.SCROLL_DIRECTION)
+        if action == "switch_tab" and not args["target_id"]:
+            raise _FormatRejected(_FormatRule.TARGET_ID_NONEMPTY)
         if action == "navigate":
             try:
                 validate_url(args["url"])
             except ValueError:
-                raise EvidenceRejected("Invalid browser request.") from None
+                raise _FormatRejected(_FormatRule.URL_SYNTAX) from None
         mode = self._permissions[action]
         if mode == "review_required":
             if not request.get("activity", "").strip():
-                raise EvidenceRejected("Browser review activity is required.")
+                raise _FormatRejected(_FormatRule.ACTIVITY_REQUIRED)
             if action not in _REVIEWED:
                 raise EvidenceRejected("Browser action review is unsupported.")
         return deepcopy(request), mode
@@ -342,6 +386,9 @@ class BrowserActionGate:
             self._live()
             try:
                 request, mode = self._request(request)
+            except _FormatRejected as error:
+                return self._result("rejected", str(error), data={"error": {
+                    "kind": "request_format", "code": error.rule.code, "field": error.rule.field}})
             except EvidenceRejected as error:
                 return self._result("rejected", str(error))
             action = request["action"]

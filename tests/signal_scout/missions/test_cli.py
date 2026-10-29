@@ -14,7 +14,7 @@ from unittest.mock import Mock
 import pytest
 import yaml
 
-from tests.signal_scout.browser_tools.test_adapter import native_plugin
+from tests.signal_scout.browser_tools.test_adapter import FakeGate, dispatch, native_plugin
 from tests.signal_scout.security.test_logging import isolated
 from tests.signal_scout.security.test_reviewer import configured, evidence, response, transport
 
@@ -66,6 +66,81 @@ def test_MI_032_full_native_skill_preload_and_disabled_failure(native_plugin, mo
     monkeypatch.setattr(hermes_cli.runtime_provider, "resolve_runtime_provider", lambda **_: pytest.fail("Disabled skill reached provider"))
     with pytest.raises(RuntimeError, match="browser-research skill unavailable or disabled"):
         runner.research(mission.MissionRequest("Research rice."), {}, None)
+
+
+@pytest.mark.parametrize("fault", ["missing", "unreadable", "empty"])
+def test_MI_032_BR_006_missing_reference_prevents_provider_and_inference(native_plugin, monkeypatch, tmp_path, fault):
+    import hermes_cli.runtime_provider
+    import run_agent
+
+    runner = importlib.import_module("plugins.signal-scout.missions.__main__")
+    monkeypatch.setattr(native_plugin, "__file__", str(tmp_path / "__init__.py"))
+    path = tmp_path / "action-reference.md"
+    if fault != "missing":
+        path.write_text(" \n" if fault == "empty" else "Required guidance.")
+    if fault == "unreadable":
+        original = Path.read_text
+        def read(current, *args, **kwargs):
+            if current == path:
+                raise PermissionError("private-file-poison")
+            return original(current, *args, **kwargs)
+        monkeypatch.setattr(Path, "read_text", read)
+    monkeypatch.setattr(hermes_cli.runtime_provider, "resolve_runtime_provider",
+                        lambda **_: pytest.fail("Missing reference reached provider"))
+    monkeypatch.setattr(run_agent, "AIAgent", lambda **_: pytest.fail("Missing reference reached inference"))
+    with pytest.raises(RuntimeError, match="^Scout browser action reference unavailable or empty\\.$"):
+        runner.research(mission.MissionRequest("Research rice."), {}, None)
+
+
+def test_MI_032_BR_006_startup_uses_registered_adapter_and_one_reference_copy(native_plugin, monkeypatch, tmp_path):
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+    import hermes_cli.runtime_provider
+    import run_agent
+
+    runner = importlib.import_module("plugins.signal-scout.missions.__main__")
+    browser_module = importlib.import_module("plugins.signal-scout.security.browser")
+    gate_module = importlib.import_module("plugins.signal-scout.security.gate")
+    reviewer_module = importlib.import_module("plugins.signal-scout.security.reviewer")
+    reference_path = tmp_path / "action-reference.md"
+    guide = "# Required fixture reference\n\nExact Unicode guidance 雪.\n"
+    reference_path.write_text(guide)
+    monkeypatch.setattr(native_plugin, "__file__", str(tmp_path / "__init__.py"))
+    config = yaml.safe_load((ROOT / "docker/signal-scout/config.yaml").read_text())
+    result = {"status":"rejected", "reason":"args for click must contain exactly: ref.", "execution_started":False,
+              "data":{"error":{"kind":"request_format","code":"args_fields","field":"args"}}}
+    gate = FakeGate(result)
+    captured = {}
+    monkeypatch.setattr(hermes_cli.runtime_provider, "resolve_runtime_provider", lambda **_: {
+        "provider":config["model"]["provider"], "api_mode":"chat_completions", "base_url":"https://offline.test", "api_key":"offline"})
+    monkeypatch.setattr(browser_module, "Browser", lambda: nullcontext(SimpleNamespace(
+        evidence=lambda: SimpleNamespace(tabs=lambda: [{"target_id":"owned-tab"}]))))
+    monkeypatch.setattr(gate_module, "BrowserActionGate", lambda *args, **kwargs: gate)
+    monkeypatch.setattr(reviewer_module, "SafetyReviewer", lambda: object())
+    class Agent:
+        valid_tool_names = {"browser_scout"}
+        run_budget_seconds = None
+        def __init__(self, **kwargs):
+            captured["options"] = kwargs
+            reference_path.unlink()
+        def interrupt(self, **kwargs):
+            pytest.fail("Format rejection stopped mission")
+        def run_conversation(self, text):
+            captured["text"] = text
+            captured["feedback"] = json.loads(dispatch({"action":"click","args":{}}))
+            return {"completed":True,"final_response":"Fixture answer."}
+        def close(self):
+            captured["closed"] = True
+    monkeypatch.setattr(run_agent, "AIAgent", Agent)
+    with console_module.MissionConsole(config, stream=io.StringIO()) as console:
+        outcome = runner.research(mission.MissionRequest("Research fixture rice."), config, console)
+    assert outcome == {"completed":True,"final_response":"Fixture answer."}
+    assert captured["text"].count(guide) == 1
+    assert "Start with Google search unless user supplies URL." in captured["text"]
+    assert captured["text"].endswith("Research mission:\nResearch fixture rice.")
+    assert captured["feedback"] == {**result,"data":{**result["data"],"action_reference":guide}}
+    assert captured["closed"] and gate.closed
+    assert captured["options"]["enabled_toolsets"] == ["signal_scout_browser"]
 
 
 def test_MI_033_review_pending_and_retry_precede_real_transport_at_error_level(configured, monkeypatch):

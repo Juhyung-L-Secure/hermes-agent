@@ -39,7 +39,7 @@
       "id": "BR_003",
       "subfeature": "native-browser-routing",
       "title": "Scoped binding and mandatory enclosing-run stop",
-      "contract": "Trusted bind_browser(gate, *, on_fatal) requires a callable stop callback and supports one binding at a time. Runtime handler enforces the binding on every call, independently of cached discovery checks; unbound calls cannot create or attach a Browser or select a fallback. Scope exit closes the captured gate and releases the binding. Fatal invokes the original bound callback before returning and prevents subsequent dispatch through that binding. Real Hermes wiring calls AIAgent.interrupt(hard_cancel=True), skips remaining tool effects and additional main-model turns, then permits normal owner teardown to remove the exact owned browser. A delayed old call retains its old gate/callback and cannot execute through a new run.",
+      "contract": "Trusted bind_browser(gate, *, on_fatal, action_reference) requires a callable stop callback and a complete nonempty action-reference string and supports one binding at a time. Runtime handler enforces the binding on every call, independently of cached discovery checks; unbound calls cannot create or attach a Browser or select a fallback. Scope exit closes the captured gate and releases the binding. Fatal invokes the original bound callback before returning and prevents subsequent dispatch through that binding. Real Hermes wiring calls AIAgent.interrupt(hard_cancel=True), skips remaining tool effects and additional main-model turns, then permits normal owner teardown to remove the exact owned browser. A delayed old call retains its old gate/callback and cannot execute through a new run.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
         {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_BR_003_runtime_binding_is_mandatory_and_scoped"},
@@ -77,6 +77,28 @@
         {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_BR_005_native_model_frames_actual_tool_defangs_delimiters_and_preserves_image"},
         {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_BR_001_BR_002_BR_004_BR_005_native_model_approved_effects_images_and_no_bypass"},
         {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_BR_002_BR_005_native_model_type_keeps_review_data_private"}
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "BR_006",
+      "subfeature": "action-format-guidance",
+      "title": "Startup action reference and corrective format feedback",
+      "contract": "Research startup includes the complete trusted browser-action Markdown reference in the main model's initial context before its first inference. The reference covers every supported browser_scout action, exact argument fields and types, reference and tab-ID syntax, activity requirements and illustrative requests consistent with the actual validator; examples never substitute for references observed in the current browser. Missing, unreadable or empty required guidance prevents inference rather than silently omitting it. A rejection by Scout's request-format validation returns execution_started false, a specific code-owned validation explanation identifying the failing field or request rule without echoing submitted values, and the same complete reference contents through the ordinary browser_scout tool result. Hermes's next ordinary model call receives that feedback with its existing conversation history, including when an earlier copy of the reference is no longer retained. No extra correction model call, automatic request rewriting, direct replay, forced retry loop, new retry ceiling, toolset swap or mid-conversation system-prompt mutation is introduced. A subsequent model proposal independently passes normal validation, permissions, safety review and context recheck. Safety denials, blocked configured permissions, stale-context rejections and technical failures retain their existing behavior and do not masquerade as request-format errors. Existing outcome fields, native tool-content warning boundaries, no-payload-echo rules, browser isolation, download protections and fatal stop obligations remain intact. Supplying corrective context does not guarantee that a live model will choose a valid next request or complete the mission.",
+      "requiredCoverage": ["unit", "e2e"],
+      "coverage": [
+        {"layer": "unit", "file": "tests/signal_scout/security/test_gate.py", "test": "test_AG_001_invalid_or_unknown_request_has_no_effect"},
+        {"layer": "unit", "file": "tests/signal_scout/security/test_gate.py", "test": "test_BR_006_blocked_permission_and_unavailable_reference_are_not_format_errors"},
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_BR_006_required_reference_load_fails_closed"},
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_BR_006_reference_examples_match_registered_schema_and_real_validator"},
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_BR_006_format_feedback_keeps_bound_copy_and_native_failure_identity"},
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_BR_006_nonformat_outcomes_keep_existing_feedback"},
+        {"layer": "unit", "file": "tests/signal_scout/browser_tools/test_adapter.py", "test": "test_BR_003_BR_006_binding_requires_complete_reference"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_032_BR_006_missing_reference_prevents_provider_and_inference"},
+        {"layer": "unit", "file": "tests/signal_scout/missions/test_cli.py", "test": "test_MI_032_BR_006_startup_uses_registered_adapter_and_one_reference_copy"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_MI_032_BR_006_research_first_inference_requires_complete_packaged_reference"},
+        {"layer": "e2e", "file": "tests/signal_scout/browser_tools/test_native_integration.py", "test": "test_BR_006_native_identical_format_failures_keep_full_guide_and_corrected_effect"}
       ],
       "otherCoverage": [],
       "blocker": ""

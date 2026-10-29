@@ -43,7 +43,7 @@ def test_BT_005_native_model_retry_preserves_completed_action(native_plugin, tmp
 
     with namespace['fake_main'](plan) as (agent, requests):
         assert agent._api_max_retries == config['agent']['api_max_retries']
-        with native_plugin.bind_browser(gate, on_fatal=lambda: pytest.fail('Model retry became browser fatal')):
+        with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(), on_fatal=lambda: pytest.fail('Model retry became browser fatal')):
             outcome = agent.run_conversation('Inspect controlled research content.')
         recovered = failure != 'authentication' and count == 1
         assert bool(outcome.get('completed')) is recovered

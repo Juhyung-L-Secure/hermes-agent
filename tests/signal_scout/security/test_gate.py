@@ -61,24 +61,48 @@ def boundary(monkeypatch):
     set_interrupt(False)
 
 
-@pytest.mark.parametrize('proposal', [
-    None, [], {}, {'action':'navigate'}, {'action':'navigate','args':[]},
-    {'action':'navigate','args':{'url':'http://public.test/'},'approval':'approve'},
-    {'action':'navigate','args':{'url':'http://public.test/','target_id':'other'}},
-    {'action':'click','args':{'ref':'css=#buy'},'activity':'Inspect'},
-    {'action':'navigate','args':{'url':'http://public.test/'}},
-    {'action':'navigate','args':{'url':'http://public.test/'},'activity':'  '},
-    {'action':'navigate','args':{'url':'http://user:secret@public.test/'},'activity':'Inspect'},
-    {'action':'navigate','args':{'url':'file:///private-poison'},'activity':'Inspect'},
-    {'action':'keypress','args':{'key':''},'activity':'Inspect'},
-    {'action':'scroll','args':{'direction':'left'}},
-    {'action':'close','args':{},'activity':{}},
-    {'action':'execute-javascript-poison','args':{}},
+@pytest.mark.parametrize('proposal,code,field,reason', [
+    (None, 'request_object', 'request', 'Request must be an object.'),
+    ([], 'request_object', 'request', 'Request must be an object.'),
+    ({}, 'request_fields', 'request', 'Request requires action and args; only optional activity is allowed.'),
+    ({'action':'navigate'}, 'request_fields', 'request', 'Request requires action and args; only optional activity is allowed.'),
+    ({'action':123,'args':{}}, 'action_string', 'action', 'action must be a string.'),
+    ({'action':'navigate','args':[]}, 'args_object', 'args', 'args must be an object.'),
+    ({'action':'navigate','args':{'url':'http://public.test/'},'private-poison':'secret'},
+     'request_fields', 'request', 'Request requires action and args; only optional activity is allowed.'),
+    ({'action':'navigate','args':{'url':'http://public.test/','private-poison':'secret'}},
+     'args_fields', 'args', 'args for navigate must contain exactly: url.'),
+    ({'action':'click','args':{}}, 'args_fields', 'args', 'args for click must contain exactly: ref.'),
+    ({'action':'snapshot','args':{'private-poison':'secret'}}, 'args_fields', 'args', 'args for snapshot must contain no fields.'),
+    ({'action':'type','args':{'ref':'@s1','text':False},'activity':'Inspect'},
+     'args_strings', 'args', 'Every value in args must be a string.'),
+    ({'action':'click','args':{'ref':'css=#private-poison'},'activity':'Inspect'},
+     'ref_syntax', 'args.ref', 'args.ref must match @s followed by a positive integer, from a current snapshot.'),
+    ({'action':'click','args':{'ref':'@s0'},'activity':'Inspect'},
+     'ref_syntax', 'args.ref', 'args.ref must match @s followed by a positive integer, from a current snapshot.'),
+    ({'action':'navigate','args':{'url':'http://public.test/'}},
+     'activity_required', 'activity', 'activity must be nonempty for actions requiring safety review.'),
+    ({'action':'navigate','args':{'url':'http://public.test/'},'activity':'  '},
+     'activity_required', 'activity', 'activity must be nonempty for actions requiring safety review.'),
+    ({'action':'navigate','args':{'url':'http://user:secret@public.test/'},'activity':'Inspect'},
+     'url_syntax', 'args.url', 'args.url must be an absolute HTTP(S) URL without embedded credentials.'),
+    ({'action':'navigate','args':{'url':'file:///private-poison'},'activity':'Inspect'},
+     'url_syntax', 'args.url', 'args.url must be an absolute HTTP(S) URL without embedded credentials.'),
+    ({'action':'keypress','args':{'key':''},'activity':'Inspect'},
+     'key_nonempty', 'args.key', 'args.key must be a nonempty key or chord string.'),
+    ({'action':'scroll','args':{'direction':'private-poison'}},
+     'scroll_direction', 'args.direction', 'args.direction must be up or down.'),
+    ({'action':'switch_tab','args':{'target_id':''}},
+     'target_id_nonempty', 'args.target_id', 'args.target_id must be a nonempty ID from list_tabs.'),
+    ({'action':'close','args':{},'activity':{}}, 'activity_string', 'activity', 'activity must be a string when supplied.'),
+    ({'action':'execute-javascript-poison','args':{}},
+     'action_supported', 'action', 'action must name a supported browser_scout action.'),
 ])
-def test_AG_001_invalid_or_unknown_request_has_no_effect(boundary, proposal):
+def test_AG_001_invalid_or_unknown_request_has_no_effect(boundary, proposal, code, field, reason):
+    """BR_006"""
     result = boundary.gate.dispatch(proposal)
-    assert set(result) == {'status','reason','execution_started','data'}
-    assert result['status'] == 'rejected' and result['execution_started'] is False and result['data'] == {}
+    assert result == {'status':'rejected', 'reason':reason, 'execution_started':False,
+                      'data':{'error':{'kind':'request_format','code':code,'field':field}}}
     assert not boundary.calls and not boundary.effects and not boundary.closed
     assert 'poison' not in repr(result) and 'secret' not in repr(result)
 
@@ -93,6 +117,19 @@ def test_AG_001_missing_permission_never_grants_access(boundary, mode):
         'activity':'Inspect'}) == {'status':'rejected','reason':'Browser action is blocked.',
                                  'execution_started':False,'data':{}}
     assert not boundary.calls and not boundary.effects and not boundary.closed
+
+
+def test_BR_006_blocked_permission_and_unavailable_reference_are_not_format_errors(boundary):
+    boundary.gate._permissions['click'] = 'blocked'
+    assert boundary.gate.dispatch({'action':'click','args':{'private-poison':False}}) == {
+        'status':'rejected','reason':'Browser action is blocked.','execution_started':False,'data':{}}
+    boundary.gate._permissions['click'] = 'review_required'
+    def missing(**_):
+        raise evidence_module.EvidenceRejected('private-reference-poison')
+    boundary.adapter.prepare = missing
+    assert boundary.gate.dispatch({'action':'click','args':{'ref':'@s999'},'activity':'Inspect'}) == {
+        'status':'rejected','reason':'Browser context changed.','execution_started':False,'data':{}}
+    assert boundary.calls == boundary.effects == boundary.closed == []
 
 
 def test_AG_002_AG_003_fresh_review_copy_and_checked_original_execution(boundary):
