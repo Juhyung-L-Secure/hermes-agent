@@ -13,9 +13,10 @@ Run commands from repository root. Requires Linux Docker Engine, Compose with na
 | `chrome-policy.json` | Root-owned native mandatory Chrome for Testing download policy |
 | `browser_run.py` | Trusted host ownership lock, browser creation, smoke, exact teardown |
 | `mission_run.py` / `mission_viewer.py` | Foreground mission ownership and disposable local viewer |
-| `firewall.sh` / `proxy.sh` | Helper entrypoints |
+| `../../plugins/signal-scout/scout_runtime/network/` | Direct `scout_runtime.network.firewall` and `scout_runtime.network.proxy` module entrypoints |
 | `chromium-seccomp.json` | Browser container namespace sandbox syscall profile |
-| `../../plugins/signal-scout/security/` | Launcher/relay, CDP harness, policy, logs and security specs |
+| `../../plugins/signal-scout/scout_runtime/` | Importable browser/network runtime, settings/readiness, mission data, and logging |
+| `../../plugins/signal-scout/security/` | SR security contracts and confinement/network ownership |
 | `../../plugins/signal-scout/browser_tools/` | Separately selected native browser tool and trusted run binding |
 
 ## Build, verify, and run deterministic smoke
@@ -29,8 +30,8 @@ docker compose -f docker/signal-scout/compose.yaml run --rm -T scout status
 ```
 
 Smoke creates fresh browser, attests actual `chrome://sandbox`, navigates operator URL, observes one snapshot, and returns fixed success metadata. No model call, screenshot archive, raw page output, or model browser tool. Denied URL/fatal control/startup failure removes owned browser.
-Tests use the same host lifecycle, serialize helpers, restore prior running/stopped state, and retain auth/log volumes. Rotation-changing variants use disposable log volumes. Configured rotation can expire old archives. Controlled HTTP/TLS/DNS fixtures give the existing proxy test-owned public-classified addresses in `11.203.247.0/29` and `2606:4700:ffff:fffe::/64` after route-conflict checks. Their test image and disposable state volume keep controlled peers available after helper recreation. Host `openssl`, `ip`, and `google-chrome` are test prerequisites. Host Chrome uses a temporary profile solely to exercise local noVNC.
-One worker serializes shared-stack fixtures; existing 600-second per-file allowance changes no runtime deadline or test selection.
+
+Tests use the same host lifecycle, serialize helpers, restore prior running/stopped state, and retain auth/log volumes. Rotation-changing variants use disposable log volumes. Configured rotation can expire old archives. Controlled HTTP/TLS/DNS fixtures give the existing proxy test-owned public-classified addresses in `11.203.247.0/29` and `2606:4700:ffff:fffe::/64` after route-conflict checks. Their test image and disposable state volume keep controlled peers available after helper recreation. Host `openssl`, `ip`, and `google-chrome` are test prerequisites. Host Chrome uses a temporary profile solely to exercise local noVNC. One worker serializes shared-stack fixtures; existing 600-second per-file allowance changes no runtime deadline or test selection.
 
 Run standalone link validation separately from test execution using the [plugin checker guide](../../plugins/signal-scout/README.md#validate-spec-links). This checks all promises, including uncovered work, without executing test bodies or assessing assertions; current missing coverage produces exit `1`:
 
@@ -60,33 +61,15 @@ Select another operating file with `--config /absolute/path/scout.yaml`. Repeate
 
 ## Ownership and lifetime
 
-Host helper locks one run, rejects existing containers, starts healthy helpers and creates one run-labelled browser.
-Exact Docker ID/project/service/run labels and newly owned Chromium listener are checked before passing endpoint to Scout.
-Launcher checks socket inode/path, native policy and actual main-window sizing before readiness; Scout checks discovery and actual sandbox before browsing.
-Redirects, wrong/stale endpoints, and mismatched runtime settings fail closed.
-Create/start failure cleanup resolves exact attempted name/project/service/run, verifies full ID and removes only current owner; foreign collisions/old runs remain untouched.
+Host helper locks one run, rejects existing containers, starts healthy helpers and creates one run-labelled browser. Exact Docker ID/project/service/run labels and newly owned Chromium listener are checked before passing endpoint to Scout. Launcher checks socket inode/path, native policy and actual main-window sizing before readiness; Scout checks discovery and actual sandbox before browsing. Redirects, wrong/stale endpoints, and mismatched runtime settings fail closed. Create/start failure cleanup resolves exact attempted name/project/service/run, verifies full ID and removes only current owner; foreign collisions/old runs remain untouched.
 
-Native Hermes `_run_browser_command` connects its pinned `agent-browser` through
-`BROWSER_CDP_URL`. No `--session` with `--cdp`, npx/autoinstall, local/cloud
-fallback, real profile, core patch, or monkeypatched Hermes globals. Native
-credential scrubbing, separate temporary driver socket directory, command limits,
-and exact-session cleanup remain. Auxiliary CDP supervisor retains existing
-behavior; its reconnects do not replace Chromium. Scout-specific retry/notification
-policy remains deferred.
-Observed native action-driver CDP transport loss is terminal even while HTTP
-discovery stays healthy; ordinary navigation denial retains its existing behavior.
+Native owner retains pinned Hermes helper and private action session. [Browser runtime mechanics](../../plugins/signal-scout/scout_runtime/browser/README.md#native-owner-and-action-session) describe startup, control checks, and cleanup. Observed action-driver transport loss remains terminal even with healthy discovery. Auxiliary-supervisor policy remains deferred.
 
-One run uses one fresh anonymous default context for tabs/popups; no incognito/additional contexts.
-Fresh container/process/profile every run; no replacement/restart. Normal/fatal end
-removes only owned browser/temporary state. Helpers/images/volumes remain; browser
-has no Hermes runtime/credentials or shared writable artifact mount.
+One run uses one fresh anonymous default context for tabs/popups; no incognito/additional contexts. Fresh container/process/profile every run; no replacement/restart. Normal/fatal end removes only owned browser/temporary state. Helpers/images/volumes remain; browser has no Hermes runtime/credentials or shared writable artifact mount.
 
-**Cleanup is not guaranteed if Hermes, the launcher, Docker, or the host disappears.
-A browser may remain running and require manual cleanup. No watchdog, orphan
-adoption, automatic sweep, or recovery policy is implemented.**
+**Cleanup is not guaranteed if Hermes, the launcher, Docker, or the host disappears. A browser may remain running and require manual cleanup. No watchdog, orphan adoption, automatic sweep, or recovery policy is implemented.**
 
-Inspect a leftover before removing it. These commands identify exact ownership;
-substitute the inspected full ID, never a wildcard or unrelated container:
+Inspect a leftover before removing it. These commands identify exact ownership; substitute the inspected full ID, never a wildcard or unrelated container:
 
 ```bash
 docker ps -a --filter label=com.docker.compose.project=signal-scout-bootstrap --filter label=com.docker.compose.service=browser
@@ -95,46 +78,19 @@ docker stop -t 5 FULL_BROWSER_CONTAINER_ID
 docker rm FULL_BROWSER_CONTAINER_ID
 ```
 
-Confirm no run still owns that browser before manual removal. Use configured
-`scout_lifecycle.shutdown_timeout` if changed from five seconds. Never add volume
-deletion. Existing/leftover browser prevents a new run until explicitly resolved.
+Confirm no run still owns that browser before manual removal. Use configured `scout_lifecycle.shutdown_timeout` if changed from five seconds. Never add volume deletion. Existing/leftover browser prevents a new run until explicitly resolved.
 
 ## Enforced boundary
 
-`scout (.3) → browser relay (.4:9223) → Chromium loopback (127.0.0.1:9222)`.
-Exactly four services: `scout`, `browser`, `firewall`, `proxy`. Hermes has its own
-namespace, attached to restricted `.3` and outbound networks, with direct outbound
-and DNS connectivity. No Scout-specific Hermes firewall or proxy settings remain;
-Hermes host/LAN isolation is not enforced. Browser shares firewall's network
-namespace at `.4`; proxy has its own namespace at `.2` plus outbound access.
-Browser may reach only public-web proxy `.2:3128` and necessary replies, with
-narrow local relay/launcher CDP traffic. All other browser IPv4/IPv6 traffic
-defaults to deny. Browser cannot initiate into Hermes, host/LAN, metadata, direct
-internet, or DNS. Proxy accepts only browser `.4`, resolves afresh, rejects every mixed/private answer, pins numeric
-connect, and checks actual peer. Only public HTTP:80 and opaque HTTPS:443 pass.
-TLS stays end-to-end verified; no MITM or substitute certificate.
+Four services remain `scout`, `browser`, `firewall`, and `proxy`. Hermes `.3` has own namespace and direct outbound/DNS connectivity. Browser shares firewall namespace `.4` and can reach browser-only proxy `.2:3128`, necessary replies, and narrow local relay/launcher control. All remaining browser IPv4/IPv6/direct DNS defaults to deny. Hermes host/LAN isolation is not enforced.
 
-Relay binds only browser private address, accepts only Scout source address, and
-forwards only to its owned child. Child exit closes relay and connections.
-Chrome loads root-owned `0444` JSON at `/etc/opt/chrome_for_testing/policies/managed/scout.json` with `DownloadRestrictions: 3`.
-Startup verifies Chrome's validated `chrome://policy` record (mandatory/machine/platform, value 3, no errors/ignored policy), then restores sole blank page and closes CDP before readiness.
-Missing, invalid or unapplied policy and sizing failure end owned browser; blocked downloads leave browser healthy. Native policy persists without policy CDP/keepalive/watcher. Ordinary webpage downloads are blocked; Save Page and print-to-PDF are outside this policy's scope.
-Verified main-window size is shared by normal tabs; separate popups keep own size, scale is browser-wide.
-No per-tab emulation/debugger pause/later-target resize or activation. [Contracts](../../plugins/signal-scout/security/README.md) own details.
-Only viewer TCP is published on host `127.0.0.1`; CDP stays unpublished. Source-IP control is not cryptographic identity.
-Ordinary page HTTP, WebSocket, frame, fetch and image traffic uses forced proxy,
-including loopback, so it cannot reach relay/raw CDP even with live endpoint path.
-Tests use live listeners, namespace connection counters, and before/after positive
-controls. A compromised browser/controller, Docker daemon, or kernel remains a
-trust risk; separation does not prevent every exploit.
+Control path is `scout (.3) → browser relay (.4:9223) → Chromium loopback (127.0.0.1:9222)`. Only viewer TCP publishes on host loopback. CDP remains unpublished. Proxy admits public HTTP:80 and opaque HTTPS:443 after DNS, every-answer, numeric-connect, and actual-peer checks. TLS remains end-to-end verified.
 
-Both applications run UID/GID 10000, read-only root, zero capabilities/no-new-privileges. Browser retains namespace/seccomp-BPF sandbox, 128 MiB tmpfs, 2,000,000,000-byte memory+swap, no CPU quota, 512 PIDs. Hermes: 1 GiB memory+swap, 1 CPU, 512 PIDs. Each helper: 256 MiB memory+swap, 0.5 CPU, 128 PIDs; limits are per container.
-Firewall initially needs NET_ADMIN/SETUID/SETGID/SETPCAP, then drops all capabilities/runs UID10000; Docker healthcheck retains startup identity.
+Startup attests actual sandbox, native mandatory download policy, and initial main-window size. Tabs share default context and normal window sizing. Popups retain own size. Source-IP checks are not cryptographic identity. [Security contracts](../../plugins/signal-scout/security/README.md) give exact confinement, forced-proxy, policy, sizing, and trust limits. Compromised browser/controller, Docker daemon, or kernel remains trust risk.
 
-Pins remain `agent-browser 0.26.0`, Chrome for Testing `153.0.8010.36`, verified archives and existing base digests.
-Browser includes hash-verified `websockets==15.0.1` and Debian Xvfb/x11vnc/noVNC/websockify; no Hermes runtime/credentials.
-Browser seccomp derives from Playwright v1.58.2 commit `ce480a952553175eae75342aad2c5e86cdf2cbba`, with in-user-namespace `chroot` allowed. SQLite retains upstream WAL-reset fix.
-Build downloads are distinct from restricted runtime networking.
+Both applications run UID/GID 10000, read-only root, zero capabilities/no-new-privileges. Browser retains namespace/seccomp-BPF sandbox, 128 MiB tmpfs, 2,000,000,000-byte memory+swap, no CPU quota, 512 PIDs. Hermes: 1 GiB memory+swap, 1 CPU, 512 PIDs. Each helper: 256 MiB memory+swap, 0.5 CPU, 128 PIDs; limits are per container. Firewall initially needs NET_ADMIN/SETUID/SETGID/SETPCAP, then drops all capabilities/runs UID10000; Docker healthcheck retains startup identity.
+
+Pins remain `agent-browser 0.26.0`, Chrome for Testing `153.0.8010.36`, verified archives and existing base digests. Browser includes hash-verified `websockets==15.0.1` and Debian Xvfb/x11vnc/noVNC/websockify; no Hermes runtime/credentials. Browser seccomp derives from Playwright v1.58.2 commit `ce480a952553175eae75342aad2c5e86cdf2cbba`, with in-user-namespace `chroot` allowed. SQLite retains upstream WAL-reset fix. Build downloads are distinct from restricted runtime networking.
 
 ## Settings and logs
 
@@ -162,13 +118,15 @@ Raw Compose `status`, `login`, `chat`, and helper commands receive the default f
 | `scout_proxy.dns_timeout/connect_timeout/idle_timeout` | 5 / 10 / 60 seconds |
 | `scout_network` | Restricted subnet/.2/.3/.4, viewer `172.30.243.0/30`/.2, proxy3128/control9222/relay9223/viewer6080 |
 
-Command timeouts are integer 1–120s; proxy/lifecycle timeouts 1–300s; log size 1–1024 MiB, backup count 1–20, level DEBUG/INFO/WARNING/ERROR.
-Despite its name, Hermes's `agent.api_max_retries` counts total attempts in its ordinary API retry loop: 1 means no retry, 2 allows one retry. Scout uses that existing loop and backoff for transient main-model failures, including `ReadError` and connection failures. It retries the pending model request with the existing conversation, not the mission or completed browser actions. Native non-retryable errors, SDK behavior and separate primary-transport recovery remain unchanged; this setting is not a strict cap on every underlying wire request.
-`browser.observation_timeout` and `browser.interaction_observation_timeout` are required finite positive numeric values up to120seconds, with interaction no greater than document allowance. The browser gate waits for actual selected-document DOMContentLoaded or its observation deadline after final effect acknowledgment. Matching ready pages may still have pending images/application data. Ordinary click/key interactions use the shorter interval; future delayed navigation remains possible. Healthy expiration returns current compact AX/URL/readiness as `incomplete`, with no automatic replay. Command response, capture and cleanup have independent limits, so5seconds is not a total-tool SLA. `browser.navigation_retries` remains a required nonnegative integer, initiallyone; booleans and nonintegers fail validation. Only acknowledged explicit-navigation loading errors can retry the copied URL with current permissions, current original-target resolution and owned control. Blocked/stale retries perform no new effect. Missing acknowledgments and required control/inspection failures remain fatal.
-Viewport requires positive CDP signed-integer width/height and finite positive numeric scale, never booleans. Missing/invalid values or unsupported actual sizing fail without fallback. Scout evidence API captures raw actual full viewport in memory, preserving popup size; gate uses exact original targets without an archive.
-Lifecycle bounds cover owned startup/control/shutdown/smoke, not foreground research duration or auxiliary-supervisor retries.
-Docker stop's host deadline adds the existing bounded 60-second Docker-command
-allowance to configured shutdown grace, so supported grace values are not cut short.
+Command timeouts are integers from 1 through 120 seconds. Proxy/lifecycle timeouts range from 1 through 300 seconds. Log size ranges from 1 through 1024 MiB, backup count from 1 through 20, and level is DEBUG, INFO, WARNING, or ERROR.
+
+Hermes `agent.api_max_retries` counts total attempts in ordinary API retry loop. Value 1 means no retry. Value 2 allows one retry. Scout retains existing native backoff for transient main-model failures, including `ReadError` and connection failures. Retry sends pending model request with existing conversation, without restarting mission or completed browser actions. Native non-retryable errors, SDK behavior, and separate primary-transport recovery remain unchanged. Setting does not strictly cap every underlying wire request.
+
+`browser.observation_timeout` and `browser.interaction_observation_timeout` require finite positive numbers no greater than 120 seconds. Interaction allowance cannot exceed document allowance. Each starts after applicable effect acknowledgment. Healthy expiry returns current `incomplete` observation without replay. Response, capture, and cleanup have separate bounds, so default 5 seconds is no total-tool SLA. `browser.navigation_retries` requires nonnegative integer, initially 1. Booleans and nonintegers fail. Only acknowledged explicit-navigation loading errors permit original-URL retry. [Observation mechanics](../../plugins/signal-scout/scout_runtime/browser/README.md#observations-and-deadlines) preserve current-target checks, bounded retry, and fatal boundaries.
+
+Viewport requires positive CDP signed-integer width/height and finite positive numeric scale, never booleans. Missing/invalid values or unsupported actual sizing fail without fallback. Explicit screenshot captures actual full viewport in memory, including native popup size, without archive.
+
+Lifecycle bounds cover owned startup/control/shutdown/smoke, not research duration or auxiliary-supervisor retries. Docker stop's host deadline adds existing bounded 60-second Docker-command allowance to configured shutdown grace, including supported grace above 60 seconds.
 
 ```bash
 docker compose -f docker/signal-scout/compose.yaml up -d --force-recreate --wait --no-build --pull never proxy firewall
@@ -176,11 +134,13 @@ docker compose -f docker/signal-scout/compose.yaml up -d --force-recreate --wait
 
 ## Watch and control a test browser
 
-Set `browser.mode: headed` and `browser.viewer: true` in `config.yaml`, then start the next owned run without rebuilding. `headed` with viewer false also works unattended. There is no automatic mode fallback. Restore `headless` and false before the next production run.
-Existing trusted `BrowserRun` caller obtains `run.viewer_access()` after owned readiness. Open returned local URL (`http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale` by default), enter returned `scout` username/session password in browser's HTTP login prompt. Credentials live only in browser tmpfs, rotate each run, and never enter Scout environment/readiness/model tools or persisted logs. Do not persist/log returned access details.
-Packaged noVNC supports trusted clicks/typing. Manual changes can stale an original reference before an ordinary Scout proposal. Closing viewer tab leaves mission/browser running. Normal owned cleanup removes display/VNC/viewer; no new crash/reconnect policy.
-Xvfb and VNC use container-local UNIX sockets, without host display/device/socket mounts. Websockify requires authentication for HTTP and WebSocket plus local Host/Origin. Dedicated viewer bridge joins only existing firewall/browser namespace: Docker cannot publish an internal-only bridge. Existing restricted bridge stays internal; firewall permits only viewer bridge's host gateway to viewer port/established replies and denies all other traffic on both interfaces. Docker mapping binds 127.0.0.1 only; no LAN/public/CDP exposure. Disabled configuration starts no listener/credentials even though localhost transport remains. Changing viewer subnet/address/port requires matching Compose bridge/address/localhost mapping; topology mismatch fails.
-Pairing: `security/viewer.py` ↔ mode/settings/launcher/firewall ↔ SR_011–SR_013 and real `test_browser_modes.py` checks.
+Set `browser.mode: headed` and `browser.viewer: true` in `config.yaml`, then start next owned run without rebuilding. Headed mode with viewer false also works unattended. No automatic mode fallback exists. Restore `headless` and false before next production run.
+
+Trusted `BrowserRun` caller obtains `run.viewer_access()` after owned readiness. Open returned local URL, by default `http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale`. Enter returned `scout` username/session password in HTTP login prompt. Credentials live only in browser tmpfs and rotate each run. Never persist or log access details. Credentials never enter Scout environment/readiness/model tools or persisted logs.
+
+Packaged noVNC permits trusted clicks/typing. Manual changes can stale original Scout reference. Closing viewer tab leaves browser/research running. Normal owned cleanup removes display/VNC/viewer. No crash/reconnect policy is added.
+
+Viewer stays container-local without host display/device/socket mounts. Authentication, local Host/Origin, dedicated viewer bridge, and localhost publication remain required. [Security viewer contracts](../../plugins/signal-scout/security/README.md#download-sizing-and-viewer-safeguards) describe boundary. Changing viewer subnet/address/port requires matching Compose bridge/address/localhost mapping. Topology mismatch fails. `scout_runtime/browser/viewer.py` pairs with mode/settings/launcher/firewall, SR_011 through SR_013, and real `test_browser_modes.py` checks.
 
 Active persistent logs are `agent.log`, `errors.log`, `proxy.log`, `firewall.log`, and `browser.log` in the shared `scout-logs` volume. Hermes mounts it at `/var/lib/scout/logs`; proxy and firewall mount it at `/var/log/scout`. All three services have writable access to the same files. Browser has no log-volume mount. Renamed browser firewall appends to existing `firewall.log`, which can contain historical Hermes-firewall events. Historical `browser-firewall.log` and backups stay untouched; no migration or wiping.
 
@@ -188,15 +148,13 @@ Each active file rotates independently, with 5 MiB per current file and three ba
 
 Native Hermes diagnostics preserve logger names, formatted messages, session context, exceptions, and stacks under native secret redaction. Scout's WARNING console uses the native redactor too. Native/backend diagnostics may retain URLs, request/evidence/response content, and provider errors, including SDK DEBUG records. Native redaction does not guarantee removal of all sensitive content. Logging failure is best effort and never weakens enforcement. Scout Docker logging remains `none`.
 
-Browser Docker output uses the bounded `local` driver with two 1 MiB files and a 1 MiB nonblocking delivery buffer. This temporary transport contains unredacted browser output until container removal and can evict records. BrowserRun reads only its verified current container. A private host Python worker applies the checkout's actual `RedactingFormatter` to complete native text before single-line encoding. A fixed stdin-only writer in the verified existing proxy rotates `browser.log` with `logging.level`, `logging.max_size_mb`, and `logging.backup_count`. The host requires this repository's native redactor source, with no new package dependency. Raw output has no persistent or console fallback if redaction fails.
+Browser Docker output uses bounded `local` driver with two 1 MiB files and 1 MiB nonblocking delivery buffer. Temporary output remains unredacted until container removal and may evict records. Host collects only verified current run, applies checkout's native redactor, and writes `browser.log` through verified proxy. No persistent or console raw-output fallback exists if redaction fails. [Diagnostic mechanics](../../plugins/signal-scout/scout_runtime/browser/README.md#diagnostics) describe exact process/relay/container records and writer shutdown.
 
-Browser records identify the run, component, and relay connection/direction. INFO retains directional EOF; DEBUG retains intentional relay cancellation. Child PID/return code/observed signal, received launcher signal, and requested child signal remain distinct. An initiating host startup exception is recorded before cleanup when the owned stream exists. Host `pre_stop` and `after_stop_attempt` records select container running/status/exit/OOM/error/time fields before removal. A 137 status or SIGKILL alone is not OOM proof. Missing state is unavailable. These observations do not diagnose the original abrupt CDP failure.
-
-`scout_diagnostics` bounds complete records and pending user-space payload, not whole-process memory or kernel pipe buffers. Records are 1024 through 1048576 bytes; pending capacity is at least twice the record cap and at most 16 MiB. Oversized whole records and overflow drop with an attempted fixed warning. Source drainage continues after sink or formatter failure. One configured shutdown allowance bounds observer close and formatter/transport cleanup, with exact proxy-side writer verification before helper restoration. Host death, Docker loss, forced kill, and buffer eviction can lose evidence.
+`scout_diagnostics` bounds complete records and pending user-space payload, not whole-process memory or kernel pipe buffers. Record size is 1024 through 1048576 bytes. Pending capacity is at least twice record cap and at most 16 MiB. Oversized records and overflow drop with attempted fixed warning. Source drainage continues after sink/formatter failure. Configured shutdown allowance bounds observer close and transport cleanup. Host death, Docker loss, forced kill, and buffer eviction can lose evidence. Exit 137 or SIGKILL alone is not OOM proof. Current observations do not diagnose original mission failure.
 
 ## Existing subscription interfaces
 
-The existing container commands below stay status-only. The foreground mission command separately supplies the trusted gate binding and explicitly selected `signal_scout_browser` toolset.
+The existing container commands below stay status-only. The foreground mission command separately supplies trusted action-session binding and explicitly selected `signal_scout_browser` toolset.
 
 ```bash
 docker compose -f docker/signal-scout/compose.yaml run --rm -it scout login
@@ -204,13 +162,8 @@ docker compose -f docker/signal-scout/compose.yaml run --rm -T scout chat
 docker compose -f docker/signal-scout/compose.yaml down
 ```
 
-Login uses native OpenAI device OAuth and dedicated `scout-auth` volume; never
-mount host credentials. Chat remains bounded status-only `gpt-5.6-luna` /
-`openai-codex` / low reasoning, no provider fallback. Do not run login/chat for
-non-generating verification. `down` retains volumes unless explicitly requested
-otherwise. Historical receipts in `stuff/` remain unchanged. The older isolation
-brief/checkpoint and browser-action review plan retain their original evidence;
-their Hermes-firewall/proxy requirements are superseded by this browser-only
-network boundary and current feature-owned specs.
+Login uses native OpenAI device OAuth and dedicated `scout-auth` volume; never mount host credentials. Chat remains bounded status-only `gpt-5.6-luna` / `openai-codex` / low reasoning, no provider fallback. Do not run login/chat for non-generating verification. `down` retains volumes unless explicitly requested otherwise. Historical receipts in `stuff/` remain unchanged. [History index](../../plugins/signal-scout/history.md) preserves old isolation briefs/checkpoint and review plan. Their superseded Hermes-firewall/proxy instructions do not alter current browser-only boundary.
 
-Open work includes independent crash cleanup, supervisor failure policy, selected-tab closure, durable mission/resume, live-provider research completion, and broader IN_001/SR_015/SR_016. [Security ownership](../../plugins/signal-scout/security/README.md) and [spec validation](../../plugins/signal-scout/README.md#validate-spec-links) distinguish test execution from link validation. AG_001–AG_007 own gate permissions/execution. BR_001–BR_005 own native routing, hard interrupt, and text/image feedback. Browser action modes come from the fixed operating file. All implemented actions start `allowed`; trusted `blocked` or missing entries deny access. Activity is optional progress text. Independent reviewer adjudication and its implicit captures/context packets/rechecks/config/model/policy are retired. Main-agent instructions guide research, but do not independently enforce website effects. Existing isolation, network/firewall/proxy, native download denial and exact target checks remain. AG_009 covers retirement; RV_001 through RV_007 and AE_003 retired. Previous committed code remains in local Git tag `archive/scout-safety-reviewer-2026-10-29`; inspect with `git show archive/scout-safety-reviewer-2026-10-29:plugins/signal-scout/security/reviewer.py`. Offline checks do not establish live provider availability, instruction adherence or research reliability.
+Open work includes independent crash cleanup, supervisor failure policy, selected-tab closure, durable mission/resume, live-provider research completion, and broader IN_001/SR_015/SR_016. [Milestones](../../stuff/milestones.md) retain future outcomes. [Security ownership](../../plugins/signal-scout/security/README.md), [browser contracts](../../plugins/signal-scout/browser_tools/README.md), and [spec validation](../../plugins/signal-scout/README.md#validate-spec-links) distinguish current guarantees, executed proof, and link checks.
+
+AG_001 through AG_009 and ordinary AE records belong to browser-tools owner alongside BR_001 through BR_006. Configured actions start `allowed`; `blocked` or missing entries deny. Optional activity describes progress. Independent reviewer and implicit captures/context packets/rechecks/settings/policy retired. Main-agent guidance does not independently classify website effects. Existing confinement, browser-only network filtering, native download denial, and exact target checks remain. [Reviewer archive](../../plugins/signal-scout/history.md#retired-reviewer) preserves prior implementation. Offline checks do not prove live provider availability, instruction adherence, or research quality.

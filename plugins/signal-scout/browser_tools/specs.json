@@ -8,11 +8,26 @@
       "subfeature": "native-browser-routing",
       "title": "Separate native discovery and restricted conversation surface",
       "contract": "Native plugin discovery registers exactly browser_scout in the separate signal_scout_browser toolset, without a scout_browser alias. Existing signal_scout status exposure, bootstrap selection and readiness remain unchanged. A browser research conversation explicitly selects only browser_scout, plus status only if explicitly selected; native browser, terminal, arbitrary code/JavaScript/file, uploads, MCP, messaging, delegation and scheduling supply no alternative execution route. Unavailable names cannot invoke their native handlers; existing native name repair can reach only the same bound browser_scout gate, which rejects invalid raw-executor arguments. Tool schema and system prompt stay stable during each conversation; registration does not override a built-in or modify Hermes core.",
-      "requiredCoverage": ["unit", "e2e"],
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_001_native_discovery_keeps_status_and_browser_separate"},
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_001_native_model_loop_refuses_alternate_execution_routes"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_BR_001_BR_002_BR_004_BR_005_native_model_allowed_effects_images_and_no_bypass"}
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_001_native_discovery_keeps_status_and_browser_separate"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_001_native_model_loop_refuses_alternate_execution_routes"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_BR_001_BR_002_BR_004_BR_005_native_model_allowed_effects_images_and_no_bypass"
+        }
       ],
       "otherCoverage": [],
       "blocker": ""
@@ -22,15 +37,46 @@
       "subfeature": "native-browser-routing",
       "title": "Faithful proposals and ordinary browser feedback",
       "contract": "The browser_scout handler forwards the same action, exact args and optional activity to its captured run-owned gate without semantic rewriting, auxiliary model call or another observation. Browser identity, allowed/blocked permissions and fatal callback are trusted binding inputs, never model arguments. Native dispatch faithfully returns status, sanitized reason, truthful execution_started and appropriate data, including AG_008 incomplete navigation and fresh compact snapshots with explicit selected target IDs. No rejection is silently retried.",
-      "requiredCoverage": ["unit", "e2e"],
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_002_native_forwarding_preserves_proposed_request_and_gate_result"},
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_002_incomplete_result_forwards_without_stop_or_redispatch"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_AG_008_BR_002_native_incomplete_navigation_continues_same_browser_and_prompt"},
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_002_BR_005_native_screenshot_envelope_keeps_bytes_out_of_text"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_BR_001_BR_002_BR_004_BR_005_native_model_allowed_effects_images_and_no_bypass"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_BR_002_BR_004_native_model_rejection_leaves_healthy_browser"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_BR_002_BR_005_native_model_type_keeps_exact_value_and_compact_feedback"}
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_002_native_forwarding_preserves_proposed_request_and_gate_result"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_002_incomplete_result_forwards_without_stop_or_redispatch"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_AG_008_BR_002_native_incomplete_navigation_continues_same_browser_and_prompt"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_002_BR_005_native_screenshot_envelope_keeps_bytes_out_of_text"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_BR_001_BR_002_BR_004_BR_005_native_model_allowed_effects_images_and_no_bypass"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_BR_002_BR_004_native_model_rejection_leaves_healthy_browser"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_BR_002_BR_005_native_model_type_keeps_exact_value_and_compact_feedback"
+        }
       ],
       "otherCoverage": [],
       "blocker": ""
@@ -40,13 +86,36 @@
       "subfeature": "native-browser-routing",
       "title": "Scoped binding and mandatory enclosing-run stop",
       "contract": "Trusted bind_browser(gate, *, on_fatal, action_reference) requires a callable stop callback and a complete nonempty action-reference string and supports one binding at a time. Runtime handler enforces the binding on every call, independently of cached discovery checks; unbound calls cannot create or attach a Browser or select a fallback. Scope exit closes the captured gate and releases the binding. Fatal invokes the original bound callback before returning and prevents subsequent dispatch through that binding. Real Hermes wiring calls AIAgent.interrupt(hard_cancel=True), skips remaining tool effects and additional main-model turns, then permits normal owner teardown to remove the exact owned browser. A delayed old call retains its old gate/callback and cannot execute through a new run.",
-      "requiredCoverage": ["unit", "e2e"],
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_003_runtime_binding_is_mandatory_and_scoped"},
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_003_fatal_calls_stop_before_return_and_never_redispatches"},
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_003_late_call_keeps_original_gate_and_stop_callback"},
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_001_BR_003_native_model_loop_fatal_interrupt_skips_remaining_calls"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_AG_009_BR_003_BR_004_native_required_failure_stops_agent_and_host_cleans_owned_browser"}
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_003_runtime_binding_is_mandatory_and_scoped"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_003_fatal_calls_stop_before_return_and_never_redispatches"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_003_late_call_keeps_original_gate_and_stop_callback"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_001_BR_003_native_model_loop_fatal_interrupt_skips_remaining_calls"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_AG_009_BR_003_BR_004_native_required_failure_stops_agent_and_host_cleans_owned_browser"
+        }
       ],
       "otherCoverage": [],
       "blocker": ""
@@ -55,12 +124,26 @@
       "id": "BR_004",
       "subfeature": "native-browser-routing",
       "title": "Native reviewer-free browser integration",
-      "contract": "Actual native discovery/dispatch and real AIAgent model/tool loop with external main inference doubled exercise the real run-owned BrowserActionGate against isolated Chromium without a safety reviewer or reviewer configuration. Ordinary exact-target effects occur once, stale or blocked proposals cause no proposed effect, and healthy rejection allows subsequent observation. Actual required browser machinery failure returns fatal, triggers mandatory native hard stop, prevents later effects/model turns and completes exact host-owned cleanup. Fake gates alone do not establish this proof. No paid provider call, authentication workflow or alternate Docker stack is required.",
-      "requiredCoverage": ["e2e"],
+      "contract": "Actual native discovery/dispatch and real AIAgent model/tool loop with external main inference doubled exercise the real run-owned BrowserSession against isolated Chromium without a safety reviewer or reviewer configuration. Ordinary exact-target effects occur once, stale or blocked proposals cause no proposed effect, and healthy rejection allows subsequent observation. Actual required browser machinery failure returns fatal, triggers mandatory native hard stop, prevents later effects/model turns and completes exact host-owned cleanup. Fake gates alone do not establish this proof. No paid provider call, authentication workflow or alternate Docker stack is required.",
+      "requiredCoverage": [
+        "e2e"
+      ],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_BR_001_BR_002_BR_004_BR_005_native_model_allowed_effects_images_and_no_bypass"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_BR_002_BR_004_native_model_rejection_leaves_healthy_browser"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_AG_009_BR_003_BR_004_native_required_failure_stops_agent_and_host_cleans_owned_browser"}
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_BR_001_BR_002_BR_004_BR_005_native_model_allowed_effects_images_and_no_bypass"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_BR_002_BR_004_native_model_rejection_leaves_healthy_browser"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_AG_009_BR_003_BR_004_native_required_failure_stops_agent_and_host_cleans_owned_browser"
+        }
       ],
       "otherCoverage": [],
       "blocker": ""
@@ -70,12 +153,31 @@
       "subfeature": "native-browser-routing",
       "title": "Native text and in-memory multimodal observation",
       "contract": "Explicit screenshot success consumes only data.screenshot.bytes and its PNG MIME from the gate and returns the supported Hermes _multimodal envelope with a text summary and native image content. Image bytes are not embedded as prose, saved to a temporary screenshot, or sent through an auxiliary vision model. Other actions return ordinary JSON text feedback and do not cause an automatic main-agent screenshot. Independently observed AX field values remain, including Scout-typed text. Private bindings and action/request payloads are not copied into results; normal observation intentionally enters main-agent context. Native make_tool_result_message recognizes the actual browser_scout name, frames plain or multimodal result text using that matching source, neutralizes embedded delimiter tokens and preserves image parts. Adapter does not supply its own wrapper/source alias or mutate Hermes core. Offline fake-model transport establishes envelope wiring, not live main-agent/provider image support, safety quality or a new conversation-retention guarantee.",
-      "requiredCoverage": ["unit", "e2e"],
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_002_BR_005_native_screenshot_envelope_keeps_bytes_out_of_text"},
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_005_native_model_frames_actual_tool_defangs_delimiters_and_preserves_image"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_BR_001_BR_002_BR_004_BR_005_native_model_allowed_effects_images_and_no_bypass"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_BR_002_BR_005_native_model_type_keeps_exact_value_and_compact_feedback"}
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_002_BR_005_native_screenshot_envelope_keeps_bytes_out_of_text"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_005_native_model_frames_actual_tool_defangs_delimiters_and_preserves_image"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_BR_001_BR_002_BR_004_BR_005_native_model_allowed_effects_images_and_no_bypass"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_BR_002_BR_005_native_model_type_keeps_exact_value_and_compact_feedback"
+        }
       ],
       "otherCoverage": [],
       "blocker": ""
@@ -85,19 +187,751 @@
       "subfeature": "action-format-guidance",
       "title": "Startup action reference and corrective format feedback",
       "contract": "Research startup includes the complete trusted browser-action Markdown reference in the main model's initial context before its first inference. The reference covers every supported browser_scout action, exact argument fields and types, reference and tab-ID syntax, optional activity and illustrative requests consistent with the actual validator; examples never substitute for references observed in the current browser. Missing, unreadable or empty required guidance prevents inference rather than silently omitting it. A rejection by Scout's request-format validation returns execution_started false, a specific code-owned validation explanation identifying the failing field or request rule without echoing submitted values, and the same complete reference contents through the ordinary browser_scout tool result. Hermes's next ordinary model call receives that feedback with its existing conversation history, including when an earlier copy of the reference is no longer retained. No extra correction model call, automatic request rewriting, direct replay, forced retry loop, new retry ceiling, toolset swap or mid-conversation system-prompt mutation is introduced. A subsequent model proposal independently passes normal validation, permissions and ordinary current-target checks. Blocked configured permissions, stale-target rejections and technical failures retain their existing behavior and do not masquerade as request-format errors. Existing outcome fields, native tool-content warning boundaries, no-payload-echo rules, browser isolation, download protections and fatal stop obligations remain intact. Supplying corrective context does not guarantee that a live model will choose a valid next request or complete the mission.",
-      "requiredCoverage": ["unit", "e2e"],
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_AG_001_invalid_or_unknown_request_has_no_effect"},
-        {"layer":"unit","file":"tests/signal_scout/security/test_gate.py","test":"test_BR_006_blocked_permission_and_unavailable_reference_are_not_format_errors"},
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_006_required_reference_load_fails_closed"},
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_006_reference_examples_match_registered_schema_and_real_validator"},
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_006_format_feedback_keeps_bound_copy_and_native_failure_identity"},
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_006_nonformat_outcomes_keep_existing_feedback"},
-        {"layer":"unit","file":"tests/signal_scout/browser_tools/test_adapter.py","test":"test_BR_003_BR_006_binding_requires_complete_reference"},
-        {"layer":"unit","file":"tests/signal_scout/missions/test_cli.py","test":"test_MI_032_BR_006_missing_reference_prevents_provider_and_inference"},
-        {"layer":"unit","file":"tests/signal_scout/missions/test_cli.py","test":"test_MI_032_BR_006_startup_uses_registered_adapter_and_one_reference_copy"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_AG_009_MI_032_BR_006_research_first_inference_requires_complete_packaged_reference"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_BR_006_native_identical_format_failures_keep_full_guide_and_corrected_effect"}
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_001_invalid_or_unknown_request_has_no_effect"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_BR_006_blocked_permission_and_unavailable_reference_are_not_format_errors"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_006_required_reference_load_fails_closed"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_006_reference_examples_match_registered_schema_and_real_validator"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_006_format_feedback_keeps_bound_copy_and_native_failure_identity"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_006_nonformat_outcomes_keep_existing_feedback"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_003_BR_006_binding_requires_complete_reference"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_cli.py",
+          "test": "test_MI_032_BR_006_missing_reference_prevents_provider_and_inference"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_cli.py",
+          "test": "test_MI_032_BR_006_startup_uses_registered_adapter_and_one_reference_copy"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_AG_009_MI_032_BR_006_research_first_inference_requires_complete_packaged_reference"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_BR_006_native_identical_format_failures_keep_full_guide_and_corrected_effect"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AE_001",
+      "subfeature": "action-evidence",
+      "title": "Compact snapshots and immutable exact references",
+      "contract": "Scout-owned snapshot lists compact accessibility role/name text and monotonic @s refs for an explicit CDP page target ID, never full HTML/DOM. Private refs bind original browser node, frame, target and document lifetime. Same node can retain its ref across snapshots; existing refs never bind another node or substitute role/name lookalikes. Same-origin and cross-origin iframe nodes retain their exact frame and CDP target identities. Native agent-browser and Hermes core remain unchanged.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_inspection.py",
+          "test": "test_AE_001_AE_002_compact_refs_scroll_current_point_and_no_effect"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_inspection.py",
+          "test": "test_AE_001_AE_002_AE_004_AE_005_same_cross_origin_points_and_focus"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_003_rejection_never_executes_proposal_and_browser_continues"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AE_002",
+      "subfeature": "action-evidence",
+      "title": "Current target and keyboard-focus resolution",
+      "contract": "Click and type resolve the original observed node in the selected tab, reveal it with ordinary scrolling and compute its current interaction point. Keypress resolves actual current focus, including same-origin and cross-origin frames and closed author shadow roots, and permits page-level keys without inventing an element. Resolution rejects stale required nodes or focus and performs no proposed click, text replacement or keypress. Optional activity describes progress only. No screenshot, semantic form packet or approval baseline is prepared.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_inspection.py",
+          "test": "test_AE_001_AE_002_compact_refs_scroll_current_point_and_no_effect"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_inspection.py",
+          "test": "test_AE_001_AE_002_AE_004_AE_005_same_cross_origin_points_and_focus"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_003_same_and_cross_origin_exact_nodes_focus_and_movement"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_003_rejection_never_executes_proposal_and_browser_continues"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AE_004",
+      "subfeature": "action-evidence",
+      "title": "Ordinary original-target and focus verification",
+      "contract": "Before an input effect, verify the original reference still identifies its original tab, frame, document and node, and verify actual required typing or keyboard focus. Replaced or detached original targets reject without substitution or proposed effect; healthy browsing can continue from a fresh observation. No label or role fallback, target replacement or action replay occurs. There is no pre-approval versus post-approval comparison of page titles, link/form destinations, accessibility semantics or unrelated context. Current checks do not promise atomic page or server effects.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_inspection.py",
+          "test": "test_AE_001_AE_002_AE_004_AE_005_same_cross_origin_points_and_focus"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_003_same_and_cross_origin_exact_nodes_focus_and_movement"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_003_rejection_never_executes_proposal_and_browser_continues"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AE_005",
+      "subfeature": "action-evidence",
+      "title": "Visible unobstructed current interaction point",
+      "contract": "Compute the interaction point from current original-node geometry, including iframe clipping and coordinate projection, and verify viewport visibility and hit target. Same-node movement remains valid when its current point is visible and unobstructed; the whole element need not fit the viewport. Hidden or covered targets reject without proposed effect while healthy browsing continues. No forced interaction, full-page screenshot fallback or pixel comparison is added.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_inspection.py",
+          "test": "test_AE_001_AE_002_AE_004_AE_005_same_cross_origin_points_and_focus"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_003_same_and_cross_origin_exact_nodes_focus_and_movement"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_003_rejection_never_executes_proposal_and_browser_continues"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AE_006",
+      "subfeature": "action-evidence",
+      "title": "Required ordinary browser machinery failures",
+      "contract": "Required ordinary inspection, explicitly requested capture, unknown protocol or control-transport failure marks the Browser unusable and produces a sanitized fatal result for existing owned teardown. Expected stale, detached, hidden, covered or unavailable required targets instead reject before proposed effect and allow healthy continuation. Known unrelated iframe loss follows AE_007. Existing command timeout, ownership and teardown apply without a reviewer, automatic input replay or browser replacement. Preserve helper state and auth/log volumes.",
+      "requiredCoverage": [
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_005_AG_006_required_failure_terminal_started_and_owned_cleanup"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_003_rejection_never_executes_proposal_and_browser_continues"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_inspection.py",
+          "test": "test_AE_006_expected_target_loss_protocol_errors_reject"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AE_007",
+      "subfeature": "action-evidence",
+      "title": "Partial frame inspection and unavailable-target recovery",
+      "contract": "Known missing or detached iframe responses stop traversal of that unavailable branch while preserving inspectable branches. Successful snapshots and ordinary browser observations disclose incomplete inspection through code-owned metadata or notice. If the original requested target, required frame ancestry, actual keyboard focus or required current identity/hit point cannot be verified, reject that proposal without effect or replacement and permit healthy continuation. Omission state stays local to its scan and cannot contaminate another action. Unknown errors and owned-control transport failures remain fatal. No reviewer packet, approval or screenshot is required for ordinary actions; explicit screenshots and independent network/download protections remain.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_snapshot_skips_missing_branch_and_continues_siblings"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_006_AE_007_unknown_root_and_transport_failure_remain_fatal"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_frame_loss_during_accessibility_keeps_available_snapshot"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_001_AE_007_final_page_scan_omits_changed_child_without_rebinding_refs"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_unavailable_inner_focus_rejects_keys_and_is_explicit_for_navigation"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_required_target_loss_rejects_and_gate_can_snapshot_afterward"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_pending_remote_roots_distinguish_excluded_descendants_and_unknown_page_membership"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_006_AE_007_known_frame_error_from_required_png_capture_remains_fatal"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_nontext_observations_disclose_partial_inspection"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_execution_reuses_operation_local_scan"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_snapshot_missing_selected_context_rejects_before_capture"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_partial_frames.py",
+          "test": "test_AE_007_gate_snapshot_uses_one_partial_scan_and_keeps_notice"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_AE_007_root_readiness_and_partial_child_capture"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_AE_007_native_partial_frames_preserve_exact_effect_and_mission_continuation"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AG_001",
+      "subfeature": "browser-action-gate",
+      "title": "Closed requests and explicit action permissions",
+      "contract": "Accept only implemented browser actions with their exact action-specific string arguments and optional string activity. Validate URL syntax, reference grammar, keys, scroll direction and selected-tab arguments before effect. Trusted action_permissions permits only allowed or blocked; missing action entries remain blocked and unknown actions or modes fail. No reviewer, policy, browser identity, arbitrary selector, JavaScript executor or alternate tool route can be supplied by the model. Return recoverable sanitized rejection for malformed or blocked proposals without effect.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_001_invalid_or_unknown_request_has_no_effect"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_001_missing_permission_never_grants_access"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_001_AG_004_AG_007_modes_and_privacy_reach_real_gate"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AG_002",
+      "subfeature": "browser-action-gate",
+      "title": "Current exact execution and native interaction semantics",
+      "contract": "Execute each valid allowed proposal once through the run-owned selected Browser after ordinary current target resolution. Click uses current unobstructed projected coordinates of its original observed node; type validates the exact editable target, focuses it, replaces contents and verifies exact focus around native insertion. Keypress uses actual current focus and native browser key-down/key-up semantics. Original-node movement may be resolved without reviewer equivalence checks. No pre-action screenshot or auxiliary model call is required. Preserve native download denial while controlled ordinary web and media remain usable.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_002_browser_key_mapping_preserves_native_default_actions"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_003_same_and_cross_origin_exact_nodes_focus_and_movement"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_001_AG_002_AG_005_allowed_actions_and_fresh_compact_feedback"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_005_SR_005_SR_006_SR_010_native_download_navigation_keeps_browser_healthy"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_002_AG_003_AG_004_AG_007_copied_request_and_policy_keep_original_effect"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AG_003",
+      "subfeature": "browser-action-gate",
+      "title": "Reject stale original targets before effects",
+      "contract": "Original references cannot silently rebind to replacement or lookalike nodes, another document, frame or tab. Expected unavailable, stale, hidden or covered required targets and unavailable required keyboard focus reject before effect and allow later healthy observation. Type and keys preserve ordinary current focus checks. Semantic differences from an earlier screenshot, label, form or approval are not a separate rejection condition because no reviewer approval exists. No automatic action replay or target substitution occurs.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_003_rejection_never_executes_proposal_and_browser_continues"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_003_same_and_cross_origin_exact_nodes_focus_and_movement"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_002_AG_003_AG_004_AG_007_copied_request_and_policy_keep_original_effect"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AG_004",
+      "subfeature": "browser-action-gate",
+      "title": "Selected-page and ordinary browser controls",
+      "contract": "Back, scroll, snapshots, explicit screenshots, image observations, tab listing, explicit existing-tab switching and close use the same run-owned browser and trusted allowed/blocked map as other actions. No action is classified as a review exemption. Listing and switching do not create or select replacement tabs implicitly. Preserve native scroll direction, selected-page feedback, shared browser protections and close revocation; introduce no new selected-tab closure or browser replacement behavior.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_004_AG_005_observations_selection_scroll_back_close_and_media"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_001_AG_004_AG_007_modes_and_privacy_reach_real_gate"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_002_AG_003_AG_004_AG_007_copied_request_and_policy_keep_original_effect"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AG_005",
+      "subfeature": "browser-action-gate",
+      "title": "Complete truthful outcomes and fresh applicable observations",
+      "contract": "Every dispatch returns a truthful gate status, fixed sanitized reason or null, truthful execution_started and dictionary data. A proposal rejected before any execution has false execution_started and no proposed effect. Started means effect/read dispatch began, not proof of server effects; post-dispatch or required observation machinery failure is fatal with true. Ordinary navigation-load failure is distinguished from machinery failure under AG_008 and never misreported as successful destination loading. Successful click/navigation/type/key/back/scroll/switch returns fresh compact AX snapshot and exact selected target_id, without automatic main-agent screenshot. Completed native download cancellation is successful enforcement: success with true execution_started, fresh selected-page AX and healthy continuation, not a claim that destination loaded or machinery-loss recovery. Explicit screenshot returns full native viewport PNG bytes/MIME in memory. Tabs/images return actual observations, close returns close result. AG_008 owns navigation-aware observations using an independent short observation deadline and the matching initial-document DOMContentLoaded event instead of a mandatory load-event wait. Navigation observations include truthful readiness and configured-deadline information for the main agent; they do not promise all media, application data or future updates are ready. SR_022 keeps raw diagnostic exceptions and protocol payloads out of model-facing results.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_005_AG_006_fatal_tracks_started_execution_and_is_terminal"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_healthy"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_005_navigation_observation_matches_native_document"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_004_AG_005_observations_selection_scroll_back_close_and_media"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_005_AG_006_required_failure_terminal_started_and_owned_cleanup"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_001_AG_002_AG_005_allowed_actions_and_fresh_compact_feedback"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_002_AG_005_SR_005_SR_006_SR_010_native_download_navigation_keeps_browser_healthy"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AG_006",
+      "subfeature": "browser-action-gate",
+      "title": "Terminal browser failure and native hard stop",
+      "contract": "Required ordinary inspection, explicit capture, control, execution or observation machinery failure makes the gate terminal and closes its Browser. Native interruption, closed binding, failed Browser and control-route changes prevent later dispatch. Adapter invokes the original bound native hard-stop callback once, skips later effects and model turns, and allows exact host-owned cleanup. Ordinary navigation recovery is bounded by AG_008. No review verdict, review timeout, auxiliary retry, queue, watchdog, broad recovery or browser replacement remains.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_005_AG_006_fatal_tracks_started_execution_and_is_terminal"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_healthy"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_006_native_interrupt_and_scope_close_prevent_effect"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_005_AG_006_required_failure_terminal_started_and_owned_cleanup"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AG_007",
+      "subfeature": "browser-action-gate",
+      "title": "Trusted operating policy and private execution state",
+      "contract": "Trusted startup action_permissions supports only implemented actions with allowed or blocked values; missing permissions remain blocked. Required positive integer scroll_pixels supplies native scrolling. Gate copies trusted permissions at construction and copies external requests before work; model inputs cannot alter operating policy. Private target bindings, frame scans and copied request payloads are not copied into returned results or separate archives. Ordinary observed AX values, including typed text, intentionally reach main context; native diagnostics retain their existing redaction and retention behavior. No review packet, safety-model configuration, review mode or policy-file dependency remains.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_007_required_file_policy_fails_without_fallback"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_001_AG_004_AG_007_modes_and_privacy_reach_real_gate"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_002_AG_003_AG_004_AG_007_copied_request_and_policy_keep_original_effect"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AG_008",
+      "subfeature": "browser-action-gate",
+      "title": "Early navigation observations and bounded error recovery",
+      "contract": "Explicit URL navigation and back observe the actual selected document until its matching DOMContentLoaded event or a configurable browser.observation_timeout, initially 5 seconds, whichever occurs first. The observation allowance starts after the corresponding browser command acknowledgment, and is not restarted by each unrelated event or redirect. Snapshot capture and other browser commands have their own control deadlines; 5 seconds is not a guaranteed total tool duration. browser.command_timeout remains the separate configured command-response deadline, initially 60 seconds. A late or missing load event alone does not delay observation until that deadline. Readiness events are bound to the actual selected tab, frame and document loader, including redirects; stale, child-frame or other-session events cannot establish readiness for the current destination. Clicks and keypresses also observe navigation when it results from their single execution, using the same readiness/deadline policy without replaying the already-executed input. Non-navigation interactions such as opening a dropdown return fresh current-page observations without waiting for a new DOMContentLoaded event or consuming the full navigation allowance. Required browser.interaction_observation_timeout initially 0.25 seconds bounds ordinary interaction observation; it cannot guarantee detection of every future delayed navigation. Both observation settings require finite positive numeric values up to 120 seconds, reject booleans, and require the interaction interval no greater than the document allowance. Subsequent actions retain ordinary original-document/node and current-focus checks. Same-document URL/content changes do not require a new document readiness event. On observation deadline with healthy owned control and capturable page evidence, return a nonfatal incomplete result with execution_started true, the verified current compact AX snapshot, exact selected target identity, actual observed URL, and a sanitized explicit reason identifying the observation deadline and configured wait duration. Distinguish a still-pending destination from the actually observed document; never call the previous document or about:blank a successfully loaded destination. Report initial-document readiness truthfully without claiming all images, async application content or later requests are ready. Return the first timeout observation without automatic reload, repeated input, another capture solely for retry, or an auxiliary safety-model call. The main agent chooses a later observation, an explicitly requested retry through the normal gate, another URL or a blocked-page report; no cross-turn timeout counter or automatic mission stop after a number of such observations is introduced. browser.navigation_retries remains a required nonnegative integer, never a boolean, initially one, and bounds only automatic recovery of explicit navigate requests from acknowledged ordinary loading errors. Such retries repeat only the same requested public URL and each obeys current permissions and resolves current ordinary browser state. Blocked or stale error retries perform no new effect and return current observable page state with a nonfatal warning; exhausted loading errors also return incomplete current observations. Ordinary observed 404 or CAPTCHA content does not itself trigger fatal shutdown or an automatic reload based on text. Completed native download denial retains AG_005 successful enforcement semantics. A missing command acknowledgment, failed required ordinary inspection, lost or mismatched control, interruption and other machinery failures remain fatal. No recovery automatically repeats click, type, keypress, back or scroll, changes protections, replaces the browser or opens another execution route.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_document_ready_does_not_wait_for_pending_image_load"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_compound_input_requires_every_ack_even_after_ready"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_successor_lineage_and_final_capture_must_match"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_ready_loader_cannot_certify_another_backend_document"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_AE_007_root_readiness_and_partial_child_capture"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_gate_observes_ready_root_without_child_inspection"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_interaction_current_page_uses_short_interval_and_never_replays"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_final_ack_anchors_one_absolute_deadline"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_unrelated_packets_cannot_extend_missing_ack_deadline"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_explicit_redirect_requires_observed_successor_identity"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_page_capture_binds_ax_url_readiness_to_one_document"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_settings.py",
+          "test": "test_AG_008_required_observation_settings_reject_invalid_values"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_settings.py",
+          "test": "test_AG_008_interaction_interval_cannot_exceed_document_allowance"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_008_parser_stall_returns_partial_current_ax_then_healthy_next_action"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_008_dropdown_link_enter_history_and_pending_old_document"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_reply_pins_loader_despite_old_same_root_events"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_old_events_cannot_finish_acknowledged_load"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_native_navigation_facts"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_unacknowledged_or_malformed_navigation_remains_fatal"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_sequential_attempt_ignores_late_previous_reply_and_load"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_timeout_returns_first_observation_without_retry"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_load_error_then_timeout_returns_timeout_observation"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_timeout_observation_failure_remains_terminal"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_configured_budget_exhausts_with_current_ax"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_retry_rejection_is_incomplete_technical_failure_fatal"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_other_action_errors_never_retry"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_first_complete_attempt_returns_without_retry"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_later_execution_failure_preserves_aggregate_started"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_navigation_recovery.py",
+          "test": "test_AG_008_required_retry_setting_has_no_missing_key_default"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_008_stalled_image_returns_ready_before_image_completion"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_008_failed_load_retries_original_url_with_current_observation"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_008_native_error_page_remains_observable"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_008_loaded_404_and_same_cross_origin_redirects_complete_once"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_AG_008_BR_002_native_incomplete_navigation_continues_same_browser_and_prompt"
+        }
+      ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AG_009",
+      "subfeature": "browser-action-gate",
+      "title": "Reviewer-free browser mission execution",
+      "contract": "Research startup and browser_scout actions operate without constructing a safety reviewer, requiring reviewer model/settings/policy, making auxiliary safety-model requests, preparing review evidence packets or comparing pre-approval and post-approval context. No toggle, always-approve reviewer or dormant reviewed execution path remains. Ordinary current-target resolution, stale-reference rejection, visibility and iframe coordinate handling, explicit screenshot support, truthful action outcomes and page observations remain available. No auxiliary safety model runs; existing main-model and context-management calls remain. Independent browser ownership, browser-only tool exposure, container/network/download protections and normal fatal-stop/cleanup boundaries remain. The previous committed reviewer is recoverable through the documented Git archive reference. Main-agent instructions guide research behavior but do not claim independent action-level adjudication. This retirement does not claim that shared Chromium/frame-observation failures have been fixed.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_009_startup_without_reviewer_settings_executes_and_keeps_default_deny"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_AG_009_MI_032_BR_006_research_first_inference_requires_complete_packaged_reference"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_actions_browser.py",
+          "test": "test_AG_001_AG_002_AG_005_allowed_actions_and_fresh_compact_feedback"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_AG_009_BR_003_BR_004_native_required_failure_stops_agent_and_host_cleans_owned_browser"
+        }
       ],
       "otherCoverage": [],
       "blocker": ""

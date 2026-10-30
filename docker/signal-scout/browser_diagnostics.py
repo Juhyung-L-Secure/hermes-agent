@@ -1,6 +1,5 @@
 import collections
 from dataclasses import dataclass
-import importlib
 import json
 import logging
 import math
@@ -14,7 +13,8 @@ import threading
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-Lines = importlib.import_module('plugins.signal-scout.security.process_output').Lines
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'plugins/signal-scout'))
+from scout_runtime.process_output import Lines
 _EVENTS = {'launcher_start', 'launcher_ready', 'launcher_error', 'child_start', 'child_exit',
            'signal_received', 'child_signal', 'relay_open', 'relay_eof', 'relay_error',
            'relay_cancelled', 'native_output', 'diagnostic_loss'}
@@ -88,7 +88,7 @@ class BrowserDiagnostics:
             self.redactor = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--redact', str(self.limit)],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
             self.sink = subprocess.Popen(['docker', 'exec', '-i', self.proxy, '/usr/bin/python3', '-m',
-                'security.runtime_logging', '--browser-writer', self.owner.run], stdin=subprocess.PIPE,
+                'scout_runtime.runtime_logging', '--browser-writer', self.owner.run], stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
             self.source = subprocess.Popen(['docker', 'logs', '--follow', self.owner.container],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
@@ -322,7 +322,7 @@ class BrowserDiagnostics:
                     raise RuntimeError('Browser diagnostic proxy ownership changed.')
                 remaining = max(0.01, self.deadline - time.monotonic())
                 command = ['docker', 'exec', self.proxy, '/usr/bin/python3', '-c',
-                    'from security.runtime_logging import stop_browser_writer; import sys; '
+                    'from scout_runtime.runtime_logging import stop_browser_writer; import sys; '
                     'sys.exit(0 if stop_browser_writer(sys.argv[1], float(sys.argv[2])) else 1)',
                     self.owner.run, str(remaining / 2)]
                 subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,

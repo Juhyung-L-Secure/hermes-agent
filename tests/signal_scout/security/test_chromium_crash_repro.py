@@ -11,8 +11,8 @@ import uuid
 import pytest
 import yaml
 
-from tests.signal_scout.conftest import lifecycle
-from tests.signal_scout.security.test_gate_browser import SETUP
+from tests.signal_scout.support.stack import lifecycle
+from tests.signal_scout.support.browser import SETUP
 
 
 EVIDENCE = Path(os.environ.get('SCOUT_CHROMIUM_REPRO_EVIDENCE_DIR',
@@ -119,9 +119,9 @@ def test_headed_google_baseline():
                 probe = SETUP + '\nurl='+repr(CASE['url'])+'\n' + r'''
 with Browser() as browser:
     print('REPRO_SANDBOX_VERIFIED',flush=True)
-    evidence=browser.evidence()
-    tab=evidence.tabs()[0]['target_id']
-    gate=g.BrowserActionGate(browser,target_id=tab)
+    evidence=browser.session()
+    tab=evidence._tabs()[0]['target_id']
+    gate=browser.session(target_id=tab)
     print('REPRO_NAVIGATION_STARTED',flush=True)
     outcome=dispatch(gate,'navigate',{'url':url},'Inspect public Google discovery page')
     print('REPRO_RESULT='+json.dumps({k:outcome[k] for k in ('status','reason','execution_started')}),flush=True)

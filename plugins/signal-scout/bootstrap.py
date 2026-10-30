@@ -104,8 +104,8 @@ def main():
 
     if (get_hermes_home() / "config.yaml").resolve(strict=True) != Path("/opt/scout/config.yaml"):
         raise RuntimeError("Scout config must resolve to the read-only operating file.")
-    from security.settings import load_settings
-    from security.runtime_logging import configure_logging, event
+    from scout_runtime.settings import load_settings
+    from scout_runtime.runtime_logging import configure_logging, event
 
     config = load_settings()
     configure_logging("scout", config)
@@ -113,7 +113,7 @@ def main():
     # SIGALRM's default action terminates even a stalled provider/network call.
     signal.alarm(960 if args.command == "login" else config["scout_lifecycle"]["smoke_timeout"] if args.command == "browser-smoke" else 120)
     if args.command == "browser-smoke":
-        from security.browser import Browser
+        from scout_runtime.browser.owner import Browser
 
         with Browser() as browser:
             browser.navigate(args.url)

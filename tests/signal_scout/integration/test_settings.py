@@ -9,7 +9,7 @@ from unittest.mock import Mock
 import pytest
 import yaml
 
-settings = importlib.import_module('plugins.signal-scout.security.settings')
+settings = importlib.import_module('plugins.signal-scout.scout_runtime.settings')
 ROOT = Path(__file__).resolve().parents[3]
 CONFIG = ROOT / 'docker/signal-scout/config.yaml'
 
@@ -72,7 +72,7 @@ def test_BT_004_image_owned_configuration_matches_runtime(scout_stack):
     scout_stack.probe("""
         import importlib
         from pathlib import Path
-        config = importlib.import_module('plugins.signal-scout.security.settings').load_settings()
+        config = importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings()
         assert config['logging']['max_size_mb'] == 5 and config['logging']['backup_count'] == 3
         assert config['browser']['scroll_pixels'] == 500
         assert config['browser']['action_permissions']['click'] == 'allowed'
@@ -84,7 +84,7 @@ def test_BT_004_image_owned_configuration_matches_runtime(scout_stack):
 
 def test_BT_004_browser_command_uses_supplied_timeout(monkeypatch):
     from tools import browser_tool
-    Browser = importlib.import_module('plugins.signal-scout.security.browser').Browser
+    Browser = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
     browser = Browser.__new__(Browser)
     browser.task = 'scout-timeout-unit'
     browser.settings = {'browser': {'command_timeout': 12}}
@@ -102,8 +102,8 @@ def test_BT_004_browser_command_uses_supplied_timeout(monkeypatch):
 
 
 def test_BT_004_SR_005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_path):
-    from tests.signal_scout.conftest import lifecycle
-    browser_module = importlib.import_module('plugins.signal-scout.security.browser')
+    from tests.signal_scout.support.stack import lifecycle
+    browser_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner')
     config = settings.load_settings(CONFIG)
     config['scout_lifecycle'] = {'startup_timeout':7, 'control_connect_timeout':1,
                                  'shutdown_timeout':3, 'smoke_timeout':80}

@@ -1,22 +1,10 @@
 """BT_001: real native plugin discovery and dispatch, without model calls."""
 
 import json
-from pathlib import Path
 
-import pytest
 import yaml
 
 
-@pytest.fixture
-def plugin_home(tmp_path, monkeypatch):
-    """Give discovery an isolated config; never read host auth or plugins."""
-    monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    (tmp_path / "config.yaml").write_text(yaml.safe_dump({
-        "plugins": {"enabled": ["signal-scout"]},
-        "tools": {"tool_search": {"enabled": False}},
-    }))
-    return tmp_path
 
 
 def test_BT_001_native_status_discovery_dispatch_and_invalid_inputs(plugin_home):

@@ -6,8 +6,8 @@ import openai
 import pytest
 import yaml
 
-from tests.signal_scout.browser_tools.model_fixture import FAKE_MAIN
-from tests.signal_scout.browser_tools.test_adapter import FakeGate, native_plugin
+from tests.signal_scout.support.model_fixture import FAKE_MAIN
+from tests.signal_scout.support.model import FakeSession
 
 
 CONFIG = Path(__file__).resolve().parents[3] / 'docker/signal-scout/config.yaml'
@@ -21,7 +21,7 @@ def test_BT_005_native_model_retry_preserves_completed_action(native_plugin, tmp
     namespace = {'json': json}
     exec(FAKE_MAIN, namespace)
     proposal = {'action': 'click', 'args': {'ref': '@s1'}, 'activity': 'Inspect research control'}
-    gate = FakeGate({'status': 'success', 'reason': None, 'execution_started': True,
+    gate = FakeSession({'status': 'success', 'reason': None, 'execution_started': True,
                      'data': {'snapshot': '- heading "Click completed"', 'target_id': 'tab-a'}})
     request = httpx.Request('POST', 'https://example.test/model')
 

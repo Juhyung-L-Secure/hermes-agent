@@ -1,102 +1,61 @@
-# Scout browser tools
+# Scout browser tools and action contracts
 
-One native Hermes tool, `browser_scout`, forwards proposed actions to a trusted
-run-owned `BrowserActionGate`. The separate `signal_scout_browser` toolset leaves
-the existing status-only bootstrap unchanged. No mission launcher is added.
+Native Hermes tool `browser_scout` forwards proposals to trusted run-owned `BrowserSession`. Separate `signal_scout_browser` toolset leaves bootstrap status-only. This owner holds BR routing contracts and ordinary AG/AE action/inspection contracts in [specs.json](specs.json). [Browser runtime mechanics](../scout_runtime/browser/README.md) explain implementation. [Security contracts](../security/README.md) retain confinement and network guarantees.
 
 | File | Owns |
 | --- | --- |
-| `__init__.py` | Fixed schema, runtime binding, native registration and result packaging |
+| `__init__.py` | Fixed schema, runtime binding, native registration, and result packaging |
 | `action-reference.md` | Complete request syntax and examples, supplied at startup and after format rejection |
-| `specs.json` | Routing contracts BR_001–BR_006 and test links |
-| `../../../tests/signal_scout/browser_tools/test_adapter.py` | Native discovery/dispatch with contract-shaped gates and fake main transport |
-| `../../../tests/signal_scout/browser_tools/test_native_integration.py` | Real gate, owned Chromium, native model/tool loop and exact host cleanup |
-| `../../../tests/signal_scout/browser_tools/model_fixture.py` | In-memory fake main transport; no provider calls |
-| `../security/gate.py` | Request/permission validation, current target resolution, execution and fresh feedback |
-| `../../../docker/signal-scout/browser_run.py` | Trusted host container ownership and normal teardown |
+| `specs.json` | BR_001 through BR_006, AG_001 through AG_009, AE_001, AE_002, and AE_004 through AE_007 |
+| `../scout_runtime/actions.py` | Ordered action vocabulary shared by schema, settings, and parser |
+| `../scout_runtime/browser/session.py` | Complete action dispatch, selected page, original refs, private CDP, observations, and terminal closure |
+| `../../../tests/signal_scout/browser_tools/` | Native discovery, dispatch, main-model loop, framing, exact effects, and hard stop |
+| `../../../tests/signal_scout/security/` | Action/inspection unit and real-browser checks, alongside retained security checks |
+| `../../../tests/signal_scout/support/` | Reusable external model transports, browser fixtures, stack, diagnostics, and mission support |
+| `../../../docker/signal-scout/browser_run.py` | Trusted host container ownership and exact normal teardown |
 
-## Flow and binding
+## Native binding
 
-Already-started owned Browser → trusted gate with initial explicit page ID → `bind_browser(gate, on_fatal=..., action_reference=...)` on the native-loaded plugin's
-`browser_tools` module → explicitly selected `signal_scout_browser` → native
-`browser_scout` dispatch → captured gate → text or native image observation.
+Trusted owner starts isolated `Browser`, obtains `browser.session(target_id=...)`, and calls `bind_browser(session, on_fatal=..., action_reference=...)` on native-loaded plugin's `browser_tools` module. Explicitly selected `signal_scout_browser` then dispatches unchanged proposal to captured session. Unbound calls cannot attach or create browser, choose provider, or execute an effect.
 
-Only one binding is supported. Trusted caller loads the complete nonempty action reference through that same registered module's `load_action_reference()` before provider resolution and inference. It supplies that exact immutable string as mandatory `action_reference`; the binding rejects missing, non-string or blank references. Research startup includes the full contents beside the preloaded research skill and mission. Missing, unreadable, invalid UTF-8 or empty resources stop startup. The adapter retains the original string for the run and never rereads it on rejection.
+One binding is supported. Trusted caller loads complete nonempty action reference through same registered module's `load_action_reference()` before provider resolution and inference. Mandatory `action_reference` must be nonblank string. Startup includes full contents beside preloaded research skill and mission. Missing, unreadable, invalid UTF-8, or empty resource stops startup. Adapter retains exact immutable string for run and never rereads it after rejection.
 
-Trusted caller supplies a mandatory callable `on_fatal` that invokes its own `AIAgent.interrupt(hard_cancel=True)`. A fatal
-gate result calls that callback before returning; later calls on that binding
-remain fatal. Native registry catches handler exceptions, so raising or asking
-the model to stop cannot replace this callback.
+Mandatory callable `on_fatal` invokes enclosing `AIAgent.interrupt(hard_cancel=True)`. Fatal dispatch calls callback before return. Later calls on same binding stay fatal. Native registry catches handler exceptions, so throwing or asking model to stop cannot replace callback.
 
-Scope exit first marks the binding inactive, then closes that exact gate,
-then releases the binding. The enclosing host `BrowserRun` still owns removal
-of the exact browser container. Delayed calls keep their captured gate and stop
-callback and action reference; they never consult a newer run after dispatch. Closing a gate revokes later calls before Browser transport cleanup.
+Scope exit marks binding inactive, closes exact session, then releases binding. Session terminal state revokes later calls before browser transport cleanup. Enclosing host `BrowserRun` owns exact container removal. Delayed calls retain captured session, stop callback, and action reference. They never consult newer run.
 
-Use the module loaded by native plugin discovery: importing another namespace
-creates another Python module and does not bind the registered handler. No
-binding-dependent `check_fn` is registered. Tool discovery remains stable;
-the handler enforces actual binding on every call. Unbound dispatch rejects
-without creating/attaching a Browser or resolving a provider.
-Existing native unknown-name repair can map a similar name to `browser_scout`.
-It still reaches only the bound gate; raw executor arguments are invalid. No
-repair exposes the original native browser or another execution handler.
+Binding must use module loaded by native plugin discovery. Importing another namespace creates another Python module and cannot bind registered handler. No binding-dependent `check_fn` changes tool discovery. Handler checks binding per call. Existing native unknown-name repair may map similar name to `browser_scout`; raw executor arguments still reject and no other executor becomes exposed.
 
-## Request and feedback
+Only `browser_scout` is selected for foreground research. Native browser, terminal, code, file, MCP, messaging, and delegation tools remain absent. Discovery schema and prompt prefixes remain stable through conversation.
 
-Model supplies `action`, exact action-specific `args`, and optional `activity`.
-Activity describes progress. The handler forwards these values unchanged; browser identity, callback
-and operating policy never come from model arguments. The gate validates every
-field and owns the selected page ID and fresh compact post-action snapshot.
+## Requests and outcomes
 
-| Action | Exact args |
-| --- | --- |
-| `click` | `{ref}` |
-| `navigate` | `{url}` |
-| `type` | `{ref,text}`; clear then insert |
-| `keypress` | `{key}`; separate browser-only keys |
-| `scroll` | `{direction}`; `up` or `down` |
-| `switch_tab` | `{target_id}`; existing tab only |
-| `back`, `snapshot`, `screenshot`, `get_images`, `list_tabs`, `close` | `{}` |
+Model supplies `action`, exact action-specific `args`, and optional progress `activity`. [Packaged action reference](action-reference.md) owns complete syntax and examples. Browser identity, permissions, stop callback, and executor come only from trusted caller. Request parser validates closed grammar and sanitized format rules. Session owns selected page and current observations.
 
-Ordinary feedback serializes gate status, reason, execution_started and data.
-Success includes the applicable observation; rejection confirms no proposed
-effect and permits healthy continuation. Fatal ends the enclosing run.
+`browser.action_permissions` accepts `allowed` or `blocked`. Canonical configured actions start allowed. Missing entries deny. Unknown actions, extra fields, malformed refs, keys, or URLs reject without proposed effect. `switch_tab` accepts exact existing tab ID. Popups never auto-select. Scroll distance comes from `browser.scroll_pixels`.
 
-Request-format rejection adds `data.error = {kind: "request_format", code, field}` and the full retained reference in `data.action_reference`. Rule codes, fields and reasons come from gate-owned rules. Exact expected keys derive only from the known action's existing grammar; submitted values and unknown key names never enter diagnostic feedback. Permission, stale-reference and fatal outcomes keep their existing data. Invalid JSON intercepted by native Hermes remains outside this adapter's validation path.
+`@s` references bind exact original tab/frame/document/loader/node. Click/type check current original node, visibility, iframe owners, projected hit point, and applicable editability/focus. Keypress retains actual focus through cross-origin frames and closed author shadow roots. Page-level key invents no element. No semantic reacquisition, replacement target, action ticket, approval baseline, or staged prepare/commit API exists.
 
-Nested `data.error` also lets the native failure detector recognize format rejection before repeated-result stubbing. The ordinary wrapper still marks all tool contents as untrusted data; system prompt and tool definitions remain stable. Native next-request tests cover repeated identical malformed calls, a representative two-error batch and history without earlier guidance. Existing native warnings, guardrails and context-scaled result budgets remain active. Arbitrarily large batches can still exceed inherited budgets. The main model chooses its next proposal; no correction model, automatic rewriting, replay or new retry cap is added.
-Navigation-aware click/key/navigate/back feedback includes current compact AX, selected target, actual URL, native readiness and sanitized deadline facts under `data.observation`; explicit navigate keeps `data.requested_url` separate. Matching initial-document DOMContentLoaded permits early success while media remains pending. A healthy5second observation expiration returns `incomplete` with its configured duration after effect acknowledgment, with no automatic repeat or fatal callback. Ordinary dropdowns use a bounded0.25second interaction interval; delayed future navigation remains possible. Each command retains its independent60second response deadline, and missing acknowledgment/control/inspection failure remains fatal. The main model chooses later observations or another action. Only explicit navigation loading errors retain bounded original-URL recovery.
-Execution_started is not proof that a server-side effect completed.
-Adapter returns raw JSON text, not a custom warning wrapper. Hermes's native
-`make_tool_result_message` recognizes the actual `browser_scout` name and frames
-external result text with that source, neutralizing embedded boundary tokens.
-The same native path frames multimodal text while preserving image parts. No
-`scout_browser` alias, alternate source label or core change is added.
+Known unrelated iframe loss returns explicit partial-inspection notice while available branches stay usable. Missing required original target or focus rejects before execution. Required inspection or control loss after execution begins stays fatal. Unknown protocol and requested capture failures remain fatal. Session checks owned control and same private CDP connection before effects. Fatal closes session and Browser, then adapter hard-interrupts native agent. Host removes exact owned container and preserves helper state and volumes.
 
-Screenshot feedback alone packages in-memory PNG bytes into native `_multimodal`
-text/image content. Text summary retains MIME and other public result metadata,
-with bytes carried only in the image part. No automatic main screenshot,
-temporary screenshot file or auxiliary vision model is
-added. Normal independently observed AX field values remain, including Scout's
-typed text. Request/action packets are not copied into results. Observation reaches main context; this is not a new
-conversation-retention system. Native/provider image support is not proven by
-offline verification.
+Results retain `status`, sanitized `reason`, `execution_started`, and `data`. Success includes applicable current observation. Rejection permits healthy continuation and no proposed effect. Fatal ends enclosing run. Started means dispatch entered execution, not proof of completed server-side effect. Click, navigate, type, keypress, back, scroll, and switch return fresh compact AX and selected target. Ordinary observed AX values can include typed text. Proposal packets are not copied into results.
 
-## Verification and pairings
+Request-format rejection adds `data.error = {kind: "request_format", code, field}` and full retained reference in `data.action_reference`. Exact expected keys derive from known action grammar. Submitted values and unknown key names never enter diagnostic feedback. Permission, stale-reference, and fatal outcomes keep existing data. Invalid JSON intercepted by native Hermes remains outside adapter validation.
 
-Schema/handler ↔ BR_001–BR_006 ↔ mirrored tests. Gate request/result/close API
-must stay paired with `security/gate.py`, while host cleanup stays paired with
-the existing lifecycle. Coverage rows name only tests that passed; collection
-checks prove links, not assertion quality or executed integration.
+Nested `data.error` lets native failure detector recognize format rejection before repeated-result stubbing. Native next-request tests cover repeated identical malformed calls, representative two-error batch, and history without earlier guidance. Existing native warnings, guardrails, and context-scaled result budgets remain active. Large batches can exceed inherited budgets. Main model chooses next proposal. No correction model, automatic rewriting, replay, or new retry cap is added.
 
-Use canonical `scripts/run_tests.sh` with explicit affected files and selections, one worker and zero automatic file retries. Use the [standalone checker workflow](../README.md#validate-spec-links) for setup and spec-link validation.
-Real integration uses the same serialized fixture and owned stack as security
-tests. Fake-only unit checks cannot establish real-gate completion.
+## Observations and native feedback
 
-Native integration covers click/key effects, retained typed AX values, PNG,
-external delimiter defanging, blocked/stale requests and fatal/exact host cleanup.
-BR_006 also covers actual `research()` startup into the first native inference and failure before provider resolution when the reference is unavailable. Offline transports prove wiring and effects on controlled pages, not live model correction quality.
-Foreground missions use the existing host launcher. No Discord, account provisioning,
-outer tool-timeout recovery, selected-tab closure policy, evidence caps,
-supervisor recovery or independent host-loss cleanup is introduced.
+Navigation-aware click, keypress, navigate, and back return compact AX, selected target, actual URL, native readiness, and sanitized deadline facts under `data.observation`. Explicit navigate retains separate `data.requested_url`. Matching initial-document DOMContentLoaded permits early success while media remains pending. Healthy configured observation expiry returns `incomplete` without replay or fatal callback. Ordinary interactions use shorter configured interval. Future delayed navigation remains possible. Each command has independent response deadline. Only explicit-navigation loading errors retain bounded original-URL recovery. [Runtime observation mechanics](../scout_runtime/browser/README.md#observations-and-deadlines) describe matching and retry checks.
+
+Adapter returns raw JSON text. Native `make_tool_result_message` recognizes actual `browser_scout` name, marks external text untrusted, and neutralizes embedded boundary tokens. Same native path frames multimodal text while retaining image parts. No alias, alternate source label, custom warning wrapper, or core change exists.
+
+Explicit screenshot alone packages in-memory full-viewport PNG into native `_multimodal` text/image content. Text summary retains MIME and public metadata, with bytes only in image part. No automatic screenshot, temporary screenshot file, or auxiliary vision model appears. Observation reaches main conversation, without new retention system. Offline verification does not prove native/provider image support.
+
+## Verification and remaining scope
+
+Schema/handler pair with BR_001 through BR_006. Request, effects, observations, and closure pair with AG/AE records in same owner. [Security specs](../security/specs.json) retain SR guarantees. [Browser action recipe](../../../.agents/skills/verify-scout/features/browser-actions.md) selects maintained checks through canonical `scripts/run_tests.sh`, one worker, and zero file retries. [Standalone checker workflow](../README.md#validate-spec-links) checks whole documents independently of execution and assertion review.
+
+Real native integration covers click/key effects, retained typed AX values, explicit PNG, delimiter defanging, blocked/stale continuation, partial frames, fatal hard stop, and exact host cleanup. BR_006 covers actual research startup to first inference and reference failure before provider resolution. External model doubles prove controlled wiring and effects, not live model correction quality or research reliability.
+
+AG_009 retains reviewer-free execution. Former implementation remains in [Git history](../history.md#retired-reviewer). Main-agent safety guidance does not independently classify website effects. No Discord, account provisioning, outer tool-timeout recovery, selected-tab closure policy, evidence cap, supervisor recovery, or independent host-loss cleanup is introduced.

@@ -1,4 +1,5 @@
-"""Route one native Hermes tool to a trusted, run-owned browser action gate."""
+
+from ..scout_runtime.actions import ACTION_FIELDS
 
 import base64
 from contextlib import contextmanager
@@ -24,10 +25,7 @@ _SCHEMA = {
     "parameters": {
         "type": "object",
         "properties": {
-            "action": {"type": "string", "enum": [
-                "click", "navigate", "type", "keypress", "back", "scroll",
-                "snapshot", "screenshot", "get_images", "list_tabs", "switch_tab", "close",
-            ]},
+            "action": {"type": "string", "enum": list(ACTION_FIELDS)},
             "args": {
                 "type": "object",
                 "description": "The exact action-specific argument object; no extra fields.",
@@ -51,7 +49,7 @@ _SCHEMA = {
 
 @dataclass(repr=False)
 class _Binding:
-    gate: object
+    session: object
     on_fatal: object
     action_reference: str
     active: bool = True
@@ -74,15 +72,15 @@ def load_action_reference():
 
 
 @contextmanager
-def bind_browser(gate, *, on_fatal, action_reference):
-    """Bind one trusted gate and mandatory stop callback for a scoped run.
+def bind_browser(session, *, on_fatal, action_reference):
+    """Bind one trusted session and mandatory stop callback for a scoped run.
 
-    The caller supplies an already-owned BrowserActionGate, selects only the
+    The caller supplies an already-owned BrowserSession, selects only the
     signal_scout_browser toolset (plus status if explicitly wanted), and binds
     its AIAgent.interrupt(hard_cancel=True) callback. Scope exit closes this
-    gate; the enclosing BrowserRun owner still removes the owned container.
+    session; the enclosing BrowserRun owner still removes the owned container.
     The caller loads the full action reference once before inference. A delayed
-    call retains this gate, callback and reference, including after scope exit.
+    call retains this session, callback and reference, including after scope exit.
     Binding overlap fails explicitly.
     """
     global _binding
@@ -90,9 +88,9 @@ def bind_browser(gate, *, on_fatal, action_reference):
         raise TypeError("Scout fatal stop callback is required.")
     if not isinstance(action_reference, str) or not action_reference.strip():
         raise TypeError("Scout browser action reference is required.")
-    if not callable(getattr(gate, "dispatch", None)) or not callable(getattr(gate, "close", None)):
+    if not callable(getattr(session, "dispatch", None)) or not callable(getattr(session, "close", None)):
         raise TypeError("Scout browser action gate is required.")
-    binding = _Binding(gate, on_fatal, action_reference)
+    binding = _Binding(session, on_fatal, action_reference)
     with _binding_lock:
         if _binding is not None:
             raise RuntimeError("A Scout browser run is already bound.")
@@ -103,7 +101,7 @@ def bind_browser(gate, *, on_fatal, action_reference):
         with _binding_lock:
             binding.active = False
         try:
-            gate.close()
+            session.close()
         finally:
             with _binding_lock:
                 _binding = None
@@ -139,7 +137,7 @@ def _handle(args, **_context):
         if binding.stopped:
             return _unavailable("fatal", "Scout browser run has stopped.")
     # Capture before dispatch: a late worker must never borrow the next run.
-    result = binding.gate.dispatch(args)
+    result = binding.session.dispatch(args)
     if result["data"].get("error", {}).get("kind") == "request_format":
         result = {**result, "data": {**result["data"], "action_reference": binding.action_reference}}
     if result["status"] == "fatal":

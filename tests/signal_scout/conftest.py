@@ -1,57 +1,15 @@
-"""Serialize real Scout containers across canonical runner's per-file workers."""
-
 import fcntl
-import importlib.util
 from pathlib import Path
-import subprocess
 import tempfile
-import textwrap
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[2]
-COMPOSE = ["docker", "compose", "-f", str(ROOT / "docker/signal-scout/compose.yaml")]
-_spec = importlib.util.spec_from_file_location("scout_browser_run", ROOT / "docker/signal-scout/browser_run.py")
-lifecycle = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(lifecycle)
+from tests.signal_scout.support.stack import ScoutStack
 
-
-class ScoutStack:
-    """Execute bounded checks against the existing Compose services only."""
-
-    browser_compose_files = (lifecycle.COMPOSE,)
-    browser_config_path = lifecycle.CONFIG
-    compose_command = COMPOSE
-
-    def compose(self, *args, timeout=90, compose_command=None):
-        result = subprocess.run((compose_command or self.compose_command) + list(args), capture_output=True, text=True, timeout=timeout)
-        assert result.returncode == 0, result.stderr[-4000:]
-        return result.stdout.strip()
-
-    def probe(self, code, *options, timeout=90, compose_command=None):
-        return self.compose('run', '--rm', '--no-deps', '-T', *options, '--entrypoint', 'python',
-            'scout', '-c', textwrap.dedent(code), timeout=timeout, compose_command=compose_command)
-
-    def exec_proxy(self, code):
-        return self.compose("exec", "-T", "proxy", "python3", "-c", textwrap.dedent(code))
-
-    def exec_firewall(self, code):
-        """Probe browser's network policy as the unprivileged application identity."""
-        return self.compose("exec", "-T", "-u", "10000:10000", "firewall", "python3", "-c", textwrap.dedent(code))
-
-    def browser_run(self, **kwargs):
-        """Use production ownership/start/stop implementation in every browser fixture."""
-        kwargs.setdefault('compose_files', self.browser_compose_files)
-        kwargs.setdefault('config_path', self.browser_config_path)
-        return lifecycle.BrowserRun(**kwargs)
-
-    def browser_probe(self, code, *options, timeout=90, run=None):
-        """Run test assertions in Scout with an explicitly owned browser attachment."""
-        if run is None:
-            with self.browser_run() as owned:
-                return self.browser_probe(code, *options, timeout=timeout, run=owned)
-        env = [value for key, setting in run.scout_environment().items() for value in ("-e", key + "=" + setting)]
-        return self.probe(code, *env, *options, timeout=timeout, compose_command=run.compose)
+from tests.signal_scout.support.model import plugin_home as plugin_home, native_plugin as native_plugin
+from tests.signal_scout.support.unit_browser import boundary as boundary
+from tests.signal_scout.support.browser import fixture_web as fixture_web
+from tests.signal_scout.support.mission import cli_images as cli_images, cli_stack as cli_stack
 
 
 @pytest.fixture(scope="module")

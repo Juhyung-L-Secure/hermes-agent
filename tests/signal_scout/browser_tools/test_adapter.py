@@ -1,5 +1,7 @@
 """BR_001–BR_003/BR_005: native registry routing with contract-shaped gates."""
 
+from tests.signal_scout.support.model import FakeSession, dispatch
+
 import base64
 from copy import deepcopy
 import importlib
@@ -10,50 +12,8 @@ import threading
 from functools import partial
 
 import pytest
-import yaml
 
-from tests.signal_scout.browser_tools.model_fixture import FAKE_MAIN
-
-
-class FakeGate:
-    """Supply only the trusted gate contract; never create a browser/provider."""
-
-    def __init__(self, result=None):
-        self.result = result or {"status": "success", "reason": None,
-                                 "execution_started": False, "data": {"snapshot": "fixture", "target_id": "tab-a"}}
-        self.requests = []
-        self.closed = False
-
-    def dispatch(self, request):
-        self.requests.append(deepcopy(request))
-        return deepcopy(self.result)
-
-    def close(self):
-        self.closed = True
-
-
-@pytest.fixture
-def native_plugin(tmp_path, monkeypatch):
-    """Load the actual enabled plugin and return its actual registered module."""
-    monkeypatch.setattr(Path, "home", lambda: tmp_path)
-    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
-    (tmp_path / "config.yaml").write_text(yaml.safe_dump({
-        "plugins": {"enabled": ["signal-scout"]},
-        "tools": {"tool_search": {"enabled": False}},
-    }))
-    from hermes_cli.plugins import discover_plugins, get_plugin_manager
-
-    discover_plugins()
-    loaded = get_plugin_manager()._plugins["signal-scout"]
-    assert loaded.enabled and loaded.error is None
-    return loaded.module.browser_tools
-
-
-def dispatch(request):
-    from model_tools import handle_function_call
-
-    return handle_function_call("browser_scout", request,
-                                enabled_tools=["browser_scout"], enabled_toolsets=["signal_scout_browser"])
+from tests.signal_scout.support.model_fixture import FAKE_MAIN
 
 
 @pytest.mark.parametrize("fault", ["missing", "unreadable", "empty"])
@@ -74,33 +34,32 @@ def test_BR_006_required_reference_load_fails_closed(native_plugin, monkeypatch,
 
 
 def test_BR_006_reference_examples_match_registered_schema_and_real_validator(native_plugin):
-    gate_module = importlib.import_module("plugins.signal-scout.security.gate")
-    gate = gate_module.BrowserActionGate.__new__(gate_module.BrowserActionGate)
-    gate._permissions = {action: "allowed"
-                         for action in gate_module._FIELDS}
+    grammar = importlib.import_module("plugins.signal-scout.scout_runtime.browser.request")
+    actions = importlib.import_module("plugins.signal-scout.scout_runtime.actions").ACTION_FIELDS
+    permissions = {action: "allowed" for action in actions}
     reference = native_plugin.load_action_reference()
     examples = [json.loads(block) for block in re.findall(r"```json\n(.*?)\n```", reference, re.S)]
-    actions = [example["action"] for example in examples]
-    assert len(actions) == len(set(actions))
-    assert set(actions) == set(gate_module._FIELDS) == set(
+    example_actions = [example["action"] for example in examples]
+    assert len(example_actions) == len(set(example_actions))
+    assert set(example_actions) == set(actions) == set(
         native_plugin._SCHEMA["parameters"]["properties"]["action"]["enum"])
     for example in examples:
-        parsed = gate._request(example)
+        parsed = grammar.copy_request(example, permissions)
         assert parsed == example and parsed is not example
-        assert set(example["args"]) == gate_module._FIELDS[example["action"]]
+        assert set(example["args"]) == actions[example["action"]]
         for key in example["args"]:
             missing = deepcopy(example)
             del missing["args"][key]
-            with pytest.raises(gate_module.EvidenceRejected):
-                gate._request(missing)
+            with pytest.raises(grammar.ActionRejected):
+                grammar.copy_request(missing, permissions)
             wrong_type = deepcopy(example)
             wrong_type["args"][key] = 17
-            with pytest.raises(gate_module.EvidenceRejected):
-                gate._request(wrong_type)
+            with pytest.raises(grammar.ActionRejected):
+                grammar.copy_request(wrong_type, permissions)
         extra = deepcopy(example)
         extra["args"]["unknown-fixture-key"] = "private-poison"
-        with pytest.raises(gate_module.EvidenceRejected):
-            gate._request(extra)
+        with pytest.raises(grammar.ActionRejected):
+            grammar.copy_request(extra, permissions)
 
 
 def test_BR_006_format_feedback_keeps_bound_copy_and_native_failure_identity(native_plugin, monkeypatch, tmp_path):
@@ -113,7 +72,7 @@ def test_BR_006_format_feedback_keeps_bound_copy_and_native_failure_identity(nat
     retained = native_plugin.load_action_reference()
     result = {"status":"rejected", "reason":"args for click must contain exactly: ref.", "execution_started":False,
               "data":{"error":{"kind":"request_format", "code":"args_fields", "field":"args"}}}
-    gate = FakeGate(result)
+    gate = FakeSession(result)
     request = {"action":"click", "args":{"private-fixture-key":"private-poison"}, "activity":"Inspect"}
     with native_plugin.bind_browser(gate, on_fatal=lambda: pytest.fail("Format failure stopped run"), action_reference=retained):
         path.write_text("Changed rules.\n")
@@ -126,19 +85,18 @@ def test_BR_006_format_feedback_keeps_bound_copy_and_native_failure_identity(nat
         assert "private-poison" not in first and "private-fixture-key" not in first
         assert gate.result == result and gate.requests == [request, request]
     path.write_text("Next run rules.\n")
-    with native_plugin.bind_browser(FakeGate(result), on_fatal=lambda: None,
+    with native_plugin.bind_browser(FakeSession(result), on_fatal=lambda: None,
                                     action_reference=native_plugin.load_action_reference()):
         assert json.loads(dispatch(request))["data"]["action_reference"] == "Next run rules.\n"
 
 
 @pytest.mark.parametrize("result", [
     {"status":"rejected","reason":"Browser action is blocked.","execution_started":False,"data":{}},
-    {"status":"rejected","reason":"Browser action denied.","execution_started":False,"data":{}},
     {"status":"rejected","reason":"Browser context changed.","execution_started":False,"data":{}},
     {"status":"fatal","reason":"Browser action failed.","execution_started":True,"data":{}},
 ])
 def test_BR_006_nonformat_outcomes_keep_existing_feedback(native_plugin, result):
-    gate = FakeGate(result)
+    gate = FakeSession(result)
     stops = []
     with native_plugin.bind_browser(gate, on_fatal=lambda: stops.append(True), action_reference="Trusted rules."):
         assert json.loads(dispatch({"action":"click","args":{"ref":"@s1"},"activity":"Inspect"})) == result
@@ -147,7 +105,7 @@ def test_BR_006_nonformat_outcomes_keep_existing_feedback(native_plugin, result)
 
 @pytest.mark.parametrize("guide", [None, 1, b"rules", "", " \n\t"])
 def test_BR_003_BR_006_binding_requires_complete_reference(native_plugin, guide):
-    gate = FakeGate()
+    gate = FakeSession()
     with pytest.raises(TypeError, match="^Scout browser action reference is required\\.$"):
         with native_plugin.bind_browser(gate, on_fatal=lambda: None, action_reference=guide):
             pytest.fail("Invalid reference binding accepted")
@@ -165,7 +123,7 @@ def test_BR_001_native_discovery_keeps_status_and_browser_separate(native_plugin
     definitions = get_tool_definitions(enabled_toolsets=["signal_scout_browser"], quiet_mode=True)
     assert [item["function"]["name"] for item in definitions] == ["browser_scout"]
     schema = deepcopy(definitions)
-    gate = FakeGate()
+    gate = FakeSession()
     with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(), on_fatal=lambda: pytest.fail("Unexpected fatal stop")):
         assert get_tool_definitions(enabled_toolsets=["signal_scout_browser"], quiet_mode=True) == schema
         assert json.loads(dispatch({"action": "snapshot", "args": {}}))["status"] == "success"
@@ -182,7 +140,7 @@ def test_BR_001_native_discovery_keeps_status_and_browser_separate(native_plugin
 def test_BR_002_incomplete_result_forwards_without_stop_or_redispatch(native_plugin):
     result={'status':'incomplete','reason':'Browser navigation did not complete.','execution_started':True,
             'data':{'snapshot':'- heading "Current page"','target_id':'tab-a'}}
-    gate=FakeGate(result)
+    gate=FakeSession(result)
     request={'action':'navigate','args':{'url':'https://example.com/'},'activity':'Inspect source'}
     with native_plugin.bind_browser(gate,action_reference=native_plugin.load_action_reference(), on_fatal=lambda: pytest.fail('Incomplete navigation stopped agent')):
         assert json.loads(dispatch(request))==result
@@ -201,8 +159,8 @@ def test_BR_002_incomplete_result_forwards_without_stop_or_redispatch(native_plu
     {"action": "eval", "args": {"script": "must be rejected by gate"}, "extra": "unmodified"},
 ])
 def test_BR_002_native_forwarding_preserves_proposed_request_and_gate_result(native_plugin, proposed):
-    result = {"status": "rejected", "reason": "Review denied.", "execution_started": False, "data": {}}
-    gate = FakeGate(result)
+    result = {"status": "rejected", "reason": "Browser context changed.", "execution_started": False, "data": {}}
+    gate = FakeSession(result)
     original = deepcopy(proposed)
     with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(), on_fatal=lambda: pytest.fail("Unexpected fatal stop")):
         assert json.loads(dispatch(proposed)) == result
@@ -211,14 +169,14 @@ def test_BR_002_native_forwarding_preserves_proposed_request_and_gate_result(nat
 
 
 def test_BR_003_runtime_binding_is_mandatory_and_scoped(native_plugin, monkeypatch):
-    browser = importlib.import_module("plugins.signal-scout.security.browser")
+    browser = importlib.import_module("plugins.signal-scout.scout_runtime.browser.owner")
     monkeypatch.setattr(browser, "Browser", lambda: pytest.fail("Unbound call created a browser"))
     request = {"action": "navigate", "args": {"url": "https://example.com"}, "activity": "Open source"}
     assert json.loads(dispatch(request)) == {
         "status": "rejected", "reason": "Scout browser is not bound to a run.",
         "execution_started": False, "data": {},
     }
-    gate = FakeGate()
+    gate = FakeSession()
     with pytest.raises(TypeError):
         with native_plugin.bind_browser(gate):
             pytest.fail("Missing stop callback accepted")
@@ -227,7 +185,7 @@ def test_BR_003_runtime_binding_is_mandatory_and_scoped(native_plugin, monkeypat
             pytest.fail("Invalid stop callback accepted")
     with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(), on_fatal=lambda: None):
         with pytest.raises(RuntimeError, match="already bound"):
-            with native_plugin.bind_browser(FakeGate(), action_reference=native_plugin.load_action_reference(), on_fatal=lambda: None):
+            with native_plugin.bind_browser(FakeSession(), action_reference=native_plugin.load_action_reference(), on_fatal=lambda: None):
                 pytest.fail("Overlapping binding accepted")
         assert json.loads(dispatch(request))["status"] == "success"
     assert gate.closed and len(gate.requests) == 1
@@ -238,7 +196,7 @@ def test_BR_003_fatal_calls_stop_before_return_and_never_redispatches(native_plu
     from tools.registry import registry
 
     result = {"status": "fatal", "reason": "Browser execution failed.", "execution_started": True, "data": {}}
-    gate = FakeGate(result)
+    gate = FakeSession(result)
     stopped = []
     with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(), on_fatal=lambda: stopped.append(len(gate.requests))):
         # Exercise registry's exception-catching boundary, not only a direct handler.
@@ -254,8 +212,8 @@ def test_BR_003_late_call_keeps_original_gate_and_stop_callback(native_plugin):
 
     started = threading.Event()
     released = threading.Event()
-    first = FakeGate({"status": "fatal", "reason": "Browser closed.", "execution_started": False, "data": {}})
-    second = FakeGate()
+    first = FakeSession({"status": "fatal", "reason": "Browser closed.", "execution_started": False, "data": {}})
+    second = FakeSession()
     stopped = []
     original_dispatch = first.dispatch
 
@@ -289,7 +247,7 @@ def test_BR_002_BR_005_native_screenshot_envelope_keeps_bytes_out_of_text(native
     png = b"\x89PNG\r\n\x1a\nfixture-PNG-bytes"
     result = {"status": "success", "reason": None, "execution_started": False,
               "data": {"target_id": "tab-a", "screenshot": {"bytes": png, "mime_type": "image/png"}}}
-    gate = FakeGate(result)
+    gate = FakeSession(result)
     with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(), on_fatal=lambda: pytest.fail("Unexpected fatal stop")):
         actual = dispatch({"action": "screenshot", "args": {}})
     assert actual["_multimodal"] is True
@@ -306,7 +264,7 @@ def test_BR_001_BR_003_native_model_loop_fatal_interrupt_skips_remaining_calls(n
     namespace = {"json": json}
     exec(FAKE_MAIN, namespace)
     fatal = {"status": "fatal", "reason": "Browser execution failed.", "execution_started": False, "data": {}}
-    gate = FakeGate(fatal)
+    gate = FakeSession(fatal)
 
     def plan(index, _kwargs):
         assert index == 1, "Fatal gate permitted another main-model request"
@@ -363,7 +321,7 @@ def test_BR_001_native_model_loop_refuses_alternate_execution_routes(native_plug
         assert index == 2
         return namespace["response"]()
 
-    gate = FakeGate()
+    gate = FakeSession()
     original = gate.dispatch
 
     def guarded(request):
@@ -401,7 +359,7 @@ def test_BR_005_native_model_frames_actual_tool_defangs_delimiters_and_preserves
     png = b"\x89PNG\r\n\x1a\nfixture-PNG-bytes"
     image = {"status": "success", "reason": None, "execution_started": False,
              "data": {"target_id": "tab-a", "screenshot": {"bytes": png, "mime_type": "image/png"}}}
-    gate = FakeGate(observed)
+    gate = FakeSession(observed)
 
     def plan(index, kwargs):
         if index == 1:

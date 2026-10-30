@@ -13,14 +13,14 @@ import yaml
 from websockets.exceptions import InvalidStatus
 from websockets.sync.client import connect
 
-from tests.signal_scout.conftest import lifecycle
-from tests.signal_scout.security.test_browser_boundary import fixture_web
-from tests.signal_scout.security.test_browser_safeguards import OBSERVE, settings
-from tests.signal_scout.security import test_browser_boundary as boundary
-from tests.signal_scout.security import test_browser_safeguards as safeguards
-from tests.signal_scout.security import test_isolation as isolation
-from tests.signal_scout.security.test_gate_browser import SETUP
-from tests.signal_scout.security.viewer_fixture import ViewerClient
+from tests.signal_scout.support.stack import lifecycle
+from tests.signal_scout.support.browser import fixture_web
+from tests.signal_scout.support.browser_policy import OBSERVE, settings
+from tests.signal_scout.support import browser as boundary
+from tests.signal_scout.support import browser_policy as safeguards
+from tests.signal_scout.support import browser as isolation
+from tests.signal_scout.support.browser import SETUP
+from tests.signal_scout.support.viewer import ViewerClient
 
 
 @contextmanager
@@ -227,8 +227,8 @@ def test_SR_012_SR_013_real_noVNC_mouse_keys_and_stale_scout_reference_rejects(h
         options = [value for key,setting in run.scout_environment().items() for value in ('-e',key+'='+setting)]
         code = SETUP + r'''
 with Browser() as browser:
-    adapter=browser.evidence();tab=adapter.tabs()[0]['target_id']
-    gate=g.BrowserActionGate(browser,target_id=tab)
+    adapter=browser.session();tab=adapter._tabs()[0]['target_id']
+    gate=browser.session(target_id=tab)
     successful(gate,'navigate',{'url':'http://public.test/gate'});wait_ready(browser)
     snapshot=successful(gate,'snapshot')['snapshot']
     points=browser.command('eval',"""(() => {
@@ -313,14 +313,14 @@ with Browser() as browser:
 
 
 def test_SR_011_SR_001_SR_002_SR_019_headed_sandbox_public_web_and_network_denials(headed_web):
-    boundary.test_SR_001_native_chromium_sandbox_and_anonymous_identity(headed_web)
-    boundary.test_SR_019_public_http_https_tls_and_forbidden_main_redirects(headed_web)
-    boundary.test_SR_002_background_http_websocket_cannot_control_cdp(headed_web)
-    isolation.test_SR_004_SR_019_browser_direct_egress_and_unauthorized_control_denied(headed_web[0])
+    boundary.assert_SR_001_native_chromium_sandbox_and_anonymous_identity(headed_web)
+    boundary.assert_SR_019_public_http_https_tls_and_forbidden_main_redirects(headed_web)
+    boundary.assert_SR_002_background_http_websocket_cannot_control_cdp(headed_web)
+    isolation.assert_SR_004_SR_019_browser_direct_egress_and_unauthorized_control_denied(headed_web[0])
 
 
 def test_SR_011_SR_006_SR_007_SR_008_SR_009_SR_010_headed_context_viewport_and_native_download_denial(headed_web):
     stack = headed_web[0]
-    safeguards.test_SR_008_SR_009_main_window_tabs_share_contents_and_popup_stays_separate(stack)
+    safeguards.assert_SR_008_SR_009_main_window_tabs_share_contents_and_popup_stays_separate(stack)
     for kind in ('attachment','redirect','blob'):
-        safeguards.test_SR_006_SR_010_native_download_attempts_cancel_after_startup_disconnect_and_media_loads(headed_web,kind)
+        safeguards.assert_SR_006_SR_010_native_download_attempts_cancel_after_startup_disconnect_and_media_loads(headed_web,kind)

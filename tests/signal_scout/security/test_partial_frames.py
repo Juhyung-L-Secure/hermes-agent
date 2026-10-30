@@ -3,16 +3,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.signal_scout.security.test_gate import boundary
 
 
-evidence = importlib.import_module('plugins.signal-scout.security.evidence')
+session_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
 
 
 @pytest.mark.parametrize('code', [-32602, -32000])
 def test_AE_007_snapshot_skips_missing_branch_and_continues_siblings(code):
     browser = SimpleNamespace(failed=False)
-    adapter = evidence.BrowserEvidence(browser)
+    adapter = session_module.BrowserSession(browser)
     missing = True
     worlds = []
 
@@ -31,7 +30,7 @@ def test_AE_007_snapshot_skips_missing_branch_and_continues_siblings(code):
             frame = params['frameId']
             worlds.append(frame)
             if frame == 'missing':
-                raise evidence._ProtocolError({'code': code, 'message': 'No frame for given id found'})
+                raise session_module._ProtocolError({'code': code, 'message': 'No frame for given id found'})
             return {'executionContextId': {'root': 10, 'sibling': 20}[frame]}
         if method == 'Runtime.evaluate':
             return {'result': {'objectId': str(params['contextId'])}}
@@ -46,7 +45,7 @@ def test_AE_007_snapshot_skips_missing_branch_and_continues_siblings(code):
             'role': {'value': 'button'}, 'name': {'value': {'root': 'Root action', 'sibling': 'Sibling action'}[frame]}}]}
 
     adapter._command = command
-    snapshot = adapter.snapshot('tab')
+    snapshot = adapter._inspect_snapshot('tab')
     assert snapshot == ('[Scout inspection incomplete: 1 unavailable frame branch omitted.]\n'
         '- button "Root action" [@s1]\n- button "Sibling action" [@s2]')
     assert worlds == ['root', 'missing', 'sibling']
@@ -54,7 +53,7 @@ def test_AE_007_snapshot_skips_missing_branch_and_continues_siblings(code):
     originals = dict(adapter._refs)
 
     missing = False
-    assert adapter.snapshot('tab') == '- button "Root action" [@s1]\n- button "Sibling action" [@s2]'
+    assert adapter._inspect_snapshot('tab') == '- button "Root action" [@s1]\n- button "Sibling action" [@s2]'
     assert adapter._refs == originals
     assert not browser.failed
 
@@ -87,7 +86,7 @@ class _FramePeer:
         if method == 'Page.createIsolatedWorld':
             frame = params['frameId']
             if frame in self.gone:
-                raise self.fault or evidence._ProtocolError({'code': -32602, 'message': 'No frame for given id found'})
+                raise self.fault or session_module._ProtocolError({'code': -32602, 'message': 'No frame for given id found'})
             return {'executionContextId': self.contexts[frame]}
         if method == 'Runtime.evaluate':
             expression = params['expression']
@@ -110,14 +109,14 @@ class _FramePeer:
         assert method == 'Accessibility.getFullAXTree'
         frame = params['frameId']
         if frame in self.ax_gone:
-            raise evidence._ProtocolError({'code': -32602, 'message': 'No frame for given id found'})
+            raise session_module._ProtocolError({'code': -32602, 'message': 'No frame for given id found'})
         return {'nodes': [{'nodeId': frame, 'frameId': frame, 'backendDOMNodeId': self.contexts[frame] + 1,
             'role': {'value': 'button'}, 'name': {'value': frame.capitalize() + ' action'}}]}
 
 
 def _adapter(browser=None):
     browser = browser or SimpleNamespace(failed=False)
-    adapter = evidence.BrowserEvidence(browser)
+    adapter = session_module.BrowserSession(browser)
     peer = _FramePeer()
     adapter._command = peer.command
     adapter._cdp = object()
@@ -125,7 +124,7 @@ def _adapter(browser=None):
 
 
 def _target(adapter, label):
-    return next(line.rsplit('[', 1)[1][:-1] for line in adapter.snapshot('tab').splitlines() if '"' + label + '"' in line)
+    return next(line.rsplit('[', 1)[1][:-1] for line in adapter._inspect_snapshot('tab').splitlines() if '"' + label + '"' in line)
 
 
 def _target_checks(adapter):
@@ -138,16 +137,16 @@ def _target_checks(adapter):
 def test_AE_006_AE_007_unknown_root_and_transport_failure_remain_fatal(root, fault):
     browser, adapter, peer = _adapter()
     peer.gone.add('root' if root else 'child')
-    peer.fault = TimeoutError('control timeout') if fault == 'timeout' else evidence._ProtocolError(fault) if fault else None
-    with pytest.raises(evidence.EvidenceFailure, match='Required browser evidence check failed.'):
-        adapter.snapshot('tab')
+    peer.fault = TimeoutError('control timeout') if fault == 'timeout' else session_module._ProtocolError(fault) if fault else None
+    with pytest.raises(session_module.BrowserFailure, match='Required browser evidence check failed.'):
+        adapter._inspect_snapshot('tab')
     assert browser.failed
 
 
 def test_AE_007_frame_loss_during_accessibility_keeps_available_snapshot():
     browser, adapter, peer = _adapter()
     peer.ax_gone.add('child')
-    assert adapter.snapshot('tab') == ('[Scout inspection incomplete: 1 unavailable frame branch omitted.]\n'
+    assert adapter._inspect_snapshot('tab') == ('[Scout inspection incomplete: 1 unavailable frame branch omitted.]\n'
         '- button "Root action" [@s1]\n- button "Sibling action" [@s2]')
     assert {value.frame for value in adapter._refs.values()} == {'root', 'sibling'}
     assert not browser.failed
@@ -186,21 +185,18 @@ def test_AE_007_unavailable_inner_focus_rejects_keys_and_is_explicit_for_navigat
     peer.focus = 'child'
     peer.gone.add('child')
     scan = adapter._frames('tab')
-    with pytest.raises(evidence.EvidenceRejected, match='Exact keyboard focus is unavailable.'):
+    with pytest.raises(session_module.ActionRejected, match='Exact keyboard focus is unavailable.'):
         adapter._focus('tab', scan.frames)
     assert scan.summary() == {'complete': False, 'omitted_branches': 1, 'reason': 'frame_unavailable'}
-    assert 'Root action' in adapter.snapshot('tab') and not browser.failed
-
-
-
+    assert 'Root action' in adapter._inspect_snapshot('tab') and not browser.failed
 
 
 def test_AE_007_required_target_loss_rejects_and_gate_can_snapshot_afterward(boundary):
     browser, adapter, peer = _adapter(boundary.browser)
     reference = _target(adapter, 'Child action')
-    browser.evidence = lambda: adapter
-    gate_module = importlib.import_module('plugins.signal-scout.security.gate')
-    gate = gate_module.BrowserActionGate(browser, target_id='tab')
+    browser._session = adapter
+    adapter._bind('tab')
+    gate = adapter
     peer.gone.add('child')
     result = gate.dispatch({'action': 'click', 'args': {'ref': reference}, 'activity': 'Inspect original child'})
     assert result == {'status': 'rejected', 'reason': 'Required browser target or frame is unavailable.',
@@ -209,8 +205,6 @@ def test_AE_007_required_target_loss_rejects_and_gate_can_snapshot_afterward(bou
     result = gate.dispatch({'action': 'snapshot', 'args': {}})
     assert result['status'] == 'success' and result['data']['snapshot'].startswith('[Scout inspection incomplete:')
     assert 'Root action' in result['data']['snapshot'] and not browser.failed
-
-
 
 
 @pytest.mark.parametrize('descendant', [True, False])
@@ -233,7 +227,7 @@ def test_AE_007_pending_remote_roots_distinguish_excluded_descendants_and_unknow
                 {'frame': {'id': 'grandchild', 'loaderId': 'gone', 'parentId': 'child'}}]
         return result
     adapter._command = command
-    snapshot = adapter.snapshot('tab')
+    snapshot = adapter._inspect_snapshot('tab')
     assert snapshot.startswith('[Scout inspection incomplete: ' + (
         '1 unavailable frame branch omitted' if descendant else '1 iframe target unavailable or unassociated') + '.]\n')
     assert 'Root action' in snapshot and 'Sibling action' in snapshot
@@ -244,18 +238,15 @@ def test_AE_007_pending_remote_roots_distinguish_excluded_descendants_and_unknow
     assert adapter._frames('tab').summary() == expected
 
 
-
 def test_AE_006_AE_007_known_frame_error_from_required_png_capture_remains_fatal():
     browser, adapter, _ = _adapter()
     adapter._evaluate = lambda *_: {'value': {'width': 1280, 'height': 720, 'scale': 1}}
     def failed_capture(*_):
-        raise evidence._ProtocolError({'code': -32602, 'message': 'No frame for given id found'})
+        raise session_module._ProtocolError({'code': -32602, 'message': 'No frame for given id found'})
     adapter._command = failed_capture
-    with pytest.raises(evidence.EvidenceFailure, match='Required browser evidence check failed.'):
+    with pytest.raises(session_module.BrowserFailure, match='Required browser evidence check failed.'):
         adapter._run(lambda: adapter._capture(SimpleNamespace(session='owned')))
     assert browser.failed
-
-
 
 
 @pytest.mark.parametrize('action', ['screenshot', 'get_images'])
@@ -269,9 +260,9 @@ def test_AE_007_nontext_observations_disclose_partial_inspection(boundary, actio
             return {'value': [{'src': 'http://public.test/image.png', 'alt': 'Observed image'}]}
         return native_evaluate(frame, expression, **kwargs)
     adapter._evaluate = evaluate
-    browser.evidence = lambda: adapter
-    gate_module = importlib.import_module('plugins.signal-scout.security.gate')
-    gate = gate_module.BrowserActionGate(browser, target_id='tab')
+    browser._session = adapter
+    adapter._bind('tab')
+    gate = adapter
     result = gate.dispatch({'action': action, 'args': {}})
     assert result['status'] == 'success'
     assert result['data']['inspection'] == {'complete': False, 'omitted_branches': 1, 'reason': 'frame_unavailable'}
@@ -285,29 +276,28 @@ def test_AE_007_nontext_observations_disclose_partial_inspection(boundary, actio
 @pytest.mark.parametrize('action,args', [('navigate', {'url': 'http://public.test/source'}),
     ('click', {'ref': '@s1'}), ('keypress', {'key': 'Enter'})])
 def test_AE_007_execution_reuses_operation_local_scan(boundary, action, args):
-    gate_module = importlib.import_module('plugins.signal-scout.security.gate')
-    boundary.gate._execute = gate_module.BrowserActionGate._execute.__get__(boundary.gate)
+    boundary.session._execute = session_module.BrowserSession._execute.__get__(boundary.session)
     frames = {'root': SimpleNamespace(parent=None,session='owned',loader='old',document=1)}
     scans = []
     def scan(tab):
         scans.append(tab)
-        return evidence._FrameScan(frames)
-    boundary.adapter._refs = {'@s1': SimpleNamespace(tab='owned-page')}
-    boundary.adapter._scroll = lambda *args: None
-    boundary.adapter._point = lambda *args: (12,18)
-    boundary.adapter._focus = lambda *args: (None, [])
+        return session_module._FrameScan(frames)
+    boundary.session._refs = {'@s1': SimpleNamespace(tab='owned-page')}
+    boundary.session._scroll = lambda *args: None
+    boundary.session._point = lambda *args: (12,18)
+    boundary.session._focus = lambda *args: (None, [])
     commands = []
     def unavailable(*_, **__):
-        raise evidence._ProtocolError({'code': -32602, 'message': 'No frame for given id found'})
-    boundary.adapter._frames = scan
-    boundary.adapter._command = lambda method, params, session: commands.append((method, params, session))
-    expected_key = importlib.import_module('plugins.signal-scout.security._cdp')._DocumentKey('owned', 'root', 'old', 1)
+        raise session_module._ProtocolError({'code': -32602, 'message': 'No frame for given id found'})
+    boundary.session._frames = scan
+    boundary.session._command = lambda method, params, session: commands.append((method, params, session))
+    expected_key = importlib.import_module('plugins.signal-scout.scout_runtime.browser._cdp')._DocumentKey('owned', 'root', 'old', 1)
     def observe(kind, root, effect, invoke, *, baseline):
         assert root is frames['root'] and baseline == expected_key
         invoke(effect)
         return {'snapshot': '- heading "Verified original document"', 'target_id': 'owned-page'}
-    boundary.gate._observe_effect = observe
-    result = boundary.gate.dispatch({'action': action, 'args': args, 'activity': 'Inspect verified context'})
+    boundary.session._observe_effect = observe
+    result = boundary.session.dispatch({'action': action, 'args': args, 'activity': 'Inspect verified context'})
     assert result == {'status': 'success', 'reason': None, 'execution_started': True,
         'data': {'snapshot': '- heading "Verified original document"', 'target_id': 'owned-page'}}
     if action == 'navigate':
@@ -323,20 +313,18 @@ def test_AE_007_execution_reuses_operation_local_scan(boundary, action, args):
     assert not boundary.closed and not boundary.browser.failed
 
 
-
-
 @pytest.mark.parametrize('missing', ['tab', 'root'])
 def test_AE_007_snapshot_missing_selected_context_rejects_before_capture(boundary, missing):
     browser, adapter, peer = _adapter(boundary.browser)
-    browser.evidence = lambda: adapter
-    gate_module = importlib.import_module('plugins.signal-scout.security.gate')
-    gate = gate_module.BrowserActionGate(browser, target_id='tab')
+    browser._session = adapter
+    adapter._bind('tab')
+    gate = adapter
     if missing == 'tab':
         original = peer.command
         adapter._command = lambda method, *args: {'targetInfos': []} if method == 'Target.getTargets' else original(method, *args)
     else:
         peer.gone.add('root')
-        peer.fault = evidence._ProtocolError({'code': -32000, 'message': 'No frame for given id found'})
+        peer.fault = session_module._ProtocolError({'code': -32000, 'message': 'No frame for given id found'})
     result = gate.dispatch({'action': 'snapshot', 'args': {}})
     assert result == {'status': 'rejected', 'reason': 'Browser context changed.', 'execution_started': False, 'data': {}}
     assert not browser.failed and not gate._terminal
@@ -345,9 +333,9 @@ def test_AE_007_snapshot_missing_selected_context_rejects_before_capture(boundar
 def test_AE_007_gate_snapshot_uses_one_partial_scan_and_keeps_notice(boundary):
     browser, adapter, peer = _adapter(boundary.browser)
     peer.gone.add('child')
-    browser.evidence = lambda: adapter
-    gate_module = importlib.import_module('plugins.signal-scout.security.gate')
-    gate = gate_module.BrowserActionGate(browser, target_id='tab')
+    browser._session = adapter
+    adapter._bind('tab')
+    gate = adapter
     result = gate.dispatch({'action': 'snapshot', 'args': {}})
     assert result['status'] == 'success' and result['execution_started'] is True
     assert result['data']['snapshot'] == ('[Scout inspection incomplete: 1 unavailable frame branch omitted.]\n'

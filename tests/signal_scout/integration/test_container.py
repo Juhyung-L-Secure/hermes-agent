@@ -152,7 +152,7 @@ def test_BT_002_browser_direct_egress_host_lan_ipv6_and_dns_are_blocked(scout_st
 def test_BT_002_proxy_denies_private_hosts_ports_and_protocols(scout_stack):
     scout_stack.exec_firewall("""
         import socket
-        from security.settings import load_settings
+        from scout_runtime.settings import load_settings
         config = load_settings()
         # DNS denial can consume its full allowance; leave 2s for reset delivery/scheduling.
         response_timeout = config['scout_proxy']['dns_timeout'] + 2

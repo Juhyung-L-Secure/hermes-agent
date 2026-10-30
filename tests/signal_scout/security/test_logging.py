@@ -1,33 +1,19 @@
+from tests.signal_scout.support.diagnostics import isolated
 import json
 from pathlib import Path
 import subprocess
-import sys
 import textwrap
 
 import pytest
-import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
-
-
-def isolated(tmp_path, code):
-    """Run native logging against test-only Hermes home, never saved authentication."""
-    config = yaml.safe_load((ROOT / 'docker/signal-scout/config.yaml').read_text())
-    config['logging'] = {'level': 'INFO', 'max_size_mb': 1, 'backup_count': 2}
-    (tmp_path / 'config.yaml').write_text(yaml.safe_dump(config))
-    result = subprocess.run([sys.executable, '-c', textwrap.dedent(code)], cwd=ROOT,
-                            env={'HERMES_HOME': str(tmp_path), 'HOME': str(tmp_path),
-                                 'PYTHONPATH': str(ROOT), 'PATH': '/usr/bin:/bin'},
-                            text=True, capture_output=True, timeout=60)
-    assert result.returncode == 0, result.stderr[-2000:]
-    return result
 
 
 def test_SR_003_native_diagnostics_redact_rotate_and_honor_settings(tmp_path):
     result = isolated(tmp_path, """
         import importlib, io, logging, os, sys, yaml
         from pathlib import Path
-        runtime = importlib.import_module('plugins.signal-scout.security.runtime_logging')
+        runtime = importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging')
         config = yaml.safe_load((Path(os.environ['HERMES_HOME']) / 'config.yaml').read_text())
         foreign = logging.StreamHandler(io.StringIO())
         formatter = logging.Formatter('%(name)s %(message)s')
@@ -89,13 +75,11 @@ def test_SR_003_native_diagnostics_redact_rotate_and_honor_settings(tmp_path):
     assert 'connection_allowed' not in output  # INFO suppresses DEBUG.
 
 
-
-
 def test_SR_003_native_write_failure_has_fixed_diagnostic_and_keeps_events_safe(tmp_path):
     result = isolated(tmp_path, """
         import importlib, logging, os, yaml
         from pathlib import Path
-        runtime = importlib.import_module('plugins.signal-scout.security.runtime_logging')
+        runtime = importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging')
         config = yaml.safe_load((Path(os.environ['HERMES_HOME']) / 'config.yaml').read_text())
         runtime.configure_logging('scout', config)
         import hermes_logging
@@ -106,7 +90,7 @@ def test_SR_003_native_write_failure_has_fixed_diagnostic_and_keeps_events_safe(
             handler.shouldRollover = lambda _: True
         logging.getLogger('tools.native').error('Native request https://example.test/research')
         hermes_logging.flush_log_queue()
-        assert not importlib.import_module('plugins.signal-scout.security.network_proxy').public_address('127.0.0.1')
+        assert not importlib.import_module('plugins.signal-scout.scout_runtime.network.proxy').public_address('127.0.0.1')
         print('enforcement intact')
     """)
     assert 'scout logging write failed' in result.stderr
@@ -120,7 +104,7 @@ def test_SR_003_partial_native_log_open_failure_preserves_redacted_diagnostics(t
     result = isolated(tmp_path, """
         import importlib, logging, os, yaml
         from pathlib import Path
-        runtime = importlib.import_module('plugins.signal-scout.security.runtime_logging')
+        runtime = importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging')
         config = yaml.safe_load((Path(os.environ['HERMES_HOME']) / 'config.yaml').read_text())
         runtime.configure_logging('scout', config)
         token = 'glpat-' + 'Zx9AbCdEfGhIjKlMnOpQ'
@@ -145,9 +129,9 @@ def test_SR_022_browser_failure_uses_saved_native_logs_redaction_and_best_effort
         import importlib, json, logging, os, yaml
         from pathlib import Path
         from types import SimpleNamespace
-        runtime = importlib.import_module('plugins.signal-scout.security.runtime_logging')
-        gate_module = importlib.import_module('plugins.signal-scout.security.gate')
-        cdp_module = importlib.import_module('plugins.signal-scout.security._cdp')
+        runtime = importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging')
+        gate_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
+        cdp_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser._cdp')
         directory = Path(os.environ['HERMES_HOME'])
         config = yaml.safe_load((directory / 'config.yaml').read_text())
         runtime.configure_logging('scout', config)
@@ -183,12 +167,16 @@ def test_SR_022_browser_failure_uses_saved_native_logs_redaction_and_best_effort
             closed.append(True)
             browser.ready, browser.failed = False, True
         browser.close = close
-        adapter = SimpleNamespace(tabs=lambda: [{'target_id':'owned'}],
-            _frames=lambda _: SimpleNamespace(frames={'root':SimpleNamespace(parent=None,session='session')}),
-            _command=cdp.command, _document_key=lambda _: cdp_module._DocumentKey('session','root','current',1), _cdp=cdp)
-        browser.evidence = lambda: adapter
+        adapter = gate_module.BrowserSession(browser)
+        adapter._tabs = lambda: [{'target_id':'owned'}]
+        adapter._frames = lambda _: SimpleNamespace(frames={'root':SimpleNamespace(parent=None,session='session')})
+        adapter._command = cdp.command
+        adapter._document_key = lambda _: cdp_module._DocumentKey('session','root','current',1)
+        adapter._cdp = cdp
+        browser._session = adapter
         browser.verify_control = lambda: None
-        gate = gate_module.BrowserActionGate(browser, target_id='owned')
+        adapter._bind('owned')
+        gate = browser.session(target_id='owned')
         result = gate.dispatch({'action':'navigate','args':{'url':'https://bulk-params-marker.test/'},
                                 'activity':'bulk-activity-marker'})
         assert result == {'status':'fatal','reason':'Browser action failed.','execution_started':True,'data':{}}
@@ -282,9 +270,9 @@ def test_SR_003_helper_rotation_uses_supplied_file_limits(scout_stack):
         result = json.loads(scout_stack.exec_proxy(f"""
             import json, logging, yaml
             from pathlib import Path
-            from security.settings import load_settings
-            from security.runtime_logging import configure_logging, event
-            import security.runtime_logging as runtime
+            from scout_runtime.settings import load_settings
+            from scout_runtime.runtime_logging import configure_logging, event
+            import scout_runtime.runtime_logging as runtime
             import tempfile
             directory = Path(tempfile.mkdtemp(prefix='scout-log-rotation-'))
             # Exercise real file rotation on isolated test logs, retaining history.

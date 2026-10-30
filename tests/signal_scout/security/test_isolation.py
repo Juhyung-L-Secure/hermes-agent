@@ -16,12 +16,12 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import pytest
 import yaml
 
-from tests.signal_scout.conftest import lifecycle
+from tests.signal_scout.support.stack import lifecycle
 
-control = importlib.import_module('plugins.signal-scout.security.control')
-chromium = importlib.import_module('plugins.signal-scout.security.chromium')
+control = importlib.import_module('plugins.signal-scout.scout_runtime.browser.control')
+chromium = importlib.import_module('plugins.signal-scout.scout_runtime.browser.chromium')
 ROOT = Path(__file__).resolve().parents[3]
-IMPORT = "import importlib; Browser = importlib.import_module('plugins.signal-scout.security.browser').Browser\n"
+IMPORT = "import importlib; Browser = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser\n"
 
 
 def docker(*args):
@@ -218,50 +218,7 @@ with Browser() as browser:
 
 
 def test_SR_004_SR_019_browser_direct_egress_and_unauthorized_control_denied(scout_stack):
-    with scout_stack.browser_run() as run:
-        scout_stack.browser_probe(IMPORT + "with Browser() as browser: assert browser.command('eval','true')['result'] is True", run=run)
-        scout_stack.exec_proxy("""
-import socket
-for target in [('172.30.242.4',9222), ('172.30.242.4',9223)]:
-    try:
-        socket.create_connection(target,timeout=0.5)
-    except OSError:
-        pass
-    else:
-        raise AssertionError('Unauthorized proxy source reached browser control')
-""")
-        docker('exec', run.container, 'python3', '-c', """
-import socket
-for target in [('172.30.242.3',9223),('172.30.242.1',80),('172.17.0.1',80),('192.168.1.1',80),
-               ('169.254.169.254',80),('1.1.1.1',443),('::1',80),('2606:4700:4700::1111',443)]:
-    try:
-        socket.create_connection(target,timeout=0.5)
-    except OSError:
-        pass
-    else:
-        raise AssertionError('Direct browser egress succeeded')
-for host in ('127.0.0.11','8.8.8.8'):
-    with socket.socket(socket.AF_INET,socket.SOCK_DGRAM) as sock:
-        sock.settimeout(0.5)
-        try:
-            sock.connect((host,53))
-            sock.send(bytes.fromhex('000101000001000000000000')+b'\\x05scout\\x07invalid\\x00\\x00\\x01\\x00\\x01')
-            sock.recv(4096)
-        except OSError:
-            pass
-        else:
-            raise AssertionError('Browser DNS bypass succeeded')
-""")
-        # Unauthorized host is neither approved proxy client nor relay controller.
-        for target in [('172.30.242.4', 9223), ('172.30.242.4', 9222)]:
-            with pytest.raises(OSError):
-                socket.create_connection(target, timeout=0.5)
-        with socket.create_connection(('172.30.242.2', 3128), timeout=2) as client:
-            client.sendall(b'GET http://example.com/ HTTP/1.1\r\nHost: example.com\r\n\r\n')
-            try:
-                assert client.recv(4096) == b''
-            except ConnectionResetError:
-                pass
+    assert_SR_004_SR_019_browser_direct_egress_and_unauthorized_control_denied(scout_stack)
 
 
 def test_SR_005_single_claim_fresh_profile_and_ordinary_fatal_teardown(scout_stack):
@@ -299,11 +256,11 @@ def test_SR_005_single_claim_fresh_profile_and_ordinary_fatal_teardown(scout_sta
 
 def test_SR_004_existing_listener_never_adopted_or_disturbed(scout_stack):
     with scout_stack.browser_run() as run:
-        before = docker('exec', run.container, 'python3', '-m', 'security.chromium', '--status')
-        rejected = subprocess.run(['docker', 'exec', run.container, 'python3', '-m', 'security.chromium'],
+        before = docker('exec', run.container, 'python3', '-m', 'scout_runtime.browser.chromium', '--status')
+        rejected = subprocess.run(['docker', 'exec', run.container, 'python3', '-m', 'scout_runtime.browser.chromium'],
                                   text=True, capture_output=True, timeout=10)
         assert rejected.returncode == 1 and rejected.stderr.strip() == 'scout browser operation failed'
-        assert docker('exec', run.container, 'python3', '-m', 'security.chromium', '--status') == before
+        assert docker('exec', run.container, 'python3', '-m', 'scout_runtime.browser.chromium', '--status') == before
         scout_stack.browser_probe(IMPORT + "with Browser() as browser: assert browser.command('eval','true')['result'] is True", run=run)
 
 
@@ -364,7 +321,7 @@ with Browser() as browser:
 
 def test_SR_005_unavailable_relay_cleans_new_child_only(scout_stack):
     """SR_023 SR_024"""
-    from tests.signal_scout.security.test_process_diagnostics import saved_run
+    from tests.signal_scout.support.diagnostics import saved_run
     scout_stack.compose('exec', '-T', '-d', '-u', '10000', 'firewall', 'python3', '-c', """
 import os,socket,time
 from pathlib import Path
@@ -418,3 +375,5 @@ def test_SR_004_BT_004_changed_compose_limits_reach_real_containers(scout_stack,
                 docker('stop', '-t', '1', scout)
     finally:
         lifecycle.checked(lifecycle.BrowserRun().compose + ['up', '-d', '--wait', '--no-build', '--pull', 'never', '--force-recreate', 'proxy', 'firewall'])
+
+from tests.signal_scout.support.browser import assert_SR_004_SR_019_browser_direct_egress_and_unauthorized_control_denied

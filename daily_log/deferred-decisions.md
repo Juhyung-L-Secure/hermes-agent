@@ -126,8 +126,7 @@ healthy monitoring or automatic notice to the LLM during a disconnect.
 **Revisit when:** An actual crash or related connection failure occurs, or user
 explicitly reopens the topic.
 
-**Source:** `daily_log/2026-09-17.md`;
-`signal-scout/plugins/signal-scout/security/browser-action-review-plan.md`
+**Source:** `daily_log/2026-09-17.md`; `plugins/signal-scout/history.md` preserves `security/browser-action-review-plan.md` at immutable base `6f0abcacfc1a7fb5dbcd49bfb12f0b38877ed300`.
 
 ### Independent browser cleanup after Hermes loss
 
@@ -145,8 +144,7 @@ do not claim guaranteed teardown. Preserve auth/log volumes.
 **Revisit when:** First observed Hermes crash/unexpected exit, or user explicitly
 reopens this topic. User prefers deciding after an actual crash occurs.
 
-**Source:** `daily_log/2026-09-17.md`;
-`signal-scout/plugins/signal-scout/security/browser-action-review-plan.md`
+**Source:** `daily_log/2026-09-17.md`; `plugins/signal-scout/history.md` preserves `security/browser-action-review-plan.md` at immutable base `6f0abcacfc1a7fb5dbcd49bfb12f0b38877ed300`.
 
 ### Two-way messaging interface
 

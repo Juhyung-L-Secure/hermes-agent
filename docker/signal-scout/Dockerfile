@@ -62,12 +62,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     install -d -o root -g root -m 0755 /etc/opt/chrome_for_testing/policies/managed
 RUN apt-get update && apt-get install -y --no-install-recommends \
     xvfb x11-utils x11vnc novnc websockify && rm -rf /var/lib/apt/lists/*
-COPY plugins/signal-scout/security/chromium.py plugins/signal-scout/security/control.py plugins/signal-scout/security/settings.py plugins/signal-scout/security/viewer.py plugins/signal-scout/security/process_output.py /opt/scout/security/
+COPY plugins/signal-scout/scout_runtime/__init__.py plugins/signal-scout/scout_runtime/actions.py plugins/signal-scout/scout_runtime/settings.py plugins/signal-scout/scout_runtime/process_output.py /opt/scout/scout_runtime/
+COPY plugins/signal-scout/scout_runtime/browser/__init__.py plugins/signal-scout/scout_runtime/browser/chromium.py plugins/signal-scout/scout_runtime/browser/control.py plugins/signal-scout/scout_runtime/browser/viewer.py /opt/scout/scout_runtime/browser/
 COPY --chown=0:0 --chmod=0444 docker/signal-scout/chrome-policy.json /etc/opt/chrome_for_testing/policies/managed/scout.json
 ENV PYTHONPATH=/opt/scout PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 USER 10000:10000
 WORKDIR /tmp
-ENTRYPOINT ["python3", "-m", "security.chromium"]
+ENTRYPOINT ["python3", "-m", "scout_runtime.browser.chromium"]
 
 FROM debian:13.4@sha256:e2d08da6f42ef4b09b165d55528a12727aeed8240dc9edf888e3ec07e10ef9da AS network
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -75,9 +76,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/* && \
     useradd --uid 10000 --no-create-home scout && \
     install -d -o scout -g scout -m 0700 /var/log/scout
-COPY plugins/signal-scout/security/ /opt/scout/security/
+COPY plugins/signal-scout/scout_runtime/__init__.py plugins/signal-scout/scout_runtime/actions.py plugins/signal-scout/scout_runtime/settings.py plugins/signal-scout/scout_runtime/runtime_logging.py plugins/signal-scout/scout_runtime/readiness.py plugins/signal-scout/scout_runtime/process_output.py /opt/scout/scout_runtime/
+COPY plugins/signal-scout/scout_runtime/network/__init__.py plugins/signal-scout/scout_runtime/network/firewall.py plugins/signal-scout/scout_runtime/network/proxy.py plugins/signal-scout/scout_runtime/network/urls.py /opt/scout/scout_runtime/network/
 ENV PYTHONPATH=/opt/scout PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
-COPY --chmod=0555 docker/signal-scout/firewall.sh /usr/local/bin/scout-firewall
-COPY --chmod=0555 docker/signal-scout/proxy.sh /usr/local/bin/scout-proxy
 USER 10000:10000
-CMD ["/usr/local/bin/scout-proxy"]
+CMD ["python3", "-m", "scout_runtime.network.proxy"]

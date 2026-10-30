@@ -9,9 +9,9 @@ import signal
 import subprocess
 import sys
 
-from browser_run import BrowserRun, COMPOSE, CONFIG, DOCKER_COMMAND_TIMEOUT, checked, settings
+from browser_run import BrowserRun, COMPOSE, CONFIG, DOCKER_COMMAND_TIMEOUT, checked
 
-MissionRequest = importlib.import_module("plugins.signal-scout.missions").MissionRequest
+MissionRequest = importlib.import_module("scout_runtime.mission").MissionRequest
 MISSION_LABEL = "io.signal-scout.mission-run"
 
 

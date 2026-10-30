@@ -9,7 +9,7 @@ from unittest.mock import Mock
 import pytest
 import yaml
 
-from tests.signal_scout.conftest import lifecycle
+from tests.signal_scout.support.stack import lifecycle
 
 
 def source(tmp_path):
@@ -228,3 +228,22 @@ def test_BT_006_replaced_slot_after_entry_refuses_environment_and_smoke(monkeypa
         run.scout_environment()
     with pytest.raises(RuntimeError, match='run configuration changed'):
         run.smoke('https://example.com')
+
+
+def test_BT_006_host_entry_imports_stay_lightweight(tmp_path):
+    import subprocess
+    import sys
+    result = subprocess.run([sys.executable, '-I', '-c', '''
+import runpy, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+owner = runpy.run_path(str(root / 'docker/signal-scout/browser_run.py'))
+mission = runpy.run_path(str(root / 'docker/signal-scout/mission_run.py'))
+assert owner['settings'].__name__ == 'scout_runtime.settings'
+assert mission['MissionRequest']('  Research rice.  ').text == '  Research rice.  '
+assert not any(name == 'plugins.signal-scout' or name.startswith(('hermes_cli', 'run_agent', 'tools.')) for name in sys.modules)
+print(owner['settings'].settings_digest(owner['settings'].load_settings(owner['CONFIG'])))
+''', str(lifecycle.ROOT)], text=True, capture_output=True, timeout=20,
+        env={'HOME': str(tmp_path), 'HERMES_HOME': str(tmp_path)})
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == lifecycle.settings.settings_digest(lifecycle.settings.load_settings(lifecycle.CONFIG))

@@ -9,7 +9,7 @@ Verify Signal Scout through its Docker/operator CLI, existing real-browser harne
 
 ## When to Use
 
-Use `$verify-scout` after Scout runtime, browser, gate, viewer, or spec-link changes, or when asked to prove one of those features. Read [features/README.md](features/README.md) first, then the relevant feature recipe. This skill does not verify every interface of upstream Hermes.
+Use `$verify-scout` after Scout runtime, browser, action session, viewer, or spec-link changes, or when asked to prove one of those features. Read [features/README.md](features/README.md) first, then the relevant feature recipe. This skill does not verify every interface of upstream Hermes.
 
 ## Prerequisites
 
@@ -44,7 +44,7 @@ From repository root, run these through the available terminal tool. The helper 
 | Runtime status | `scripts/verify.py status` through the Python invocation above | Native status dispatch, no model call |
 | Runtime operating file | [features/runtime-config.md](features/runtime-config.md) | Fixed per-run settings and same-image changes |
 | Public browser smoke | `scripts/verify.py smoke` through the Python invocation above | Owned Chromium, sandbox, navigation, snapshot, teardown |
-| Browser actions | [reviewed-browser-actions.md](features/reviewed-browser-actions.md) | Real gate/browser, offline main transport |
+| Browser actions | [browser-actions.md](features/browser-actions.md) | Real action session/browser, offline main transport |
 | Local headed viewer | [browser-viewer.md](features/browser-viewer.md) | Real noVNC, disposable host browser, no provider |
 | Spec traceability | [spec-traceability.md](features/spec-traceability.md) | Link validation, not test execution |
 
@@ -121,4 +121,4 @@ The executable [scripts/verify.py](scripts/verify.py) supports `doctor`, `status
 
 For new or changed runtime/browser procedures, execute launch/doctor/one mapped journey/cleanup and inspect retained evidence before claiming that route works. The original seed uses `verify.py smoke` and requires successful behavior and cleanup checks. For the spec route, execute its standalone CLI checks and report missing coverage without claiming browser verification. Run the available `skill-creator` frontmatter validator too; that checks packaging, not app behavior.
 
-Map routes not exercised remain unverified. Seed proof uses existing local images and named auth/log volumes, not a fresh machine. It does not execute dependency/image installation, first-time volume initialization, fresh-VPS provisioning, remote Docker/network setup, remote viewer access, or live account/model availability. Track those setup steps separately when that target is authorized. Use `$maintain-verification-skill` to update this map as app changes; no maintenance scheduler is installed.
+Map routes not exercised remain unverified. Seed proof uses existing local images and named auth/log volumes, not a fresh machine. It does not execute dependency/image installation, first-time volume initialization, fresh-VPS provisioning, remote Docker/network setup, remote viewer access, or live account/model availability. Track those setup steps separately when that target is authorized. Update this map when app entry points change. No maintenance scheduler is installed.

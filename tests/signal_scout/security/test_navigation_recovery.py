@@ -6,12 +6,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.signal_scout.security.test_browser_diagnostics import transport, navigation
-from tests.signal_scout.security.test_gate import boundary
+from tests.signal_scout.support.unit_browser import transport, navigation
 
-cdp_module = importlib.import_module('plugins.signal-scout.security._cdp')
-gate_module = importlib.import_module('plugins.signal-scout.security.gate')
-evidence_module = importlib.import_module('plugins.signal-scout.security.evidence')
+cdp_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser._cdp')
+session_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
 
 
 def reply(number=1, **result):
@@ -101,13 +99,13 @@ def observed(outcome, page):
 
 
 def recovery_boundary(boundary, monkeypatch, outcomes, retries=1):
-    boundary.gate._navigation_retries = retries
-    boundary.adapter._cdp = object()
+    boundary.session._navigation_retries = retries
+    boundary.session._cdp = object()
     boundary.browser.verify_control = lambda: None
-    boundary.adapter._frames = lambda _: evidence_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned')})
-    boundary.adapter.snapshot = lambda _: '- heading "Current incomplete observation"'
-    boundary.adapter._page = lambda target: cdp_module._Page(cdp_module._DocumentKey('owned','root','current',2),
-        boundary.adapter.snapshot(target), 'http://public.test/current', 'loading')
+    boundary.session._frames = lambda _: session_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned')})
+    boundary.session._inspect_snapshot = lambda _: '- heading "Current incomplete observation"'
+    boundary.session._page = lambda target: cdp_module._Page(cdp_module._DocumentKey('owned','root','current',2),
+        boundary.session._inspect_snapshot(target), 'http://public.test/current', 'loading')
     pending = iter(outcomes)
     def execute(action, args, invoke):
         def effect():
@@ -116,12 +114,12 @@ def recovery_boundary(boundary, monkeypatch, outcomes, retries=1):
             value = next(pending)
             if isinstance(value,Exception):
                 raise value
-            return observed(cdp_module._NavigationOutcome(value), boundary.gate._navigation_page(boundary.adapter._cdp))
+            return observed(cdp_module._NavigationOutcome(value), boundary.session._navigation_page(boundary.session._cdp))
         value = invoke(effect)
-        if boundary.adapter._cdp is None:
-            raise evidence_module.EvidenceFailure('Browser control unavailable.')
+        if boundary.session._cdp is None:
+            raise session_module.BrowserFailure('Browser control unavailable.')
         return value
-    monkeypatch.setattr(boundary.gate, '_execute', execute)
+    monkeypatch.setattr(boundary.session, '_execute', execute)
     return {'action':'navigate','args':{'url':'http://public.test/original'},'activity':'Inspect original'}
 
 
@@ -132,8 +130,8 @@ def test_AG_008_timeout_returns_first_observation_without_retry(boundary, monkey
     def snapshot(target):
         snapshots.append(target)
         return f'- heading "Navigation observation {len(snapshots)}"'
-    boundary.adapter.snapshot=snapshot
-    result=boundary.gate.dispatch(request)
+    boundary.session._inspect_snapshot=snapshot
+    result=boundary.session.dispatch(request)
     assert result['status']=='incomplete' and result['execution_started'] is True
     assert result['data']['snapshot']=='- heading "Navigation observation 1"'
     assert result['data']['target_id']=='owned-page'
@@ -148,7 +146,7 @@ def test_AG_008_timeout_returns_first_observation_without_retry(boundary, monkey
 @pytest.mark.parametrize('retries', [0,1,4])
 def test_AG_008_configured_budget_exhausts_with_current_ax(boundary, monkeypatch, retries):
     request = recovery_boundary(boundary,monkeypatch,['loading_error']*(retries+1),retries)
-    result = boundary.gate.dispatch(request)
+    result = boundary.session.dispatch(request)
     assert result['status']=='incomplete' and result['execution_started'] is True
     assert result['reason']=='Browser navigation reported a loading error.'
     assert result['data']['snapshot']=='- heading "Current incomplete observation"'
@@ -159,18 +157,14 @@ def test_AG_008_configured_budget_exhausts_with_current_ax(boundary, monkeypatch
     assert not boundary.closed and boundary.browser.ready
 
 
-
-
-
-
 def test_AG_008_load_error_then_timeout_returns_timeout_observation(boundary, monkeypatch):
     request=recovery_boundary(boundary,monkeypatch,['loading_error','observation_timeout','ready'],4)
     snapshots=[]
     def snapshot(target):
         snapshots.append(target)
         return f'- heading "Navigation observation {len(snapshots)}"'
-    boundary.adapter.snapshot=snapshot
-    result=boundary.gate.dispatch(request)
+    boundary.session._inspect_snapshot=snapshot
+    result=boundary.session.dispatch(request)
     assert result['status']=='incomplete' and result['execution_started'] is True
     assert result['data']['snapshot']=='- heading "Navigation observation 2"'
     assert result['data']['observation']['state']=='observation_timeout'
@@ -185,32 +179,32 @@ def test_AG_008_load_error_then_timeout_returns_timeout_observation(boundary, mo
 def test_AG_008_timeout_observation_failure_remains_terminal(boundary, monkeypatch, failure):
     from tools.interrupt import set_interrupt
     request=recovery_boundary(boundary,monkeypatch,['observation_timeout','ready'],4)
-    native_execute=boundary.gate._execute
+    native_execute=boundary.session._execute
     def broken(*args):
         raise OSError('private observation failure')
     def snapshot(target):
         if failure=='snapshot': broken()
         if failure=='interrupt_after': set_interrupt(True)
-        if failure=='connection_after': boundary.adapter._cdp=object()
+        if failure=='connection_after': boundary.session._cdp=object()
         if failure=='browser_after': boundary.browser.failed=True
         return '- heading "Must not return unverified observation"'
-    boundary.adapter.snapshot=snapshot
+    boundary.session._inspect_snapshot=snapshot
     def execute(*args):
         result=native_execute(*args)
-        if failure=='frames': boundary.adapter._page=broken
+        if failure=='frames': boundary.session._page=broken
         if failure=='control': boundary.browser.verify_control=broken
-        if failure=='missing_connection': boundary.adapter._cdp=None
-        if failure=='changed_connection': boundary.adapter._cdp=object()
+        if failure=='missing_connection': boundary.session._cdp=None
+        if failure=='changed_connection': boundary.session._cdp=object()
         if failure=='interrupt_before': set_interrupt(True)
-        return observed(result.outcome, boundary.gate._navigation_page(connection))
-    connection=boundary.adapter._cdp
-    monkeypatch.setattr(boundary.gate,'_execute',execute)
-    result=boundary.gate.dispatch(request)
+        return observed(result.outcome, boundary.session._navigation_page(connection))
+    connection=boundary.session._cdp
+    monkeypatch.setattr(boundary.session,'_execute',execute)
+    result=boundary.session.dispatch(request)
     assert result['status']=='fatal' and result['execution_started'] is True and result['data']=={}
     assert 'private' not in repr(result)
     assert boundary.effects==[('navigate',{'url':'http://public.test/original'})]
     assert boundary.closed==[True]
-    assert boundary.gate.dispatch(request)=={**result,'execution_started':False}
+    assert boundary.session.dispatch(request)=={**result,'execution_started':False}
     assert boundary.effects==[('navigate',{'url':'http://public.test/original'})] and boundary.closed==[True]
 
 
@@ -219,7 +213,7 @@ def test_AG_008_timeout_observation_failure_remains_terminal(boundary, monkeypat
 def test_AG_008_other_action_errors_never_retry(boundary, monkeypatch, action, args):
     request=recovery_boundary(boundary,monkeypatch,[TimeoutError('native deadline')])
     request.update(action=action,args=args)
-    result=boundary.gate.dispatch(request)
+    result=boundary.session.dispatch(request)
     assert result['status']=='fatal' and result['execution_started'] is True
     assert boundary.effects==[(action,args)] and boundary.closed==[True]
 
@@ -227,7 +221,7 @@ def test_AG_008_other_action_errors_never_retry(boundary, monkeypatch, action, a
 @pytest.mark.parametrize('outcome', ['ready','same_document','download_denied'])
 def test_AG_008_first_complete_attempt_returns_without_retry(boundary, monkeypatch, outcome):
     request=recovery_boundary(boundary,monkeypatch,[outcome])
-    result=boundary.gate.dispatch(request)
+    result=boundary.session.dispatch(request)
     assert result['status']=='success' and result['reason'] is None and result['execution_started'] is True
     assert result['data']['snapshot']=='- heading "Current incomplete observation"'
     assert result['data']['observation']['state']==outcome
@@ -236,13 +230,13 @@ def test_AG_008_first_complete_attempt_returns_without_retry(boundary, monkeypat
 
 def test_AG_008_later_execution_failure_preserves_aggregate_started(boundary,monkeypatch):
     request=recovery_boundary(boundary,monkeypatch,['loading_error',OSError('private transport')])
-    result=boundary.gate.dispatch(request)
+    result=boundary.session.dispatch(request)
     assert result=={'status':'fatal','reason':'Browser action failed.','execution_started':True,'data':{}}
     assert len(boundary.effects)==2 and boundary.closed==[True]
 
 
 def test_AG_008_required_retry_setting_has_no_missing_key_default(tmp_path):
-    from tests.signal_scout.security.test_gate import settings,CONFIG
+    from tests.signal_scout.support.unit_browser import settings,CONFIG
     import yaml
     config=settings.load_settings(CONFIG)
     del config['browser']['navigation_retries']
@@ -356,11 +350,11 @@ def test_AG_008_SR_022_native_metadata_correlates_without_raw_packets(caplog):
 @pytest.mark.parametrize('changed', [False,True])
 def test_AG_008_page_capture_binds_ax_url_readiness_to_one_document(changed):
     browser=SimpleNamespace(failed=False)
-    adapter=evidence_module.BrowserEvidence(browser)
+    adapter=session_module.BrowserSession(browser)
     def frame(document):
         return {'root':SimpleNamespace(target='tab',session='owned',loader='current',document=document,parent=None)}
     pending=iter([frame(2),frame(3 if changed else 2)])
-    adapter._frames=lambda _: evidence_module._FrameScan(next(pending))
+    adapter._frames=lambda _: session_module._FrameScan(next(pending))
     calls=[]
     def accessibility(scan):
         calls.append(('tab',scan.frames['root'].document));return {}
@@ -368,7 +362,7 @@ def test_AG_008_page_capture_binds_ax_url_readiness_to_one_document(changed):
     adapter._snapshot_text=lambda *args: '- heading "Coherent AX"'
     adapter._evaluate=lambda *args: {'value':{'url':'http://public.test/current','readyState':'loading'}}
     if changed:
-        with pytest.raises(evidence_module.EvidenceFailure,match='Required browser evidence check failed.'):
+        with pytest.raises(session_module.BrowserFailure,match='Required browser evidence check failed.'):
             adapter._page('tab')
         assert browser.failed
     else:
@@ -388,7 +382,7 @@ def test_AG_008_long_replay_instrumentation_installs_against_current_private_api
         _message=lambda *args: None,_reply=lambda *args: None,_result=lambda *args: None,_tool=lambda *args: None))
     monkeypatch.setattr(httpx.Client,'send',httpx.Client.send)
     spec=importlib.util.spec_from_file_location('scout_replay_instrumentation',
-        Path(__file__).parents[1]/'missions'/'inactivity_fixture.py')
+        Path(__file__).parents[1]/'support'/'inactivity_fixture.py')
     replay=importlib.util.module_from_spec(spec)
     monkeypatch.setitem(sys.modules,spec.name,replay)
     spec.loader.exec_module(replay)
@@ -401,7 +395,7 @@ def test_AG_008_long_replay_instrumentation_installs_against_current_private_api
     native_command=cdp_module._CDP.command;native_observe=cdp_module._CDP.observe
     monkeypatch.setattr(cdp_module._CDP,'command',native_command)
     monkeypatch.setattr(cdp_module._CDP,'observe',native_observe)
-    monkeypatch.setattr(gate_module.BrowserActionGate,'dispatch',gate_module.BrowserActionGate.dispatch)
+    monkeypatch.setattr(session_module.BrowserSession,'dispatch',session_module.BrowserSession.dispatch)
     replay.install_observers()
     cdp,_=transport([reply(loaderId='current'),load()])
     assert navigation(cdp).value=='ready' and cdp.observation_timeout==60
@@ -450,7 +444,7 @@ def test_AG_008_explicit_redirect_requires_observed_successor_identity(started,e
 @pytest.mark.parametrize('unavailable', ['selected-child','other-tab-iframe'])
 def test_AG_008_AE_007_root_readiness_and_partial_child_capture(unavailable):
     browser=SimpleNamespace(failed=False)
-    adapter=evidence_module.BrowserEvidence(browser)
+    adapter=session_module.BrowserSession(browser)
     def command(method,params=None,session=None):
         if method=='Target.getTargets':
             targets=[{'targetId':'tab','type':'page'}]
@@ -489,24 +483,24 @@ def test_AG_008_gate_observes_ready_root_without_child_inspection(boundary):
     messages=[{'id':number,'sessionId':'owned','result':{}} for number in (1,2)]
     messages += [reply(3,loaderId='current'),load()]
     connection,sent=transport(messages)
-    boundary.adapter._cdp=connection
-    boundary.adapter._command=connection.command
-    boundary.adapter._document_key=evidence_module.BrowserEvidence._document_key
+    boundary.session._cdp=connection
+    boundary.session._command=connection.command
+    boundary.session._document_key=session_module.BrowserSession._document_key
     changed=False
     def frames(tab,*,root_only=False):
         if changed and not root_only:
             raise cdp_module._ProtocolError({'code':-32602,'message':'No frame for given id found'})
-        return evidence_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned',loader='current' if changed else 'old',document=2 if changed else 1)})
-    boundary.adapter._frames=frames
+        return session_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned',loader='current' if changed else 'old',document=2 if changed else 1)})
+    boundary.session._frames=frames
     page=cdp_module._Page(cdp_module._DocumentKey('owned','root','current',2),
         '- heading "Selected ready document"','http://public.test/current','interactive')
-    boundary.adapter._page=lambda _: page
+    boundary.session._page=lambda _: page
     boundary.browser.verify_control=lambda:None
     def effect():
         nonlocal changed
         changed=True
         connection.command('Page.navigate',{'url':'http://public.test/current'},'owned')
-    result=boundary.gate._observe_effect('navigate',SimpleNamespace(session='owned'),effect,
+    result=boundary.session._observe_effect('navigate',SimpleNamespace(session='owned'),effect,
         lambda operation,**kwargs:operation(), baseline=cdp_module._DocumentKey('owned','root','old',1))
     assert result.outcome.value=='ready' and result.page==page
     assert [entry['method'] for entry in sent]==['Page.enable','Page.setLifecycleEventsEnabled','Page.navigate']
@@ -516,17 +510,17 @@ def test_AG_008_gate_observes_ready_root_without_child_inspection(boundary):
 def test_AG_008_retry_rejection_is_incomplete_technical_failure_fatal(boundary, monkeypatch, change):
     from tools.interrupt import set_interrupt
     request = recovery_boundary(boundary, monkeypatch, ['loading_error', 'ready'])
-    native = boundary.gate._execute
+    native = boundary.session._execute
     def execute(action, args, invoke):
         result = native(action, args, invoke)
         if len(boundary.effects) == 1:
-            if change == 'blocked': boundary.gate._permissions['navigate'] = 'blocked'
+            if change == 'blocked': boundary.session._permissions['navigate'] = 'blocked'
             if change == 'control': boundary.browser.verify_control = lambda: (_ for _ in ()).throw(OSError('private control'))
-            if change == 'connection': boundary.adapter._cdp = None
+            if change == 'connection': boundary.session._cdp = None
             if change == 'interrupt': set_interrupt(True)
         return result
-    monkeypatch.setattr(boundary.gate, '_execute', execute)
-    result = boundary.gate.dispatch(request)
+    monkeypatch.setattr(boundary.session, '_execute', execute)
+    result = boundary.session.dispatch(request)
     assert result['status'] == ('incomplete' if change == 'blocked' else 'fatal')
     assert result['execution_started'] is True
     assert boundary.effects == [('navigate', {'url':'http://public.test/original'})]

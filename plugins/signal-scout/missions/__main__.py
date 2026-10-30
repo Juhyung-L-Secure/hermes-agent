@@ -9,10 +9,10 @@ from pathlib import Path
 import signal
 import sys
 
-from . import MissionOutcome, MissionRequest
+from ..scout_runtime.mission import MissionOutcome, MissionRequest
 from .console import MissionConsole
-from ..security.settings import load_settings
-from ..security.runtime_logging import configure_logging
+from ..scout_runtime.settings import load_settings
+from ..scout_runtime.runtime_logging import configure_logging
 
 
 def research(request, config, console):
@@ -20,8 +20,7 @@ def research(request, config, console):
     from hermes_cli.plugins import discover_plugins, get_plugin_manager
     from hermes_cli.runtime_provider import resolve_runtime_provider
     from run_agent import AIAgent
-    from ..security.browser import Browser
-    from ..security.gate import BrowserActionGate
+    from ..scout_runtime.browser.owner import Browser
 
     discover_plugins()
     guidance, loaded, missing = build_preloaded_skills_prompt(["signal-scout:browser-research"])
@@ -50,9 +49,8 @@ def research(request, config, console):
             raise RuntimeError("Scout research budget must be disabled in operating config.")
         console.progress("Scout mission started. Model %s. Research skill loaded.", model)
         with Browser() as browser:
-            target = browser.evidence().tabs()[0]["target_id"]
-            gate = BrowserActionGate(browser, target_id=target)
-            with adapter.bind_browser(gate, on_fatal=partial(agent.interrupt, hard_cancel=True),
+            session = browser.session()
+            with adapter.bind_browser(session, on_fatal=partial(agent.interrupt, hard_cancel=True),
                                       action_reference=action_reference):
                 return agent.run_conversation(guidance + "\n\nBrowser action reference:\n" + action_reference
                                               + "\n\nResearch mission:\n" + request.text)

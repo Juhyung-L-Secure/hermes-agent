@@ -5,41 +5,11 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.signal_scout.security.test_gate import boundary
+from tests.signal_scout.support.unit_browser import transport, navigation
 
 
-cdp_module = importlib.import_module('plugins.signal-scout.security._cdp')
-evidence_module = importlib.import_module('plugins.signal-scout.security.evidence')
-gate_module = importlib.import_module('plugins.signal-scout.security.gate')
-
-
-def transport(messages=(), *, send_error=None, receive_error=None):
-    pending, sent = iter(messages), []
-    def send(message):
-        sent.append(json.loads(message))
-        if send_error:
-            raise send_error
-    def receive(**_):
-        try:
-            return json.dumps(next(pending))
-        except StopIteration:
-            raise receive_error or TimeoutError('fixture response deadline')
-    cdp = cdp_module._CDP.__new__(cdp_module._CDP)
-    cdp.timeout, cdp.sequence = 30, 0
-    cdp.observation_timeout, cdp.interaction_observation_timeout = 5, 0.25
-    cdp._observation = None
-    cdp.connection = SimpleNamespace(send=send, recv=receive)
-    return cdp, sent
-
-
-def navigation(cdp, url='http://public.test/', session='owned', frame='root', *, loader='current'):
-    baseline = cdp_module._DocumentKey(session, frame, 'baseline', 1)
-    current = cdp_module._DocumentKey(session, frame, loader, 2)
-    return cdp.observe(lambda: cdp.command('Page.navigate', {'url':url}, session), baseline,
-        lambda: current, lambda: cdp_module._Page(
-            baseline if cdp._observation.native is cdp_module._NavigationOutcome.SAME_DOCUMENT else current,
-            '- heading "Current"', url, 'interactive'),
-        explicit=True).outcome
+cdp_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser._cdp')
+session_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
 
 
 @pytest.mark.parametrize('stage', ['send', 'response'])
@@ -125,53 +95,51 @@ def test_SR_022_actual_gate_phases_preserve_result_and_terminal_closure(boundary
     def fail(*_, **__):
         raise error
     if phase == 'inspection':
-        monkeypatch.setattr(boundary.gate, '_execute', fail)
+        monkeypatch.setattr(boundary.session, '_execute', fail)
     else:
-        monkeypatch.setattr(boundary.gate, '_execute', gate_module.BrowserActionGate._execute.__get__(boundary.gate))
-        boundary.adapter._frames = lambda _: evidence_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned',loader='old',document=1)})
-        boundary.adapter._document_key = evidence_module.BrowserEvidence._document_key
-        boundary.adapter._command = lambda *_, **__: {}
+        monkeypatch.setattr(boundary.session, '_execute', session_module.BrowserSession._execute.__get__(boundary.session))
+        boundary.session._frames = lambda _: session_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned',loader='old',document=1)})
+        boundary.session._document_key = session_module.BrowserSession._document_key
+        boundary.session._command = lambda *_, **__: {}
         def observe(effect, baseline, inspect, capture, **kwargs):
             if phase == 'execution':
                 fail()
             return capture()
-        boundary.adapter._cdp = SimpleNamespace(observe=observe)
+        boundary.session._cdp = SimpleNamespace(observe=observe)
         boundary.browser.verify_control = lambda: None
-        boundary.adapter._page = fail
-        boundary.adapter.snapshot = fail
-        boundary.adapter._snapshot = fail
-        boundary.adapter._run = lambda operation: operation()
-    monkeypatch.setattr(gate_module, 'time', SimpleNamespace(monotonic=lambda: 100.0))
+        boundary.session._page = fail
+        boundary.session._inspect_snapshot = fail
+        boundary.session._snapshot = fail
+        boundary.session._run = lambda operation: operation()
+    monkeypatch.setattr(session_module, 'time', SimpleNamespace(monotonic=lambda: 100.0))
     request = {'action':'snapshot','args':{}} if phase == 'explicit_snapshot' else {
         'action':'navigate','args':{'url':'https://bulk-proposal-marker.test/'},'activity':'bulk-activity-marker'}
     with caplog.at_level(logging.INFO):
-        result = boundary.gate.dispatch(request)
+        result = boundary.session.dispatch(request)
     started = phase in {'execution','observation','explicit_snapshot'}
     assert result == {'status':'fatal','reason':'Browser action failed.','execution_started':started,'data':{}}
-    record, = [r for r in caplog.records if r.name == gate_module.__name__]
+    record, = [r for r in caplog.records if r.name == session_module.__name__]
     assert f"action={request['action']}" in record.getMessage()
     assert f"phase={'execution' if phase == 'explicit_snapshot' else 'preparation' if phase == 'inspection' else phase}" in record.getMessage()
     assert 'elapsed_ms=0' in record.getMessage() and record.exc_info[1] is error
     assert record.exc_info[2] is not None and record.levelno == logging.ERROR
     assert 'bulk-' not in caplog.text and 'exception' not in repr(result)
-    assert boundary.closed == [True] and boundary.gate._terminal
-    assert boundary.gate.dispatch({'action':'snapshot','args':{}})['status'] == 'fatal'
+    assert boundary.closed == [True] and boundary.session._terminal
+    assert boundary.session.dispatch({'action':'snapshot','args':{}})['status'] == 'fatal'
     assert boundary.closed == [True]
-
-
 
 
 def test_SR_022_evidence_conversion_logs_original_before_suppression(caplog):
     browser = SimpleNamespace(failed=False)
-    evidence = evidence_module.BrowserEvidence(browser)
+    evidence = session_module.BrowserSession(browser)
     original = ValueError('original local evidence error')
     def fail():
         raise original
-    with caplog.at_level(logging.INFO), pytest.raises(evidence_module.EvidenceFailure) as caught:
+    with caplog.at_level(logging.INFO), pytest.raises(session_module.BrowserFailure) as caught:
         evidence._run(fail)
     assert str(caught.value) == 'Required browser evidence check failed.' and browser.failed
     assert caught.value.__suppress_context__ and 'original' not in repr(caught.value)
-    record, = [r for r in caplog.records if r.name == evidence_module.__name__]
+    record, = [r for r in caplog.records if r.name == session_module.__name__]
     assert record.exc_info[1] is original and record.exc_info[2] is not None
     assert 'elapsed_ms=' in record.getMessage() and record.levelno == logging.ERROR
 
@@ -179,7 +147,7 @@ def test_SR_022_evidence_conversion_logs_original_before_suppression(caplog):
 @pytest.mark.parametrize('method', ['Runtime.evaluate','Runtime.callFunctionOn'])
 def test_SR_022_runtime_detail_survives_actual_evidence_conversion(caplog, method):
     browser = SimpleNamespace(failed=False)
-    evidence = evidence_module.BrowserEvidence(browser)
+    evidence = session_module.BrowserSession(browser)
     cdp, _ = transport([{'id':1,'sessionId':'owned','result':{'exceptionDetails':{
         'text':'native evaluator failure','exception':{'description':'fixture JavaScript cause'}}}}])
     evidence._command = cdp.command
@@ -187,24 +155,24 @@ def test_SR_022_runtime_detail_survives_actual_evidence_conversion(caplog, metho
     expression = 'bulk-expression-marker'
     operation = (lambda: evidence._evaluate(frame, expression)) if method == 'Runtime.evaluate' else (
         lambda: evidence._call(frame, 'object', expression))
-    with caplog.at_level(logging.INFO), pytest.raises(evidence_module.EvidenceFailure) as caught:
+    with caplog.at_level(logging.INFO), pytest.raises(session_module.BrowserFailure) as caught:
         evidence._run(operation)
     assert str(caught.value) == 'Required browser evidence check failed.' and browser.failed
     assert 'native evaluator failure' in caplog.text and 'fixture JavaScript cause' in caplog.text
     assert 'bulk-' not in caplog.text and 'fixture JavaScript cause' not in repr(caught.value)
-    assert any(r.name == evidence_module.__name__ and r.exc_info for r in caplog.records)
+    assert any(r.name == session_module.__name__ and r.exc_info for r in caplog.records)
 
 
-@pytest.mark.parametrize('original', [evidence_module.EvidenceRejected('fixture rejected'),
+@pytest.mark.parametrize('original', [session_module.ActionRejected('fixture rejected'),
     cdp_module._ProtocolError({'code':-32000,'message':'No node with given id found'})])
 def test_SR_022_evidence_expected_rejection_does_not_poison_browser(caplog, original):
     browser = SimpleNamespace(failed=False)
-    evidence = evidence_module.BrowserEvidence(browser)
+    evidence = session_module.BrowserSession(browser)
     def fail():
         raise original
-    with caplog.at_level(logging.INFO), pytest.raises(evidence_module.EvidenceRejected) as caught:
+    with caplog.at_level(logging.INFO), pytest.raises(session_module.ActionRejected) as caught:
         evidence._run(fail)
-    assert str(caught.value) == ('fixture rejected' if isinstance(original, evidence_module.EvidenceRejected)
+    assert str(caught.value) == ('fixture rejected' if isinstance(original, session_module.ActionRejected)
                                  else 'Original browser target is stale.')
     assert not browser.failed and [r for r in caplog.records if r.levelno >= logging.ERROR] == []
 
@@ -222,22 +190,22 @@ def test_SR_022_invalid_transport_json_keeps_original_parser_error(caplog):
 @pytest.mark.parametrize('kind', ['blocked','rejected','stale','no_hit'])
 def test_SR_022_expected_rejections_keep_healthy_gate_without_error(boundary, caplog, kind):
     if kind == 'blocked':
-        boundary.gate._permissions['navigate'] = 'blocked'
+        boundary.session._permissions['navigate'] = 'blocked'
     else:
         def reject(*_, **__):
             if kind == 'rejected':
-                raise evidence_module.EvidenceRejected('fixture changed')
+                raise session_module.ActionRejected('fixture changed')
             cdp, _ = transport([{'id':1,'error':{'code':-32000,'message':
                 'No node with given id found' if kind == 'stale' else 'No node found at given location'}}])
             try:
                 cdp.command('DOM.resolveNode')
             except cdp_module._ProtocolError as error:
                 if error.no_hit:
-                    raise evidence_module.EvidenceRejected('No visible target') from None
+                    raise session_module.ActionRejected('No visible target') from None
                 raise
-        boundary.gate._execute = reject
+        boundary.session._execute = reject
     with caplog.at_level(logging.INFO):
-        result = boundary.gate.dispatch({'action':'navigate','args':{'url':'https://example.test/'},'activity':'Inspect'})
+        result = boundary.session.dispatch({'action':'navigate','args':{'url':'https://example.test/'},'activity':'Inspect'})
     assert result == {'status':'rejected','reason':'Browser action is blocked.' if kind == 'blocked' else 'Browser context changed.',
                       'execution_started':False,'data':{}}
     assert not boundary.closed and boundary.browser.ready
@@ -250,19 +218,19 @@ def test_SR_022_post_started_stale_retains_native_detail_and_fatal_closure(bound
     cdp, _ = transport([{'id':1,'error':{'code':-32000,'message':'No node with given id found'}}])
     def execute(action, args, invoke):
         return invoke(lambda: cdp.command('DOM.resolveNode'))
-    monkeypatch.setattr(boundary.gate, '_execute', execute)
+    monkeypatch.setattr(boundary.session, '_execute', execute)
     with caplog.at_level(logging.INFO):
-        result = boundary.gate.dispatch({'action':'navigate','args':{'url':'https://example.test/'},'activity':'Inspect'})
+        result = boundary.session.dispatch({'action':'navigate','args':{'url':'https://example.test/'},'activity':'Inspect'})
     assert result == {'status':'fatal','reason':'Browser action failed.','execution_started':True,'data':{}}
     assert 'No node with given id found' in caplog.text
-    assert any(r.name == gate_module.__name__ and r.levelno == logging.ERROR for r in caplog.records)
+    assert any(r.name == session_module.__name__ and r.levelno == logging.ERROR for r in caplog.records)
     assert boundary.closed == [True]
 
 
 @pytest.mark.parametrize('boundary_name', ['gate','evidence','cdp','protocol','runtime','navigation'])
 @pytest.mark.parametrize('failure', ['handler','record_factory'])
 def test_SR_022_broken_logging_cannot_replace_failure_or_cleanup(boundary, monkeypatch, boundary_name, failure):
-    module = {'gate':gate_module,'evidence':evidence_module}.get(boundary_name, cdp_module)
+    module = {'gate':session_module,'evidence':session_module}.get(boundary_name, cdp_module)
     def broken(*_, **__):
         raise RuntimeError('logging delivery failed')
     if failure == 'handler':
@@ -277,13 +245,13 @@ def test_SR_022_broken_logging_cannot_replace_failure_or_cleanup(boundary, monke
     def fail(*_, **__):
         raise original
     if boundary_name == 'gate':
-        boundary.gate._execute = fail
-        assert boundary.gate.dispatch({'action':'navigate','args':{'url':'https://example.test/'},'activity':'Inspect'}) == {
+        boundary.session._execute = fail
+        assert boundary.session.dispatch({'action':'navigate','args':{'url':'https://example.test/'},'activity':'Inspect'}) == {
             'status':'fatal','reason':'Browser action failed.','execution_started':False,'data':{}}
         assert boundary.closed == [True]
     elif boundary_name == 'evidence':
-        evidence = evidence_module.BrowserEvidence(boundary.browser)
-        with pytest.raises(evidence_module.EvidenceFailure, match='Required browser evidence check failed.'):
+        evidence = session_module.BrowserSession(boundary.browser)
+        with pytest.raises(session_module.BrowserFailure, match='Required browser evidence check failed.'):
             evidence._run(fail)
         assert boundary.browser.failed
     elif boundary_name == 'cdp':

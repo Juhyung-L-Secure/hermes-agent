@@ -15,12 +15,12 @@ from contextlib import asynccontextmanager
 import pytest
 import yaml
 
-from tests.signal_scout.conftest import lifecycle
+from tests.signal_scout.support.stack import lifecycle
 
 sys.path.insert(0, str(Path(lifecycle.__file__).parent))
 import browser_diagnostics as diagnostics
 
-producer = importlib.import_module('plugins.signal-scout.security.process_output')
+producer = importlib.import_module('plugins.signal-scout.scout_runtime.process_output')
 
 
 def observer(verbose=False):
@@ -52,8 +52,8 @@ def test_SR_023_actual_child_pipes_and_received_vs_requested_signal(tmp_path):
 import asyncio, importlib, json, os, signal, sys
 from contextlib import asynccontextmanager
 from pathlib import Path
-c=importlib.import_module('plugins.signal-scout.security.chromium')
-s=importlib.import_module('plugins.signal-scout.security.settings')
+c=importlib.import_module('plugins.signal-scout.scout_runtime.browser.chromium')
+s=importlib.import_module('plugins.signal-scout.scout_runtime.settings')
 config=s.load_settings('docker/signal-scout/config.yaml')
 c.READY=Path(sys.argv[1])/'ready.json'
 ready=Path(sys.argv[1])/'child-ready'
@@ -100,7 +100,7 @@ assert asyncio.run(run()) == -signal.SIGTERM
 @pytest.mark.asyncio
 @pytest.mark.parametrize('moment', ['before_ready', 'after_ready'])
 async def test_SR_023_late_launcher_signal_keeps_observed_unexpected_child_exit(monkeypatch, tmp_path, moment):
-    chromium = importlib.import_module('plugins.signal-scout.security.chromium')
+    chromium = importlib.import_module('plugins.signal-scout.scout_runtime.browser.chromium')
     records, handlers = [], {}
     loop = asyncio.get_running_loop()
     monkeypatch.setattr(loop, 'add_signal_handler', lambda sig, callback, *args: handlers.update({sig: (callback, args)}))
@@ -255,7 +255,7 @@ def test_SR_023_SR_024_host_startup_error_precedes_unavailable_state_and_redacts
 @pytest.mark.parametrize('outcome', ['both_eof', 'error', 'peer_finished', 'launcher_shutdown'])
 @pytest.mark.asyncio
 async def test_SR_023_relay_outcomes_keep_complete_sibling_and_cancel_only_pending(outcome):
-    chromium = importlib.import_module('plugins.signal-scout.security.chromium')
+    chromium = importlib.import_module('plugins.signal-scout.scout_runtime.browser.chromium')
     records = []
     output = SimpleNamespace(emit=lambda *args, **facts: records.append((args, facts)))
     class Reader:

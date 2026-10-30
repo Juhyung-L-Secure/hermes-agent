@@ -1,90 +1,67 @@
-# Signal Scout bootstrap
+# Signal Scout
 
-Bootstrap's native Hermes tool, `signal_scout`, accepts exactly `{"action": "status"}`.
-It returns the discovered manifest's version and explicit readiness: status is
-ready; research and research security readiness remain unchanged.
-The separate `signal_scout_browser` toolset registers one `browser_scout` tool
-for trusted, run-bound browsing; bootstrap does not select it.
+Scout provides native Hermes status bootstrap and separate trusted browser-only foreground research. Bootstrap tool `signal_scout` accepts exactly `{"action": "status"}` and returns discovered manifest version with explicit readiness. Status is ready. `research` and `research_security` readiness remain `not_implemented`. Separate `signal_scout_browser` toolset registers `browser_scout`; bootstrap does not select it.
 
-| File | Owns |
+## Source and behavioral ownership
+
+Runtime source and behavioral spec owners serve different purposes. `scout_runtime/` is importable implementation package. Feature-owned specs retain current and future promises together. Directory name `evidence/` owns future research storage, unrelated to former inspection class or retired reviewer packets.
+
+| File or owner | Responsibility |
 | --- | --- |
 | `plugin.yaml` | Plugin identity and single version source |
 | `__init__.py` | Native registration, validation, status result |
-| `bootstrap.py` | Docker operator entrypoint: status, login, one chat, internal deterministic smoke |
-| `../../docker/signal-scout/` | Image, immutable config, network enforcement, startup |
-| `../../tests/signal_scout/integration/` | Real discovery/dispatch and container checks |
-| `specs.json` | Native integration and bootstrap contracts, including uncovered promises |
-| `missions/specs.json` | Mission execution, stop, checkpoint/resume |
-| `security/` | Browser/proxy/firewall/logging/settings and current target resolution; broader security specs |
-| `browser_tools/` | Native browser registration, trusted binding, feedback and BR_001–BR_005 |
-| `evidence/specs.json` | Source inventory, evidence, findings, deduplication |
-| `media/specs.json` | Video/audio analysis and limitations |
-| `budget/specs.json` | Usage measurement and enforcement |
-| `reporting/specs.json` | Terminal reports and audit trail |
-| `research/specs.json` | Discovery, competitor/demand analysis, synthesis |
+| `bootstrap.py` | Operator status, login, bounded status chat, and internal deterministic smoke |
+| `scout_runtime/` | Lightweight settings/readiness, shared action vocabulary, mission data, native logging, browser and network implementation |
+| [Browser runtime](scout_runtime/browser/README.md) | Native owner, action session, CDP, Chromium child/relay, viewer, and diagnostics mechanics |
+| [Browser tools](browser_tools/README.md) | Native schema/binding/feedback, BR_001 through BR_006, and AG/AE action/inspection contracts |
+| [Security](security/README.md) | SR confinement, network, startup safeguard, diagnostic, and broader future security contracts |
+| [Docker runtime](../../docker/signal-scout/README.md) | Images, fixed read-only run configuration, host ownership, startup, and cleanup |
+| [Integration specs](specs.json) | Native integration, bootstrap, operating-file delivery, and main-model retry |
+| [Mission specs](missions/specs.json) | Foreground research and future durable lifecycle, stop, checkpoint/resume |
+| [Evidence specs](evidence/specs.json) | Future source inventory, captures, evidence, findings, and deduplication |
+| [Media specs](media/specs.json) | Future video/audio analysis and limitations |
+| [Budget specs](budget/specs.json) | Future authoritative usage measurement and enforcement |
+| [Reporting specs](reporting/specs.json) | Future durable terminal reports and audit trail |
+| [Research specs](research/specs.json) | Future discovery, competitor/demand analysis, and synthesis |
+| [History index](history.md) | Immutable original implementation briefs, retired reviewer, and historical-proof limits |
 
-Bootstrap flow: Hermes discovers the enabled manifest → `register(ctx)` registers
-separate toolsets → bootstrap selects only `signal_scout` → native dispatch validates the
-action and returns readiness. Disablement removes the callable tool; unexpected
-actions or fields return an error without side effects.
+Bootstrap discovers enabled manifest, registers separate toolsets, selects only `signal_scout`, and validates native status dispatch. Disablement removes callable tool. Unexpected actions or fields fail without side effects. Manifest and returned version stay linked.
 
-Browser flow: trusted owner starts its isolated Browser and gate →
-selects only `signal_scout_browser` (plus status if explicitly wanted) → binds
-the gate and mandatory native hard-stop callback → native `browser_scout`
-dispatch forwards the unchanged proposal → gate returns an observation or
-rejection/fatal result. Binding exit closes the gate; normal host owner teardown
-removes its browser container. Unbound calls cannot attach or create a browser.
-No native browser, terminal, code, file, MCP, messaging or delegation tool is
-selected in this surface. [Adapter ownership](browser_tools/README.md).
+Foreground owner starts isolated `Browser`, obtains cached `BrowserSession`, and binds it with mandatory native hard-stop callback and complete startup action reference. Native `browser_scout` forwards proposal unchanged. Session returns observation, rejection, or fatal result. Binding exit revokes session. Host removes exact owned container. Browser-only tool selection excludes native browser, terminal, code, file, MCP, messaging, and delegation tools. [Adapter contracts](browser_tools/README.md) own complete binding behavior.
 
-`chat` resolves native `openai-codex`, constructs `AIAgent`, verifies the exposed
-tools, and runs one bounded conversation. Its check requires one model-requested
-status call, a matching native tool result, and a completed explanation. No
-model or billing substitution is permitted.
+Bootstrap `chat` resolves native `openai-codex`, constructs `AIAgent`, verifies selected tools, and runs one explicitly bounded status conversation. It requires model-requested status call, matching native result, and completed explanation. No provider or billing substitution occurs. Foreground research separately uses configured native main model and retry loop without Scout wall-clock or tool-call cap. Model and reasoning in bootstrap and operating file must agree.
 
-Startup and security limits: [Docker README](../../docker/signal-scout/README.md).
-Hermes connects directly in its own namespace, without Scout-specific firewall
-or proxy settings. Browser alone shares `firewall`'s namespace and uses the
-browser-only proxy. Four services remain: `scout`, `browser`, `firewall`, `proxy`.
-The manifest version and returned version stay linked. The model and reasoning
-in `bootstrap.py` and the image config must agree.
+Four services remain `scout`, `browser`, `firewall`, and `proxy`. Hermes connects directly in own namespace. Browser alone shares firewall namespace and uses browser-only proxy. [Security contracts](security/README.md) and [Docker guide](../../docker/signal-scout/README.md) describe actual guarantees and trust limits.
 
-Feature-owned `specs.json` files are the behavioral source of truth. Covered and uncovered promises stay together in their owning file; `requiredCoverage` and `coverage` show declared automatic coverage. Code and ownership README belong alongside those owners. Tests mirror owners under `tests/signal_scout/<feature>/`; the native/bootstrap owner uses `integration/`. `unit` and `e2e` remain coverage metadata, not directories. [Milestones](../../stuff/milestones.md) own delivery order and implementation plans and reference these contracts by ID.
+Feature-owned `specs.json` files are behavioral source of truth. Covered and uncovered promises retain original required layers and blockers. Tests stay under `tests/signal_scout/`; `integration/` owns native/bootstrap checks and retained `security/` test directory includes browser actions/inspection. Shared support lives in `tests/signal_scout/support/`. `unit` and `e2e` are coverage metadata. [Milestones](../../stuff/milestones.md) distinguish delivered outcomes and future dependencies.
 
-Run `HERMES_TEST_FILE_TIMEOUT=600 HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0` for Scout's automated tests. This full suite needs the Docker and browser prerequisites in the [Docker guide](../../docker/signal-scout/README.md). Run standalone spec-link validation separately as described below.
+Full Scout test command is `HERMES_TEST_FILE_TIMEOUT=600 HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout --include-integration -q --file-retries 0`. It requires Docker and browser prerequisites in [Docker guide](../../docker/signal-scout/README.md). Maintained affected-path recipes live in [verification map](../../.agents/skills/verify-scout/features/README.md). Full suite is command reference, not claim that this refactor executed it.
 
 ## Validate spec links
 
-Provision the standalone `spec-checker` executable using its package documentation, then expose it on `PATH` for link validation in development and CI. For an existing tool checkout, add its `.venv/bin` directory to `PATH`. Scout does not vendor or install the checker. Confirm setup with `command -v spec-checker`; missing tool means link validation cannot run. The target Python needs the existing project development dependencies. CLI calls select the project's `.venv` or `venv`; `--python` overrides that choice.
+Provision standalone `spec-checker` using its package documentation and expose executable on `PATH`. Existing tool checkout may expose its `.venv/bin`. Scout does not vendor or install checker. Confirm with `command -v spec-checker`; missing executable means validation cannot run. Target Python needs existing development dependencies. CLI selects project `.venv` or `venv`; `--python` overrides that choice.
 
-Run commands from repository root. These checks need no Docker, browser startup, account, or model call. Pytest collection can execute project imports, configuration, parametrization, and hooks; collection is not a sandbox.
+Run from repository root. Link checks need no Docker, browser startup, account, or model call. Pytest collection can execute imports, configuration, parametrization, and hooks. Collection is not a sandbox.
 
 ```bash
 command -v spec-checker
 spec-checker . --json
 spec-checker . --spec plugins/signal-scout/security/specs.json --json
+spec-checker . --spec plugins/signal-scout/browser_tools/specs.json --json
 ```
 
-The bare CLI recursively checks every manifest, including uncovered promises in each feature. No repository selection config narrows that inventory. Full validation currently exits `1` for missing coverage. Repeated `--spec` selects whole files and replaces discovery, not individual IDs or covered records. The security file therefore reports gaps for SR_015–SR_018, SR_020 and SR_021 alongside its valid links; the integration/bootstrap file reports IN_001 and BT_003. Keep these records and their required layers in their original owners rather than separating them by coverage status. There is no delivered-only pytest gate or coverage waiver.
+Bare CLI recursively checks every manifest, including future promises. No repository selection configuration narrows inventory. Full validation currently exits `1` for missing coverage. Repeated `--spec` selects whole files and replaces discovery, not individual IDs or covered records. Security owner retains gaps for SR_015 through SR_018, SR_020, and SR_021. Integration owner retains IN_001 and BT_003. Future mission, evidence, media, budget, reporting, and research records retain own gaps. There is no delivered-only gate or coverage waiver.
 
-Exit `0` means complete valid links for the selected scope. Exit `1` includes schema, collection, link, and missing-coverage errors. Exit `2` means CLI usage error. Preserve command, exit code, stdout, and stderr. Link validation does not run test bodies or assess assertions; execute relevant tests through `scripts/run_tests.sh` and review assertions separately. Manual `otherCoverage` never fills automatic layers. Unlinked legacy tests need no spec declarations; the external checker follows linked tests within project root without enforcing mirrored owner paths.
+Exit `0` means complete valid links for selected scope. Exit `1` includes schema, collection, link, and missing-coverage errors. Exit `2` means CLI usage error. Preserve command, actual exit, stdout, and stderr. Link validation does not execute test bodies or assess assertions. Run relevant cases through `scripts/run_tests.sh` and review assertions separately. Manual `otherCoverage` does not fill automatic layers. Unlinked legacy tests need no spec declarations. External checker follows linked tests within project root without enforcing mirrored owner paths.
 
-Historical ID mapping remains recoverable from Git history at `plugins/signal-scout/spec_checks/id-migration.json`, including retired checker-only labels. Historical JSON receipts and daily logs retain their original bytes. The embedded checker, its SC_001–SC_006 contracts, and the one-off migration helper are retired; use the external CLI for current checks.
+Embedded checker, SC_001 through SC_006, and one-off migration helper retired. [History index](history.md#historical-proof-limits) gives immutable ID-mapping recovery. Historical JSON receipts and daily logs retain original evidence.
 
-## Current verification and open work
+## Current proof and open work
 
-BT_003 manual live smoke passed on 2026-09-10 after separate operator login:
-two API calls and one verified status result/explanation. Sanitized evidence:
-`../../stuff/bootstrap-live-verification.json`. This is manual `otherCoverage`,
-not automated live-test coverage.
+BT_003 manual live status smoke passed on 2026-09-10 after separate operator login, with two API calls and one verified status result/explanation. [Sanitized receipt](../../stuff/bootstrap-live-verification.json) remains manual `otherCoverage`. Required automatic live-test layer remains uncovered.
 
-Open work: automated live coverage remains separate from this successful smoke.
-Deterministic public-web protection harness lives under
-[`security/`](security/README.md). SR_019 and
-SR_001–SR_005 cover only network, sandbox/control, protection logging,
-separate browser container, and disposable single-run lifetime. Trusted host
-smoke uses existing native remote-CDP driver path; bootstrap readiness remains status-only. The existing foreground mission launcher uses its separate browser binding.
-Independent teardown after coordinator/host loss remains deferred.
-Durable missions/resume, broader evidence/reporting, messaging, scheduling and budget engines remain future work. Native Hermes extension boundaries remain
-available for later explicit messaging integration; no abstraction is added.
-Independent action-level safety review is retired. Ordinary target resolution, observations and deterministic allowed/blocked permissions remain. Main-agent behavioral guidance does not replace that retired enforcement. The previous implementation remains in local Git tag `archive/scout-safety-reviewer-2026-10-29`; inspect with `git show archive/scout-safety-reviewer-2026-10-29:plugins/signal-scout/security/reviewer.py`. [Current security ownership](security/README.md#reviewer-retirement) records retained boundaries and retired contracts. Existing foreground missions remain available through the Docker guide; live provider availability and research quality remain unverified by offline tests.
+Current controlled browser/native fixtures exercise confinement, exact effects, observations, routing, and owned cleanup. Offline model transports do not establish provider availability, research quality, instruction adherence, or live vision support. Original Chromium disconnect remains unexplained. Independent teardown after coordinator or host loss remains deferred.
+
+Durable missions/resume, broader evidence/reporting, media analysis, research methodology, budget enforcement, messaging, and scheduling remain future work. Existing foreground missions remain available through Docker guide. Native Hermes extension points remain available for later explicit integration without speculative abstraction.
+
+Independent action-level safety reviewer retired. Main-agent guidance does not replace former adjudication. Ordinary request validation, deterministic allowed/blocked permissions, exact target/focus checks, observations, confinement, and download denial remain. [Security retirement boundary](security/README.md#reviewer-retirement) and [reviewer archive](history.md#retired-reviewer) record retained guarantees and recoverable prior implementation.

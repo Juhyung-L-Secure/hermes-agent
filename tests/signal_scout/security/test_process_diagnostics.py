@@ -1,36 +1,10 @@
+from tests.signal_scout.support.diagnostics import saved_run, writer_identity, assert_writer_stopped
 import json
 import subprocess
 import time
 import uuid
 
 import pytest
-
-
-def saved_run(stack, run):
-    return stack.exec_proxy(f"""
-from pathlib import Path
-p = Path('/var/log/scout/browser.log')
-print('\\n'.join(line for path in p.parent.glob('browser.log*') if path.is_file()
-                for line in path.read_text().splitlines() if {run!r} in line))
-""")
-
-
-def writer_identity(stack, run):
-    path = '/tmp/scout-browser-writer-' + run + '.json'
-    return json.loads(stack.exec_proxy(f"from pathlib import Path; print(Path({path!r}).read_text())"))
-
-
-def assert_writer_stopped(stack, run, writer):
-    marker = '/tmp/scout-browser-writer-' + run + '.json'
-    pid, start = writer['pid'], writer['start']
-    stack.exec_proxy(f"""
-from pathlib import Path
-assert not Path({marker!r}).exists()
-path=Path('/proc/{pid}/stat')
-if path.exists():
-    fields=path.read_text().rsplit(')',1)[1].split()
-    assert fields[0]=='Z' or fields[19]!={start!r}
-""")
 
 
 def test_SR_023_SR_024_real_child_exit_survives_owned_removal(scout_stack):
@@ -99,7 +73,7 @@ with socket.create_connection(('172.30.242.4',9223),timeout=2) as peer:
         assert run.scout_environment()['SCOUT_BROWSER_RUN'] == run_id
         scout_stack.browser_probe("""
 import importlib
-Browser=importlib.import_module('plugins.signal-scout.security.browser').Browser
+Browser=importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
 with Browser() as browser:
     assert browser.command('eval','40+2')['result'] == 42
 """, run=run)
@@ -125,7 +99,7 @@ def test_SR_023_broken_proxy_writer_preserves_browser_and_reaps_real_remote_proc
         scout_stack.exec_proxy(f'import os,signal; os.kill({pid},signal.{signal_name})')
         scout_stack.browser_probe("""
 import importlib
-Browser=importlib.import_module('plugins.signal-scout.security.browser').Browser
+Browser=importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
 with Browser() as browser:
     assert browser.command('eval','6*7')['result'] == 42
 print('real-browser-result-preserved')
@@ -172,8 +146,8 @@ def test_SR_003_SR_023_actual_proxy_writer_honors_validated_rotation_and_data_on
     script = r'''
 import json,logging,tempfile,shutil,yaml
 from pathlib import Path
-import security.settings as settings
-import security.runtime_logging as runtime
+import scout_runtime.settings as settings
+import scout_runtime.runtime_logging as runtime
 directory=Path(tempfile.mkdtemp(prefix='scout-browser-log-rotation-'))
 try:
     config=settings.load_settings()
@@ -216,7 +190,7 @@ def test_SR_023_SR_024_diagnostic_inspection_failure_keeps_actual_browser_outcom
         monkeypatch.setattr(run, 'inspect_owned', inspect)
         scout_stack.browser_probe("""
 import importlib
-Browser=importlib.import_module('plugins.signal-scout.security.browser').Browser
+Browser=importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
 with Browser() as browser:
     assert browser.command('eval','7*6')['result'] == 42
 """, run=run)

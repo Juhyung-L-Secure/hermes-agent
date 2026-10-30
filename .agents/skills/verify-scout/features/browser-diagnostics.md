@@ -26,7 +26,7 @@ HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout/security/test_life
 HERMES_TEST_WORKERS=1 scripts/run_tests.sh tests/signal_scout/missions/test_cli_integration.py -k 'native_success_retry_and_verbose or failed_native_outcome_and_blocked_action or actual_sigint_and_rejected_second_cli or actual_failed_cli_restores_both_stopped_helpers' --file-retries 0
 ```
 
-Require complete child-exit evidence after exact container removal, initiating host startup error before cleanup state, relay EOF followed by a fresh Chrome action, native-context redaction, actual proxy writer rotation, and ordinary/failed writer PID shutdown while helpers remain running. Unit cases stop the exact private host redactor process, fill a console pipe, break the sink, and verify continuous source drainage plus bounded close. SIGSTOP is a controlled stalled endpoint, not reproduction of a native redactor defect. Existing headed foreground verification remains in [reviewed-browser-actions.md](reviewed-browser-actions.md).
+Require complete child-exit evidence after exact container removal, initiating host startup error before cleanup state, relay EOF followed by a fresh Chrome action, native-context redaction, actual proxy writer rotation, and ordinary/failed writer PID shutdown while helpers remain running. Unit cases stop the exact private host redactor process, fill a console pipe, break the sink, and verify continuous source drainage plus bounded close. SIGSTOP is a controlled stalled endpoint, not reproduction of a native redactor defect. Existing headed foreground verification remains in [browser-actions.md](browser-actions.md).
 
 ## Gotchas
 

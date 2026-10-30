@@ -12,8 +12,8 @@ import uuid
 import pytest
 import yaml
 
-from tests.signal_scout.conftest import lifecycle
-from tests.signal_scout.missions.test_cli_integration import CLI, assert_clean, cli_images, receipt, wait_for_text
+from tests.signal_scout.support.stack import lifecycle
+from tests.signal_scout.support.mission import CLI, assert_clean, receipt, wait_for_text
 
 
 @pytest.fixture(scope="module")

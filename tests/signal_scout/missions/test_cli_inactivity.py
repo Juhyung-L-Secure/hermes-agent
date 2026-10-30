@@ -9,12 +9,9 @@ import uuid
 import pytest
 import yaml
 
-from tests.signal_scout.conftest import lifecycle
-from tests.signal_scout.missions.test_cli_integration import (
+from tests.signal_scout.support.stack import lifecycle
+from tests.signal_scout.support.mission import (
     assert_clean,
-    cli_images,
-    cli_stack,
-    fixture_web,
     helper_state,
 )
 
@@ -24,7 +21,7 @@ def inactivity_stack(cli_stack, cli_images, tmp_path_factory):
     stack, command, counts, baseline = cli_stack
     directory = tmp_path_factory.mktemp('scout-inactivity-inference')
     image = 'scout-inactivity-fixture-' + uuid.uuid4().hex + ':local'
-    source = Path(__file__).with_name('inactivity_fixture.py')
+    source = Path(__file__).parents[1] / 'support/inactivity_fixture.py'
     shutil.copyfile(source, directory / 'sitecustomize.py')
     shutil.copyfile(source.with_name('inference_fixture.py'), directory / 'inference_helpers.py')
     base = lifecycle.BrowserRun((lifecycle.COMPOSE, cli_images)).model['services']['scout']['image']

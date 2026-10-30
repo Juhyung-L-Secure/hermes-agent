@@ -7,9 +7,9 @@ import uuid
 import pytest
 import yaml
 
-from tests.signal_scout.conftest import lifecycle
+from tests.signal_scout.support.stack import lifecycle
 
-settings = importlib.import_module('plugins.signal-scout.security.settings')
+settings = importlib.import_module('plugins.signal-scout.scout_runtime.settings')
 
 
 @pytest.fixture
@@ -42,7 +42,7 @@ def consumers(stack, run, config, *, native=True):
     code = r'''
 import errno, importlib, json, os
 from pathlib import Path
-s=importlib.import_module('plugins.signal-scout.security.settings')
+s=importlib.import_module('plugins.signal-scout.scout_runtime.settings')
 config=s.load_settings()
 assert s.settings_digest(config)==EXPECTED
 from hermes_cli.config import load_config
@@ -60,7 +60,7 @@ if CHECK_NATIVE_CONSUMERS:
         assert agent._api_max_retries==config['agent']['api_max_retries']
     finally:
         agent.close()
-    Browser=importlib.import_module('plugins.signal-scout.security.browser').Browser
+    Browser=importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
     with Browser() as browser:
         assert browser.settings==config
         assert browser.command('eval','window.innerWidth')['result']==config['browser']['viewport']['width']
@@ -117,7 +117,7 @@ def test_BT_006_selected_file_reaches_real_browser_without_build(scout_stack, tm
     with scout_stack.browser_run(compose_files=files, config_path=path, restore_helpers=True) as run:
         assert run.config['browser']['command_timeout'] == 19
         actual = lifecycle.checked(['docker', 'exec', run.container, 'python3', '-c',
-            'from security.settings import load_settings; import json; print(json.dumps(load_settings()))'])
+            'from scout_runtime.settings import load_settings; import json; print(json.dumps(load_settings()))'])
         assert json.loads(actual)['browser']['command_timeout'] == 19
         assert json.loads(actual)['scout_proxy']['idle_timeout'] == 37
         first_helpers = consumers(scout_stack, run, config)
@@ -166,7 +166,7 @@ def test_BT_006_runtime_loader_refuses_noncanonical_delivery_before_work(scout_s
         command = scout_stack.compose_command + ['-f', str(override)]
     result = subprocess.run((command if delivery == 'missing' else scout_stack.compose_command) + options + [
         '--entrypoint', 'python', 'scout', '-c',
-        "import importlib; importlib.import_module('plugins.signal-scout.security.settings').load_settings(); print('WORK-REACHED')"],
+        "import importlib; importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings(); print('WORK-REACHED')"],
         capture_output=True, text=True, timeout=30)
     assert result.returncode != 0 and 'WORK-REACHED' not in result.stdout
     assert 'Invalid Scout operating settings.' in result.stderr and 'secret-poison' not in result.stderr
@@ -210,7 +210,7 @@ def test_BT_006_raw_helper_consumption_cannot_be_forged_by_fresh_file_read(scout
         for service in ('proxy', 'firewall'):
             info = changed.inspect_helper(service)
             actual = lifecycle.checked(['docker', 'exec', '-u', '10000:10000', info['Id'], 'python3', '-c',
-                'from security.settings import load_settings,settings_digest; print(settings_digest(load_settings()))'])
+                'from scout_runtime.settings import load_settings,settings_digest; print(settings_digest(load_settings()))'])
             assert actual == settings.settings_digest(config)
             with pytest.raises(RuntimeError, match='helper consumed configuration mismatch'):
                 changed.verify_configuration(info, service)

@@ -8,8 +8,8 @@ from pathlib import Path
 
 import pytest
 
-urls = importlib.import_module("plugins.signal-scout.security.urls")
-proxy = importlib.import_module("plugins.signal-scout.security.network_proxy")
+urls = importlib.import_module("plugins.signal-scout.scout_runtime.network.urls")
+proxy = importlib.import_module("plugins.signal-scout.scout_runtime.network.proxy")
 
 
 @pytest.mark.parametrize("raw", [
@@ -76,8 +76,8 @@ def test_SR_019_dns_failure_and_mixed_answers_connect_nowhere(monkeypatch):
 
 
 def test_SR_001_launch_adapter_forces_policy_and_rejects_overrides():
-    chromium = importlib.import_module('plugins.signal-scout.security.chromium')
-    settings = importlib.import_module('plugins.signal-scout.security.settings')
+    chromium = importlib.import_module('plugins.signal-scout.scout_runtime.browser.chromium')
+    settings = importlib.import_module('plugins.signal-scout.scout_runtime.settings')
     config = settings.load_settings(Path(__file__).resolve().parents[3] / 'docker/signal-scout/config.yaml')
     network = config['scout_network']
     with tempfile.TemporaryDirectory(prefix='scout-chrome-', dir='/tmp') as profile:

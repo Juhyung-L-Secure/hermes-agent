@@ -40,6 +40,6 @@ Each feature uses `Sub-features`, `How to get to it (user POV)`, `Driving it wit
 - [Runtime operating file](runtime-config.md) checks fixed capture, all-service delivery, same-image changes, and retained helper restart sources.
 - [Public browser smoke](browser-smoke.md) checks real owned browser navigation, observation, sandbox and teardown.
 - [Browser process diagnostics](browser-diagnostics.md) checks bounded process/relay logging, selected container state, native redaction, and final collection after Scout exits.
-- [Browser actions](reviewed-browser-actions.md) checks allowed effects, rejected requests, and fatal cleanup through native Hermes dispatch using offline provider boundaries.
+- [Browser actions](browser-actions.md) checks allowed effects, rejected requests, and fatal cleanup through native Hermes dispatch using offline provider boundaries.
 - [Headed browser viewer](browser-viewer.md) checks local authenticated noVNC, trusted manual input, stale original-reference rejection, and continued browser use after viewer closure.
 - [Spec traceability](spec-traceability.md) checks the external CLI, whole feature documents, and honest full-inventory gaps independently of test-body execution.

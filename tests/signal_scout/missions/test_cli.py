@@ -2,7 +2,6 @@ import fcntl
 import importlib
 import io
 import json
-import logging
 import os
 from pathlib import Path
 import sys
@@ -14,17 +13,17 @@ from unittest.mock import Mock
 import pytest
 import yaml
 
-from tests.signal_scout.browser_tools.test_adapter import FakeGate, dispatch, native_plugin
-from tests.signal_scout.security.test_logging import isolated
+from tests.signal_scout.support.model import FakeSession, dispatch
+from tests.signal_scout.support.diagnostics import isolated
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "docker/signal-scout"))
 import mission_run as host
 import browser_run as lifecycle
 
-mission = importlib.import_module("plugins.signal-scout.missions")
+mission = importlib.import_module("plugins.signal-scout.scout_runtime.mission")
 console_module = importlib.import_module("plugins.signal-scout.missions.console")
-runtime = importlib.import_module("plugins.signal-scout.security.runtime_logging")
+runtime = importlib.import_module("plugins.signal-scout.scout_runtime.runtime_logging")
 
 
 @pytest.mark.parametrize("value,expected", [
@@ -98,8 +97,8 @@ def test_MI_032_BR_006_startup_uses_registered_adapter_and_one_reference_copy(na
     import run_agent
 
     runner = importlib.import_module("plugins.signal-scout.missions.__main__")
-    browser_module = importlib.import_module("plugins.signal-scout.security.browser")
-    gate_module = importlib.import_module("plugins.signal-scout.security.gate")
+    browser_module = importlib.import_module("plugins.signal-scout.scout_runtime.browser.owner")
+    gate_module = importlib.import_module("plugins.signal-scout.scout_runtime.browser.session")
     reference_path = tmp_path / "action-reference.md"
     guide = "# Required fixture reference\n\nExact Unicode guidance 雪.\n"
     reference_path.write_text(guide)
@@ -107,13 +106,12 @@ def test_MI_032_BR_006_startup_uses_registered_adapter_and_one_reference_copy(na
     config = yaml.safe_load((ROOT / "docker/signal-scout/config.yaml").read_text())
     result = {"status":"rejected", "reason":"args for click must contain exactly: ref.", "execution_started":False,
               "data":{"error":{"kind":"request_format","code":"args_fields","field":"args"}}}
-    gate = FakeGate(result)
+    gate = FakeSession(result)
     captured = {}
     monkeypatch.setattr(hermes_cli.runtime_provider, "resolve_runtime_provider", lambda **_: {
         "provider":config["model"]["provider"], "api_mode":"chat_completions", "base_url":"https://offline.test", "api_key":"offline"})
     monkeypatch.setattr(browser_module, "Browser", lambda: nullcontext(SimpleNamespace(
-        evidence=lambda: SimpleNamespace(tabs=lambda: [{"target_id":"owned-tab"}]))))
-    monkeypatch.setattr(gate_module, "BrowserActionGate", lambda *args, **kwargs: gate)
+        session=lambda: gate)))
     class Agent:
         valid_tool_names = {"browser_scout"}
         run_budget_seconds = None
@@ -140,14 +138,12 @@ def test_MI_032_BR_006_startup_uses_registered_adapter_and_one_reference_copy(na
     assert captured["options"]["enabled_toolsets"] == ["signal_scout_browser"]
 
 
-
-
 def test_MI_034_native_console_preserves_saved_handlers_levels_redaction_and_traceback(tmp_path):
     result = isolated(tmp_path, r'''
         import importlib, io, logging, os, sys, yaml
         from pathlib import Path
         import hermes_logging
-        runtime=importlib.import_module('plugins.signal-scout.security.runtime_logging')
+        runtime=importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging')
         MissionConsole=importlib.import_module('plugins.signal-scout.missions.console').MissionConsole
         config=yaml.safe_load((Path(os.environ['HERMES_HOME'])/'config.yaml').read_text())
         runtime.configure_logging('scout',config)
@@ -340,8 +336,6 @@ def test_MI_032_bootstrap_retains_explicit_native_bounds(native_plugin, monkeypa
     assert bootstrap.chat()["explanation"] == "Bootstrap ready."
     assert captured["run_budget_seconds"] == 90 and captured["max_iterations"] == 3
     assert captured["enabled_toolsets"] == ["signal_scout"] and captured["fallback_model"] == []
-
-
 
 
 @pytest.mark.parametrize("fault,expected", [("create-error", 1), ("cancel", 130), ("cancel-browser", 130)])

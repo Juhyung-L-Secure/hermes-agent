@@ -2,8 +2,8 @@ import subprocess
 
 import yaml
 
-from tests.signal_scout.conftest import lifecycle
-from tests.signal_scout.security.test_browser_safeguards import OBSERVE, settings
+from tests.signal_scout.support.stack import lifecycle
+from tests.signal_scout.support.browser_policy import OBSERVE, settings
 
 
 def test_SR_007_SR_008_SR_009_changed_configuration_reaches_real_window_and_scale(scout_stack, tmp_path):

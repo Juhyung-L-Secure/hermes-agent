@@ -22,11 +22,11 @@ import traceback
 import uuid
 
 ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "plugins/signal-scout"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from browser_diagnostics import BrowserDiagnostics
-settings = importlib.import_module("plugins.signal-scout.security.settings")
-control = importlib.import_module("plugins.signal-scout.security.control")
+settings = importlib.import_module("scout_runtime.settings")
+control = importlib.import_module("scout_runtime.browser.control")
 CONFIG = Path(__file__).with_name("config.yaml")
 COMPOSE = Path(__file__).with_name("compose.yaml")
 RUN_LABEL = "io.signal-scout.browser-run"
@@ -202,7 +202,7 @@ class BrowserRun:
         self._verify_config_mount(info, expected)
         if not info['State']['Running']:
             return
-        module = 'plugins.signal-scout.security.settings' if service == 'scout' else 'security.settings'
+        module = 'plugins.signal-scout.scout_runtime.settings' if service == 'scout' else 'scout_runtime.settings'
         code = "import importlib; s=importlib.import_module(" + repr(module) + "); print(s.settings_digest(s.load_settings()))"
         if service == 'scout':
             code = ("from pathlib import Path; p=Path('/var/lib/scout/config.yaml'); "
@@ -212,7 +212,7 @@ class BrowserRun:
             raise RuntimeError('Scout configuration delivery mismatch.')
         if service in {'proxy', 'firewall'}:
             consumed = checked(['docker', 'exec', '-u', '10000:10000', info['Id'], 'python3', '-c',
-                'from security.helper_ready import consumed_settings; print(consumed_settings(' + repr(service) + '))'])
+                'from scout_runtime.readiness import consumed_settings; print(consumed_settings(' + repr(service) + '))'])
             if consumed != expected.digest:
                 raise RuntimeError('Scout helper consumed configuration mismatch.')
 
@@ -328,7 +328,7 @@ class BrowserRun:
             while time.monotonic() < deadline:
                 if not self.inspect_owned()["State"]["Running"]:
                     raise RuntimeError("Browser startup failed.")
-                result = subprocess.run(["docker", "exec", self.container, "python3", "-m", "security.chromium", "--status"],
+                result = subprocess.run(["docker", "exec", self.container, "python3", "-m", "scout_runtime.browser.chromium", "--status"],
                                         capture_output=True, text=True,
                                         timeout=self.config["scout_lifecycle"]["control_connect_timeout"] + 1)
                 if result.returncode == 0:
@@ -368,7 +368,7 @@ class BrowserRun:
             raise RuntimeError("Browser viewer disabled.")
         self.scout_environment()
         password = checked(["docker", "exec", self.container, "python3", "-c",
-                            "from security.viewer import ACCESS; print(ACCESS.read_text())"])
+                            "from scout_runtime.browser.viewer import ACCESS; print(ACCESS.read_text())"])
         if not re.fullmatch("[A-Za-z0-9_-]{43}", password):
             raise RuntimeError("Browser viewer authentication unavailable.")
         return {"url": f"http://127.0.0.1:{self.config['scout_network']['viewer_port']}/vnc.html?autoconnect=1&resize=scale",
@@ -376,7 +376,7 @@ class BrowserRun:
 
     def smoke(self, url):
         """Run only the deterministic bounded Scout navigation/observation entrypoint."""
-        importlib.import_module("plugins.signal-scout.security.urls").validate_url(url)
+        importlib.import_module("scout_runtime.network.urls").validate_url(url)
         options = [value for key, setting in self.scout_environment().items() for value in ("-e", key + "=" + setting)]
         result = checked(self.compose + ["run", "--rm", "--no-deps", "-T", *options, "scout", "browser-smoke", url],
                          timeout=self.config["scout_lifecycle"]["smoke_timeout"])

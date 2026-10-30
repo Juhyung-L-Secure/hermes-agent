@@ -22,7 +22,7 @@ services:
     image: signal-scout-bootstrap-network:local
     user: "0:0"
     cap_add: [NET_ADMIN, SETUID, SETGID, SETPCAP]
-    command: [/usr/local/bin/scout-firewall]
+    command: [python3, -m, scout_runtime.network.firewall]
     volumes: [scout-logs:/var/log/scout]
     networks:
       restricted:

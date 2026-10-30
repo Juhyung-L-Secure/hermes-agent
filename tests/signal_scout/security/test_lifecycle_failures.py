@@ -10,9 +10,9 @@ from unittest.mock import Mock
 import pytest
 import yaml
 
-from tests.signal_scout.conftest import lifecycle
+from tests.signal_scout.support.stack import lifecycle
 
-browser_module = importlib.import_module('plugins.signal-scout.security.browser')
+browser_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner')
 
 
 def docker(*args):
@@ -22,7 +22,7 @@ def docker(*args):
 @pytest.mark.parametrize('foreign_collision', [False, True])
 def test_SR_005_create_then_start_failure_removes_only_attempted_owner(scout_stack, tmp_path, monkeypatch, foreign_collision):
     """SR_024"""
-    from tests.signal_scout.security.test_process_diagnostics import saved_run
+    from tests.signal_scout.support.diagnostics import saved_run
     override = tmp_path / 'cannot-start.yaml'
     # Without Docker's init trampoline, absent executable fails OCI start itself.
     override.write_text(yaml.safe_dump({'services': {'browser': {'init': False, 'entrypoint': ['/missing-start-fixture']}}}))
@@ -105,7 +105,7 @@ from pathlib import Path
 from tools import browser_tool
 from websockets.sync.client import connect
 signal.alarm(60)
-Browser = importlib.import_module('plugins.signal-scout.security.browser').Browser
+Browser = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
 with Browser() as browser:
     assert browser.command('eval','true')['result'] is True
     session = browser_tool._active_sessions[browser.task]
