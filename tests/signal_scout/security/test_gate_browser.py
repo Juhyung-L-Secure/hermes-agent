@@ -429,8 +429,8 @@ with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, op
     session=attach(next(page for page in pages() if page['targetId']==tab))
     cdp('Page.enable',session=session);events.clear()
     responses=[];native_navigation=gate._observe_effect
-    def navigation(*args):
-        result=native_navigation(*args);responses.append(result);return result
+    def navigation(*args, **kwargs):
+        result=native_navigation(*args, **kwargs);responses.append(result);return result
     gate._observe_effect=navigation
     destination='http://public.test/attachment/gate-fixture.bin'
     if kind=='redirect': destination='http://public.test/redirect/'+destination
