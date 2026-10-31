@@ -14,7 +14,7 @@
 | `_cdp.py` | Private CDP transport, command acknowledgment, document observation |
 | `chromium.py` | Owned Chromium child/profile/listener, native policy attestation, initial window sizing, relay |
 | `control.py` | Exact host/port/browser UUID endpoint validation and non-redirecting discovery |
-| `viewer.py` | Container-local display/VNC lifetime and authenticated packaged noVNC transport |
+| `wayland.py` | Validated local WSLg socket grant, fixed container endpoint and private child display environment |
 | `../actions.py` | Ordered `ACTION_FIELDS` vocabulary and allowed/blocked modes, shared by schema, settings, and request parser |
 | `../settings.py` and `../readiness.py` | Validated operating-file values, consistency digest, and consumed helper settings |
 | `../process_output.py` and `../runtime_logging.py` | Bounded child-record assembly, nonblocking delivery, component logging, and proxy-side browser writer |
@@ -50,6 +50,12 @@ Chromium launcher drains separate stdout/stderr and records child status, receiv
 Host `docker/signal-scout/browser_diagnostics.py` continuously collects only verified current container, including startup and final teardown after Scout exits. Private host worker applies native `RedactingFormatter` to complete raw records before single-line encoding. Fixed stdin-only writer runs in verified proxy through `python3 -m scout_runtime.runtime_logging --browser-writer RUN`. Shutdown checks exact argv, PID, and start time before stopping that writer. `pre_stop` and `after_stop_attempt` records retain selected Docker status/OOM/error/time fields, or explicit unavailable observation, before removal.
 
 Configured record and pending-payload caps, continuous source drain, nonblocking output, rotation, and bounded close prevent failed diagnostic endpoints from controlling mission outcomes. Unredacted temporary Docker transport is finite and can evict output. Native redaction is not universal content removal. [Security logging contract](../../security/README.md#logs-and-diagnostic-boundaries) owns retention and access. Existing deadlines, retries, results, and closure stay independent of best-effort delivery. Original mission disconnect remains unexplained.
+
+## Native headed debugging
+
+Headless production has no display dependency or mount. Explicit headed mode uses native Wayland to open the owned container's Chromium window through local WSLg. Host `BrowserRun` captures one immutable socket grant with the run configuration. Declared and actual mount checks allow only that browser-only read-only socket. `wayland.py` supplies the shared endpoint and a private runtime directory for Chromium's reconstructed environment. No X11, VNC, remote viewer, display server or separate host Chrome is started.
+
+Native input reaches the actual browser and can stale Scout's original references. Closing the native window closes Chromium and follows existing browser-loss handling. Policy, viewport, sandbox, CDP and cleanup remain owned by their existing code.
 
 ## Verification ownership
 

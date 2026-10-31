@@ -84,8 +84,11 @@ print('all-consumers-fixed-and-readonly')
     for service, identifier in (*helpers.items(), ('browser', run.container)):
         mounts = json.loads(lifecycle.checked(['docker', 'inspect', identifier]))[0]['Mounts']
         binds = [m for m in mounts if m['Type'] == 'bind']
-        assert len(binds) == 1 and binds[0]['Source'] == str(run._run_config.path)
-        assert binds[0]['Destination'] == '/opt/scout/config.yaml' and binds[0]['RW'] is False
+        expected_binds={'/opt/scout/config.yaml':str(run._run_config.path)}
+        if service=='browser' and run._run_config.wayland is not None:
+            expected_binds[str(lifecycle.wayland.SOCKET)]=str(run._run_config.wayland.source)
+        assert {m['Destination']:m['Source'] for m in binds}==expected_binds
+        assert all(m['RW'] is False for m in binds)
         assert lifecycle.checked(['docker', 'exec', '-u', '10000:10000', identifier, 'python3', '-c',
             "import errno,os;\ntry: os.open('/opt/scout/config.yaml',os.O_WRONLY)\n"
             "except OSError as e: assert e.errno in (errno.EACCES,errno.EROFS)\n"
@@ -216,3 +219,22 @@ def test_BT_006_raw_helper_consumption_cannot_be_forged_by_fresh_file_read(scout
                 changed.verify_configuration(info, service)
     finally:
         scout_stack.compose('up', '-d', '--wait', '--no-build', '--pull', 'never', '--force-recreate', 'proxy', 'firewall')
+
+
+def test_BT_006_SR_012_headed_display_and_configuration_are_fixed(scout_stack, tmp_path, native_display, monkeypatch):
+    config=settings.load_settings(lifecycle.CONFIG)
+    config['browser']['mode']='headed'
+    path=tmp_path/'native.yaml'
+    path.write_text(yaml.safe_dump(config))
+    with scout_stack.browser_run(config_path=path,restore_helpers=True) as run:
+        source=run._run_config.wayland.source
+        consumers(scout_stack,run,config)
+        monkeypatch.setenv('WAYLAND_DISPLAY','/var/run/docker.sock')
+        config['browser']['mode']='headless'
+        path.write_text(yaml.safe_dump(config))
+        fixed=settings.load_settings(run._run_config.path)
+        assert fixed['browser']['mode']=='headed' and run._run_config.wayland.source==source
+        consumers(scout_stack,run,fixed,native=False)
+    with scout_stack.browser_run(config_path=path,restore_helpers=True) as run:
+        assert run.config['browser']['mode']=='headless' and run._run_config.wayland is None
+        consumers(scout_stack,run,config,native=False)

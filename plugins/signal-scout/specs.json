@@ -24,8 +24,16 @@
         "unit"
       ],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/integration/test_plugin.py","test":"test_BT_001_native_status_discovery_dispatch_and_invalid_inputs"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_plugin.py","test":"test_BT_001_disabled_plugin_is_unavailable"}
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_plugin.py",
+          "test": "test_BT_001_native_status_discovery_dispatch_and_invalid_inputs"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_plugin.py",
+          "test": "test_BT_001_disabled_plugin_is_unavailable"
+        }
       ],
       "otherCoverage": [],
       "blocker": ""
@@ -34,17 +42,41 @@
       "id": "BT_002",
       "subfeature": "bootstrap",
       "title": "Isolated Docker bootstrap",
-      "contract": "Exactly four Compose services remain: scout, browser, firewall and proxy. Bounded non-root Scout container has read-only root, no capabilities, no host mounts except the explicit read-only operating-config file under BT_006, no published ports, and dedicated auth/log storage. Hermes has its own network namespace with direct outbound and DNS connectivity, no Scout-specific firewall or proxy environment configuration, and no Scout-enforced host/LAN isolation. Chromium runs in separate disposable browser container with no Hermes runtime or credential/persistent mounts, owned by trusted host lifecycle. Browser shares only firewall's network namespace; proxy has its own. Browser firewall permits proxy/replies, Hermes-to-browser private relay, and narrow browser-local launcher/relay-to-Chromium CDP control only. Browser direct/bypass IPv4/IPv6, host/LAN and DNS traffic fail. Proxy admits only configured browser source address and public HTTP:80 or opaque HTTPS CONNECT:443, rejecting Hermes/other clients, private destinations, unsupported schemes, embedded credentials, DNS failures and other ports. TLS remains verified end-to-end without decryption. SR_019 owns redirects/rebinding/background behavior; SR_002 owns control isolation; SR_004/S005 own container/lifetime boundary. No mission/research security completion.",
+      "contract": "Exactly four Compose services remain: scout, browser, firewall and proxy. Bounded non-root Scout container has read-only root, no capabilities, no host mounts except the explicit read-only operating-config file under BT_006, no published ports, and dedicated auth/log storage. Hermes has its own network namespace with direct outbound and DNS connectivity, no Scout-specific firewall or proxy environment configuration, and no Scout-enforced host/LAN isolation. Chromium runs in separate disposable browser container with no Hermes runtime or credential/persistent mounts, owned by trusted host lifecycle. Browser shares only firewall's network namespace; proxy has its own. Browser firewall permits proxy/replies, Hermes-to-browser private relay, and narrow browser-local launcher/relay-to-Chromium CDP control only. No viewer bridge, viewer TCP listener or published viewer port remains; explicit headed display access is a local socket under SR_012. Browser direct/bypass IPv4/IPv6, host/LAN and DNS traffic fail. Proxy admits only configured browser source address and public HTTP:80 or opaque HTTPS CONNECT:443, rejecting Hermes/other clients, private destinations, unsupported schemes, embedded credentials, DNS failures and other ports. TLS remains verified end-to-end without decryption. SR_019 owns redirects/rebinding/background behavior; SR_002 owns control isolation; SR_004/S005 own container/lifetime boundary. No mission/research security completion.",
       "requiredCoverage": [
         "e2e"
       ],
       "coverage": [
-        {"layer":"e2e","file":"tests/signal_scout/integration/test_container.py","test":"test_BT_002_container_identity_mounts_resources_and_native_status"},
-        {"layer":"e2e","file":"tests/signal_scout/integration/test_container.py","test":"test_BT_002_hermes_direct_network_and_bootstrap_environment"},
-        {"layer":"e2e","file":"tests/signal_scout/integration/test_container.py","test":"test_BT_002_browser_direct_egress_host_lan_ipv6_and_dns_are_blocked"},
-        {"layer":"e2e","file":"tests/signal_scout/integration/test_container.py","test":"test_BT_002_proxy_denies_private_hosts_ports_and_protocols"},
-        {"layer":"e2e","file":"tests/signal_scout/integration/test_container.py","test":"test_BT_002_hermes_direct_endpoints_keep_verified_tls"},
-        {"layer":"e2e","file":"tests/signal_scout/integration/test_container.py","test":"test_BT_002_proxy_accepts_browser_only"}
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_container.py",
+          "test": "test_BT_002_container_identity_mounts_resources_and_native_status"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_container.py",
+          "test": "test_BT_002_hermes_direct_network_and_bootstrap_environment"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_container.py",
+          "test": "test_BT_002_browser_direct_egress_host_lan_ipv6_and_dns_are_blocked"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_container.py",
+          "test": "test_BT_002_proxy_denies_private_hosts_ports_and_protocols"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_container.py",
+          "test": "test_BT_002_hermes_direct_endpoints_keep_verified_tls"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_container.py",
+          "test": "test_BT_002_proxy_accepts_browser_only"
+        }
       ],
       "otherCoverage": [],
       "blocker": ""
@@ -54,14 +86,41 @@
       "subfeature": "bootstrap",
       "title": "File-owned operating settings",
       "contract": "Host-supplied docker/signal-scout/config.yaml owns Hermes/browser/proxy/logging settings plus network topology and lifecycle bounds. Defaults: INFO, 5 MiB/file, three backups, browser command60s, proxy DNS/connect/idle5/10/60s, browser startup20s, local-control connect2s, shutdown5s and deterministic smoke120s. Required browser.action_permissions supplies closed implemented action vocabulary with explicit blocked/allowed modes; required positive integer scroll_pixels starts500. AG_001/AG_004/AG_007 own propagation, unsupported-action rejection and absent-permission denial. No reviewer configuration or policy file is required. These bounds are consumed, not supervisor retries or future mission budgets; bootstrap model/low reasoning remain unchanged. Trusted host validates Compose topology and running helper/browser settings match configuration. Native Compose includes keep resources in per-service YAML: browser2,000,000,000-byte RAM/equal memory+swap/no CPU quota/PID512/bounded tmpfs, Hermes1g/1CPU, helpers256m/.5CPU. Supplied settings validate with sanitized failures; unknown switches, invalid types/ranges, real-profile/cloud/arbitrary-CDP overrides or sandbox/TLS/network relaxation fail. Config-only edits apply through read-only startup configuration without rebuilding images; BT_006 owns frozen run propagation and consistency. Code/dependency/browser changes still require builds. No hot reload, alternate-default generator or protection-disable switch.",
-      "requiredCoverage": ["unit", "e2e"],
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/integration/test_settings.py","test":"test_AG_007_BT_004_required_action_policy_and_scroll_configuration_fail_explicitly"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_settings.py","test":"test_BT_004_SR_005_lifecycle_consumes_supplied_bounds"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_settings.py","test":"test_BT_004_defaults_and_supplied_file_settings"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_settings.py","test":"test_BT_004_invalid_or_security_relaxing_configuration_fails"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_settings.py","test":"test_BT_004_browser_command_uses_supplied_timeout"},
-        {"layer":"e2e","file":"tests/signal_scout/integration/test_settings.py","test":"test_BT_004_image_owned_configuration_matches_runtime"}
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_settings.py",
+          "test": "test_AG_007_BT_004_required_action_policy_and_scroll_configuration_fail_explicitly"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_settings.py",
+          "test": "test_BT_004_SR_005_lifecycle_consumes_supplied_bounds"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_settings.py",
+          "test": "test_BT_004_defaults_and_supplied_file_settings"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_settings.py",
+          "test": "test_BT_004_invalid_or_security_relaxing_configuration_fails"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_settings.py",
+          "test": "test_BT_004_browser_command_uses_supplied_timeout"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_settings.py",
+          "test": "test_BT_004_image_owned_configuration_matches_runtime"
+        }
       ],
       "otherCoverage": [],
       "blocker": ""
@@ -70,23 +129,92 @@
       "id": "BT_006",
       "subfeature": "configuration",
       "title": "Fixed read-only run configuration without image rebuilds",
-      "contract": "Editing the trusted host operating config changes the next public mission or browser run without an image rebuild. The existing config file and explicit operator --config interface remain supported. Before run startup, the trusted owner validates and fixes one configuration snapshot for host, Hermes, Chromium, firewall and proxy; source edits or atomic source replacement during that run do not change its settings, while a later run receives the new valid settings. Containers receive only the intended config file through a read-only configuration mount, not its parent folder, repository, personal files, Docker socket or new authentication/log access. Missing, malformed, invalid, writable or mismatched supplied run configuration fails before research inference or untrusted browser work, without silently using baked defaults, another config or a different provider. Actual service and waiting Scout settings must match the selected snapshot and Compose topology before mission text is sent. Changed configuration recreates affected containers when needed while reusing built images, preserving single-run ownership, required browser safeguards, auth/log volumes, existing diagnostics and initial helper running/stopped restoration. Configuration sources remain available for every container that still needs them, and cleanup removes only exactly owned temporary configuration resources. Direct documented Compose status/login/bootstrap paths continue to receive valid read-only operating config. There is no hot reload, config-writable agent tool, new user-facing environment switch or change to action policy, models, deadlines, retries, network/download enforcement or helper reconnect behavior merely from this delivery migration.",
-      "requiredCoverage": ["unit", "e2e"],
+      "contract": "Editing the trusted host operating config changes the next public mission or browser run without an image rebuild. The existing config file and explicit operator --config interface remain supported. Before run startup, the trusted owner validates and fixes one configuration snapshot for host, Hermes, Chromium, firewall and proxy; source edits or atomic source replacement during that run do not change its settings, while a later run receives the new valid settings. For configuration delivery, containers receive only the intended config file through a read-only configuration mount, not its parent folder, repository, personal files, Docker socket or new authentication/log access. The sole separate display grant is the explicit headed-browser Wayland socket under SR_012; headless and other consumers receive no display mount. Missing, malformed, invalid, writable or mismatched supplied run configuration fails before research inference or untrusted browser work, without silently using baked defaults, another config or a different provider. Actual service and waiting Scout settings must match the selected snapshot and Compose topology before mission text is sent. Changed configuration recreates affected containers when needed while reusing built images, preserving single-run ownership, required browser safeguards, auth/log volumes, existing diagnostics and initial helper running/stopped restoration. Configuration sources remain available for every container that still needs them, and cleanup removes only exactly owned temporary configuration resources. Direct documented Compose status/login/bootstrap paths continue to receive valid read-only operating config. There is no hot reload, config-writable agent tool, new user-facing environment switch or change to action policy, models, deadlines, retries, network/download enforcement or helper reconnect behavior merely from this delivery migration.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/integration/test_runtime_config_unit.py","test":"test_BT_006_constructor_and_close_allocate_nothing"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_runtime_config_unit.py","test":"test_BT_006_entry_capture_binds_diagnostics_and_retains_only_fixed_slot"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_runtime_config_unit.py","test":"test_BT_006_invalid_entry_source_has_no_last_slot_fallback"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_runtime_config_unit.py","test":"test_BT_006_actual_mount_boundary_rejects_wrong_delivery"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_runtime_config_unit.py","test":"test_BT_006_slot_identity_and_content_changes_refuse"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_runtime_config_unit.py","test":"test_BT_006_final_compose_grants_reject_shadow_or_missing_delivery"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_runtime_config_unit.py","test":"test_BT_006_helpers_require_current_running_health_after_up"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_runtime_config_unit.py","test":"test_BT_006_replaced_slot_during_readiness_refuses_owned_browser"},
-        {"layer":"unit","file":"tests/signal_scout/integration/test_runtime_config_unit.py","test":"test_BT_006_replaced_slot_after_entry_refuses_environment_and_smoke"},
-        {"layer":"e2e","file":"tests/signal_scout/integration/test_runtime_config.py","test":"test_BT_006_selected_file_reaches_real_browser_without_build"},
-        {"layer":"e2e","file":"tests/signal_scout/integration/test_runtime_config.py","test":"test_BT_006_runtime_loader_refuses_noncanonical_delivery_before_work"},
-        {"layer":"e2e","file":"tests/signal_scout/integration/test_runtime_config.py","test":"test_BT_006_actual_mixed_or_absent_helper_state_restores"},
-        {"layer":"e2e","file":"tests/signal_scout/integration/test_runtime_config.py","test":"test_BT_006_raw_helper_consumption_cannot_be_forged_by_fresh_file_read"},
-        {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_032_BT_006_actual_stale_scout_config_fails_before_inference"}
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_runtime_config_unit.py",
+          "test": "test_BT_006_constructor_and_close_allocate_nothing"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_runtime_config_unit.py",
+          "test": "test_BT_006_entry_capture_binds_diagnostics_and_retains_only_fixed_slot"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_runtime_config_unit.py",
+          "test": "test_BT_006_invalid_entry_source_has_no_last_slot_fallback"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_runtime_config_unit.py",
+          "test": "test_BT_006_actual_mount_boundary_rejects_wrong_delivery"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_runtime_config_unit.py",
+          "test": "test_BT_006_slot_identity_and_content_changes_refuse"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_runtime_config_unit.py",
+          "test": "test_BT_006_final_compose_grants_reject_shadow_or_missing_delivery"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_runtime_config_unit.py",
+          "test": "test_BT_006_helpers_require_current_running_health_after_up"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_runtime_config_unit.py",
+          "test": "test_BT_006_replaced_slot_during_readiness_refuses_owned_browser"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_runtime_config_unit.py",
+          "test": "test_BT_006_replaced_slot_after_entry_refuses_environment_and_smoke"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_runtime_config.py",
+          "test": "test_BT_006_selected_file_reaches_real_browser_without_build"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_runtime_config.py",
+          "test": "test_BT_006_runtime_loader_refuses_noncanonical_delivery_before_work"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_runtime_config.py",
+          "test": "test_BT_006_actual_mixed_or_absent_helper_state_restores"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_runtime_config.py",
+          "test": "test_BT_006_raw_helper_consumption_cannot_be_forged_by_fresh_file_read"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/missions/test_cli_integration.py",
+          "test": "test_MI_032_BT_006_actual_stale_scout_config_fails_before_inference"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_wayland.py",
+          "test": "test_SR_011_SR_012_BT_006_frozen_mode_and_socket_drive_both_mount_guards"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_runtime_config.py",
+          "test": "test_BT_006_SR_012_headed_display_and_configuration_are_fixed"
+        }
       ],
       "otherCoverage": [],
       "blocker": ""
@@ -96,10 +224,21 @@
       "subfeature": "model-reliability",
       "title": "Native main-model request retry",
       "contract": "Scout configures Hermes's existing application-level model-request attempt budget through agent.api_max_retries, initially 2 total attempts, allowing one ordinary retry rather than the former single attempt. Transient ReadError/Broken pipe and connection failures use native retry classification and backoff. The pending request retains existing conversation, completed tool results, tool schema and system prompt; retry does not restart a mission, replay a completed browser action or bypass its gate. Exhausted ordinary attempts return model failure, while non-retryable authentication errors retain native fail-fast behavior. Native SDK and separate primary-transport recovery paths remain unchanged, so this is not a strict universal wire-request cap. Browser navigation recovery remains separate from native main-model retries; no auxiliary safety reviewer remains. Tests exercise native Hermes dispatch and real owned Chromium with external model transport doubled; no live provider availability or complete research-mission guarantee is claimed.",
-      "requiredCoverage": ["unit", "e2e"],
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
       "coverage": [
-        {"layer":"unit","file":"tests/signal_scout/integration/test_model_retries.py","test":"test_BT_005_native_model_retry_preserves_completed_action"},
-        {"layer":"e2e","file":"tests/signal_scout/browser_tools/test_native_integration.py","test":"test_BT_005_native_model_retry_does_not_repeat_browser_effect"}
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_model_retries.py",
+          "test": "test_BT_005_native_model_retry_preserves_completed_action"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
+          "test": "test_BT_005_native_model_retry_does_not_repeat_browser_effect"
+        }
       ],
       "otherCoverage": [],
       "blocker": ""

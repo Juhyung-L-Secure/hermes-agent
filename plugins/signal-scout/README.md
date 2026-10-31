@@ -12,7 +12,7 @@ Runtime source and behavioral spec owners serve different purposes. `scout_runti
 | `__init__.py` | Native registration, validation, status result |
 | `bootstrap.py` | Operator status, login, bounded status chat, and internal deterministic smoke |
 | `scout_runtime/` | Lightweight settings/readiness, shared action vocabulary, mission data, native logging, browser and network implementation |
-| [Browser runtime](scout_runtime/browser/README.md) | Native owner, action session, CDP, Chromium child/relay, viewer, and diagnostics mechanics |
+| [Browser runtime](scout_runtime/browser/README.md) | Native owner, action session, CDP, Chromium child/relay, Wayland display, and diagnostics mechanics |
 | [Browser tools](browser_tools/README.md) | Native schema/binding/feedback, BR_001 through BR_006, and AG/AE action/inspection contracts |
 | [Security](security/README.md) | SR confinement, network, startup safeguard, diagnostic, and broader future security contracts |
 | [Docker runtime](../../docker/signal-scout/README.md) | Images, fixed read-only run configuration, host ownership, startup, and cleanup |

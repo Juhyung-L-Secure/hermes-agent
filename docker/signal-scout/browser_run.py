@@ -25,8 +25,10 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "plugins/signal-scout"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from browser_diagnostics import BrowserDiagnostics
+from scout_runtime.browser.wayland import WaylandGrant
 settings = importlib.import_module("scout_runtime.settings")
 control = importlib.import_module("scout_runtime.browser.control")
+wayland = importlib.import_module("scout_runtime.browser.wayland")
 CONFIG = Path(__file__).with_name("config.yaml")
 COMPOSE = Path(__file__).with_name("compose.yaml")
 RUN_LABEL = "io.signal-scout.browser-run"
@@ -46,30 +48,22 @@ def validate_topology(model, config):
     network = config["scout_network"]
     services = model["services"]
     if (set(services) != {"scout", "browser", "firewall", "proxy"}
-            or set(model["networks"]) != {"restricted", "outbound", "viewer"}):
+            or set(model["networks"]) != {"restricted", "outbound"}):
         raise ValueError("Scout network configuration mismatch.")
     if model["networks"]["restricted"]["ipam"]["config"] != [{"subnet": network["subnet"]}]:
         raise ValueError("Scout network configuration mismatch.")
-    if (model["networks"]["restricted"].get("internal") is not True
-            or model["networks"]["viewer"].get("internal", False)
-            or model["networks"]["viewer"]["ipam"]["config"] != [{"subnet": network["viewer_subnet"]}]
-            or services["firewall"]["networks"]["viewer"]["ipv4_address"] != network["viewer_address"]):
+    if model["networks"]["restricted"].get("internal") is not True:
         raise ValueError("Scout network configuration mismatch.")
     for service, key in (("proxy", "proxy_address"), ("scout", "scout_address"), ("firewall", "browser_address")):
         if services[service]["networks"]["restricted"]["ipv4_address"] != network[key]:
             raise ValueError("Scout network configuration mismatch.")
     if services["browser"]["network_mode"] != "service:firewall":
         raise ValueError("Scout network configuration mismatch.")
-    for service in ("scout", "browser", "proxy"):
+    for service in ("scout", "browser", "proxy", "firewall"):
         if services[service].get("ports"):
             raise ValueError("Scout network configuration mismatch.")
-    ports = services["firewall"].get("ports", [])
-    if (len(ports) != 1 or ports[0].get("host_ip") != "127.0.0.1"
-            or ports[0].get("protocol") != "tcp" or ports[0].get("target") != network["viewer_port"]
-            or ports[0].get("published") != str(network["viewer_port"])):
-        raise ValueError("Scout network configuration mismatch.")
     for service, networks in (("scout", {"restricted", "outbound"}),
-                              ("proxy", {"restricted", "outbound"}), ("firewall", {"restricted", "viewer"})):
+                              ("proxy", {"restricted", "outbound"}), ("firewall", {"restricted"})):
         if "network_mode" in services[service] or set(services[service]["networks"]) != networks:
             raise ValueError("Scout network configuration mismatch.")
 
@@ -79,22 +73,35 @@ class _RunConfig:
     path: Path
     digest: str
     identity: tuple[int, int]
+    wayland: WaylandGrant | None = None
 
 
-def validate_config_grants(model, source):
+def validate_config_grants(model, source, display=None):
     target = settings.CONFIG
     if Path(model['configs']['scout-operating']['file']) != source:
         raise ValueError('Scout configuration delivery mismatch.')
-    for service in model['services'].values():
+    for name, service in model['services'].items():
         grants = service.get('configs', [])
         if (len(grants) != 1 or grants[0].get('source') != 'scout-operating'
                 or grants[0].get('target') != str(target) or grants[0].get('mode') != '0444'):
             raise ValueError('Scout configuration delivery mismatch.')
+        display_mounts = []
         for mount in service.get('volumes', []):
             destination = Path(mount['target'])
+            if destination == wayland.SOCKET:
+                if display is None or name != 'browser':
+                    raise ValueError('Scout display delivery mismatch.')
+                display.validate()
+                if mount != display.mount():
+                    raise ValueError('Scout display delivery mismatch.')
+                display_mounts.append(mount)
+                continue
             if (mount['type'] == 'bind' or destination == target
-                    or destination in target.parents or target in destination.parents):
+                    or destination in target.parents or target in destination.parents
+                    or destination in wayland.SOCKET.parents or wayland.SOCKET in destination.parents):
                 raise ValueError('Scout configuration delivery mismatch.')
+        if len(display_mounts) != (1 if name == 'browser' and display is not None else 0):
+            raise ValueError('Scout display delivery mismatch.')
 
 
 class BrowserRun:
@@ -143,6 +150,7 @@ class BrowserRun:
             raise ValueError('Scout operating settings changed during capture.')
         config = settings._parse_settings(contents)
         validate_topology(self.model, config)
+        display = wayland.resolve_wayland() if config['browser']['mode'] == 'headed' else None
         slot = self._slot_path()
         directory = Path.home().resolve()
         for index, part in enumerate(('.local', 'state', 'signal-scout', self.project)):
@@ -164,31 +172,47 @@ class BrowserRun:
                 temporary.unlink(missing_ok=True)
         metadata = slot.stat()
         self.config = config
-        self._run_config = _RunConfig(slot, settings.settings_digest(config), (metadata.st_dev, metadata.st_ino))
+        self._run_config = _RunConfig(slot, settings.settings_digest(config), (metadata.st_dev, metadata.st_ino), display)
         with tempfile.NamedTemporaryFile(mode='w', dir=slot.parent, prefix='.compose-', suffix='.json', delete=False) as handle:
             self._config_override = Path(handle.name)
-            json.dump({'configs': {'scout-operating': {'file': str(slot)}}}, handle)
+            override = {'configs': {'scout-operating': {'file': str(slot)}}}
+            if display is not None:
+                override['services'] = {'browser': {'volumes': [display.mount()]}}
+            json.dump(override, handle)
         self.compose = self._base_compose + ['-f', str(self._config_override)]
         self.model = json.loads(checked(self.compose + ['config', '--format', 'json']))
         validate_topology(self.model, config)
-        validate_config_grants(self.model, slot)
+        validate_config_grants(self.model, slot, display)
 
-    def _verify_config_mount(self, info, expected):
+    def _verify_config_mount(self, info, expected, service=None):
         metadata = expected.path.stat()
         if ((metadata.st_dev, metadata.st_ino) != expected.identity
                 or settings.settings_digest(settings.load_settings(expected.path)) != expected.digest):
             raise RuntimeError('Scout run configuration changed.')
         target = settings.CONFIG
         matches = []
+        display_mounts = []
         for mount in info['Mounts']:
             destination = Path(mount['Destination'])
             if destination == target:
                 matches.append(mount)
-            elif mount['Type'] == 'bind' or destination in target.parents or target in destination.parents:
+            elif destination == wayland.SOCKET:
+                if (service != 'browser' or expected.wayland is None
+                        or self.config['browser']['mode'] != 'headed'):
+                    raise RuntimeError('Scout display delivery mismatch.')
+                expected.wayland.validate()
+                if (mount['Type'] != 'bind' or mount['Source'] != str(expected.wayland.source)
+                        or mount['RW'] is not False):
+                    raise RuntimeError('Scout display delivery mismatch.')
+                display_mounts.append(mount)
+            elif (mount['Type'] == 'bind' or destination in target.parents or target in destination.parents
+                    or destination in wayland.SOCKET.parents or wayland.SOCKET in destination.parents):
                 raise RuntimeError('Scout configuration delivery mismatch.')
         if (len(matches) != 1 or matches[0]['Type'] != 'bind' or matches[0]['RW'] is not False
                 or matches[0]['Source'] != str(expected.path)):
             raise RuntimeError('Scout configuration delivery mismatch.')
+        if len(display_mounts) != (1 if service == 'browser' and expected.wayland is not None else 0):
+            raise RuntimeError('Scout display delivery mismatch.')
 
     def verify_configuration(self, info, service):
         expected = self._run_config
@@ -199,7 +223,7 @@ class BrowserRun:
                 raise RuntimeError('Scout configuration delivery mismatch.')
             metadata = sources[0].stat()
             expected = _RunConfig(sources[0], settings.settings_digest(self.config), (metadata.st_dev, metadata.st_ino))
-        self._verify_config_mount(info, expected)
+        self._verify_config_mount(info, expected, service)
         if not info['State']['Running']:
             return
         module = 'plugins.signal-scout.scout_runtime.settings' if service == 'scout' else 'scout_runtime.settings'
@@ -357,22 +381,6 @@ class BrowserRun:
         self.verify_configuration(info, 'browser')
         return {"SCOUT_BROWSER_RUN": self.run, "SCOUT_BROWSER_CONTAINER": self.container,
                 "BROWSER_CDP_URL": self.endpoint}
-
-    def viewer_access(self):
-        """Return this owned session's local viewer URL/login to trusted operator.
-
-        Credentials are ephemeral browser tmpfs data, separate from model-facing
-        tools and Scout environment. Never persist or log this returned value.
-        """
-        if not self.config["browser"]["viewer"]:
-            raise RuntimeError("Browser viewer disabled.")
-        self.scout_environment()
-        password = checked(["docker", "exec", self.container, "python3", "-c",
-                            "from scout_runtime.browser.viewer import ACCESS; print(ACCESS.read_text())"])
-        if not re.fullmatch("[A-Za-z0-9_-]{43}", password):
-            raise RuntimeError("Browser viewer authentication unavailable.")
-        return {"url": f"http://127.0.0.1:{self.config['scout_network']['viewer_port']}/vnc.html?autoconnect=1&resize=scale",
-                "username": "scout", "password": password}
 
     def smoke(self, url):
         """Run only the deterministic bounded Scout navigation/observation entrypoint."""

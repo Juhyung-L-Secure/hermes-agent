@@ -71,13 +71,10 @@ def doctor(*, own_test_lock=False):
                 if item["health"] != "healthy":
                     raise RuntimeError("Running helper is not healthy.")
             run.verify_configuration(json.loads(command(['docker', 'inspect', item['id']]))[0], service)
-            if service == "firewall":
-                expected = {str(run.config["scout_network"]["viewer_port"]) + "/tcp": [
-                    {"HostIp": "127.0.0.1", "HostPort": str(run.config["scout_network"]["viewer_port"])}]}
-                if item["ports"] != expected:
-                    raise RuntimeError("Actual viewer publication differs from validated topology.")
+            if item["ports"]:
+                raise RuntimeError("Unexpected published Scout helper port.")
     return {"ok": True, "project": run.project, "settings_digest": digest,
-            "mode": run.config["browser"]["mode"], "viewer": run.config["browser"]["viewer"],
+            "mode": run.config["browser"]["mode"],
             "images": images, "containers": containers,
             "helpers_needing_start": [service for service in ("proxy", "firewall")
                                       if not any(item["service"] == service and item["running"] for item in containers)],

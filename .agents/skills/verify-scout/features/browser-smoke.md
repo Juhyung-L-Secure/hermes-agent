@@ -19,7 +19,7 @@ Preconditions:
 
 - All three images built for current runtime inputs, doctor passes, and no active/leftover run.
 - Configured networks available. Proxy can resolve and reach `https://example.com` with verified TLS.
-- No auth, seed data, viewer, or model request required.
+- No auth, seed data or model request required. Default headless mode needs no WSLg display.
 
 - **Public CLI entry.** Run `.venv/bin/python .agents/skills/verify-scout/scripts/verify.py smoke`. It runs the actual host CLI with `https://example.com`. Require exit zero and `{"success":true,"sandbox":"verified","observation":"completed"}` in captured stdout.
 - **Cleanup.** Require receipt checks report no new Scout/browser containers, original volumes retained, and initially running/stopped helper state restored. Confirm `receipt.json`, `doctor.json`, `command.stdout.txt`, and `command.stderr.txt` still exist after teardown.
@@ -28,6 +28,6 @@ Preconditions:
 ## Gotchas
 
 - Public site/network failure is a failed journey. Report it; do not claim an offline substitute proves this entry.
-- Download denial, exact-target input, viewport behavior, and viewer control need their own focused browser tests. Smoke does not cover those whole contracts.
+- Download denial, exact-target input, viewport behavior and native-window input need their own focused browser tests. Smoke does not cover those whole contracts.
 - `BrowserRun` deliberately refuses leftover runs. Inspect exact ownership before any authorized manual cleanup; never remove a foreign browser to make the check pass.
 - Normal CLI removes its browser; host/launcher loss can still strand one. No independent recovery promise.

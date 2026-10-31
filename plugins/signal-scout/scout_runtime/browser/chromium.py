@@ -1,6 +1,5 @@
 
 import asyncio
-from contextlib import ExitStack
 import json
 import os
 from pathlib import Path
@@ -17,7 +16,7 @@ from websockets.asyncio.client import connect
 
 from .control import discover, validate_endpoint
 from ..settings import load_settings, settings_digest
-from .viewer import DISPLAY, HeadedDisplay
+from .wayland import child_environment
 from ..process_output import Lines, ProcessOutput
 
 CHROME = "/opt/scout/chrome-linux64/chrome"
@@ -32,7 +31,7 @@ def launch_args(profile, network, viewport, mode):
         raise ValueError("Invalid browser profile.")
     if mode not in {"headless", "headed"}:
         raise ValueError("Invalid browser mode.")
-    return [CHROME, f"--user-data-dir={profile}", *(["--headless=new"] if mode == "headless" else ["--window-position=0,0"]), "--no-first-run",
+    return [CHROME, f"--user-data-dir={profile}", *(["--headless=new"] if mode == "headless" else ["--ozone-platform=wayland", "--window-position=0,0"]), "--no-first-run",
             "--no-default-browser-check", "--disable-background-networking",
             "--disable-component-update", "--disable-default-apps", "--disable-sync",
             "--disable-popup-blocking", "--metrics-recording-only", "--password-store=basic",
@@ -182,7 +181,7 @@ async def run_child(config, run):
     connections = set()
     connection_id = 0
     output.emit('launcher', 'launcher_start')
-    with tempfile.TemporaryDirectory(prefix="scout-chrome-", dir="/tmp") as profile, ExitStack() as display:
+    with tempfile.TemporaryDirectory(prefix="scout-chrome-", dir="/tmp") as profile:
         try:
             with socket.socket() as vacant:
                 # Helpers retain the namespace; prior run's TIME_WAIT is not a listener.
@@ -191,8 +190,7 @@ async def run_child(config, run):
             environment = {"PATH": "/usr/bin:/bin", "HOME": profile, "LANG": "C.UTF-8",
                            "XDG_CONFIG_HOME": profile + "/config", "XDG_CACHE_HOME": profile + "/cache"}
             if config["browser"]["mode"] == "headed":
-                display.enter_context(HeadedDisplay(config, profile))
-                environment["DISPLAY"] = DISPLAY
+                environment.update(child_environment(profile))
             child = subprocess.Popen(launch_args(profile, network, config["browser"]["viewport"], config["browser"]["mode"]), env=environment,
                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             loop = asyncio.get_running_loop()

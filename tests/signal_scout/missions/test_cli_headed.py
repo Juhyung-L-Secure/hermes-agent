@@ -14,10 +14,11 @@ import yaml
 
 from tests.signal_scout.support.stack import lifecycle
 from tests.signal_scout.support.mission import CLI, assert_clean, receipt, wait_for_text
+from tests.signal_scout.support.native_window import NativeWindow
 
 
 @pytest.fixture(scope="module")
-def headed_cli(cli_images, tmp_path_factory):
+def headed_cli(cli_images, tmp_path_factory, native_display):
     directory = tmp_path_factory.mktemp("scout-cli-headed")
     original = lifecycle.BrowserRun()
     with (Path(tempfile.gettempdir()) / "signal-scout-tests.lock").open("a") as lock:
@@ -26,7 +27,7 @@ def headed_cli(cli_images, tmp_path_factory):
         assert lifecycle.checked(["docker", "ps", "-aq", "--filter", "label=com.docker.compose.project=" + original.project,
             "--filter", "label=com.docker.compose.service=browser"]) == ""
         config = lifecycle.settings.load_settings(lifecycle.CONFIG)
-        config["browser"].update(mode="headed", viewer=True)
+        config["browser"]["mode"] = "headed"
         config["logging"]["level"] = "ERROR"
         path = directory / "config.yaml"
         path.write_text(yaml.safe_dump(config))
@@ -62,34 +63,45 @@ def headed_cli(cli_images, tmp_path_factory):
                 lifecycle.checked(["docker", "volume", "rm", volume])
 
 
-def test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotation(headed_cli, tmp_path):
+def test_MI_032_MI_033_MI_034_MI_035_actual_native_headed_error_logs_and_rotation(headed_cli, tmp_path):
     configured, command = headed_cli
     environment = dict(os.environ)
-    if "DISPLAY" not in environment:
-        displays = sorted(Path("/tmp/.X11-unix").glob("X[0-9]*"))
-        if not displays:
-            pytest.skip("No host desktop X11 socket for visible mission viewer")
-        environment["DISPLAY"] = ":" + displays[0].name[1:]
     def probe(code):
         return lifecycle.checked(["docker", "exec", "-u", "10000:10000", configured.inspect_helper('proxy')['Id'], "python3", "-c", code])
 
     probe("from pathlib import Path; p=Path('/var/log/scout/proxy.log'); p.write_text('CLI previous-run marker\\n')")
-    profiles = set(Path(tempfile.gettempdir()).glob("scout-mission-viewer-*"))
     child = subprocess.Popen([*command, "--verbose", "CLI fixture headed"], env=environment,
         text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
     prefix = ""
     try:
         prefix = wait_for_text(child, "fixture native diagnostic")
-        assert "Scout local viewer opened." in prefix, prefix
-        active_profiles = set(Path(tempfile.gettempdir()).glob("scout-mission-viewer-*")) - profiles
-        assert len(active_profiles) == 1
-        owned = str(next(iter(active_profiles)))
-        import psutil
-
-        viewers = [process for process in psutil.process_iter(["cmdline"])
-            if "--user-data-dir=" + owned in (process.info["cmdline"] or [])
-            and not any(value.startswith("--type=") for value in (process.info["cmdline"] or []))]
-        assert len(viewers) == 1 and "--headless=new" not in viewers[0].cmdline()
+        assert "Scout browser ready (headed)." in prefix, prefix
+        browser = lifecycle.checked(["docker", "ps", "-q", "--no-trunc", "--filter",
+            "label=com.docker.compose.project=" + configured.project, "--filter", "label=com.docker.compose.service=browser"])
+        assert browser
+        info=json.loads(lifecycle.checked(["docker","inspect",browser]))[0]
+        assert info['Config']['User']=='10000:10000'
+        assert set(m['Destination'] for m in info['Mounts'] if m['Type']=='bind')=={'/opt/scout/config.yaml',str(lifecycle.wayland.SOCKET)}
+        title='Scout native mission '+uuid.uuid4().hex
+        lifecycle.checked(["docker","exec",browser,"python3","-c",r'''
+import json
+from websockets.sync.client import connect
+from scout_runtime.browser.control import discover
+with connect(discover('127.0.0.1',9222,2),proxy=None,open_timeout=2) as c:
+    def call(i,method,params=None,session=None):
+        packet={'id':i,'method':method,'params':params or {}}
+        if session:packet['sessionId']=session
+        c.send(json.dumps(packet))
+        while True:
+            reply=json.loads(c.recv(timeout=5))
+            if reply.get('id')==i:
+                assert 'error' not in reply
+                return reply['result']
+    target=next(t['targetId'] for t in call(1,'Target.getTargets')['targetInfos'] if t['type']=='page')
+    session=call(2,'Target.attachToTarget',{'targetId':target,'flatten':True})['sessionId']
+    call(3,'Runtime.evaluate',{'expression':'document.title='+json.dumps(TITLE)},session)
+'''.replace('TITLE',repr(title))])
+        assert NativeWindow(title).inspect()['visible'] is True
         probe("from pathlib import Path; p=Path('/var/log/scout/proxy.log'); p.open('a').write('CLI current network\\n  native multiline detail\\n')")
         prefix = wait_for_text(child, "  native multiline detail", prefix)
         probe("from pathlib import Path; p=Path('/var/log/scout/proxy.log'); p.rename(p.with_suffix('.log.1')); p.write_text('CLI replacement network\\n')")
@@ -101,20 +113,6 @@ def test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotatio
         saved = lifecycle.checked(["docker", "exec", scout, "python", "-c",
             "from pathlib import Path; print(Path('/var/lib/scout/logs/agent.log').read_text())"])
         assert "fixture native diagnostic" in saved
-        from websockets.sync.client import connect
-
-        port, endpoint = (Path(owned) / "DevToolsActivePort").read_text().splitlines()
-        with connect("ws://127.0.0.1:" + port + endpoint, proxy=None, open_timeout=2) as connection:
-            connection.send('{"id":1,"method":"Browser.close"}')
-        deadline = time.monotonic() + 10
-        while viewers[0].is_running() and viewers[0].status() != psutil.STATUS_ZOMBIE:
-            assert time.monotonic() < deadline, "Closed viewer still has a running browser process"
-            time.sleep(0.05)
-        assert child.poll() is None
-        browser = lifecycle.checked(["docker", "ps", "-q", "--no-trunc", "--filter",
-            "label=com.docker.compose.project=" + configured.project, "--filter", "label=com.docker.compose.service=browser"])
-        assert browser
-        assert json.loads(lifecycle.checked(["docker", "inspect", browser]))[0]["State"]["Running"] is True
         child.send_signal(signal.SIGINT)
         output, error = child.communicate(timeout=30)
         text = prefix + error
@@ -124,12 +122,7 @@ def test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotatio
         assert text.count("CLI current network") == text.count("CLI replacement network") == text.count("CLI short") == 1
         assert text.count("ValueError: fixture native multiline detail") == 1
         assert "Zx9AbCdEfGhIjKlMnOpQ" not in text
-        assert not next(iter(active_profiles)).exists() and not viewers[0].is_running()
-        deadline = time.monotonic() + 5
-        while any("--user-data-dir=" + owned in (process.info["cmdline"] or [])
-                  for process in psutil.process_iter(["cmdline"])):
-            assert time.monotonic() < deadline, "Owned viewer subprocess survived cleanup"
-            time.sleep(0.05)
+        assert subprocess.run(['docker','inspect',browser],capture_output=True).returncode!=0
         assert_clean(None)
     finally:
         if child.poll() is None:

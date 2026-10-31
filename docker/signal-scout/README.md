@@ -12,7 +12,7 @@ Run commands from repository root. Requires Linux Docker Engine, Compose with na
 | `config.yaml` | Runtime operating settings and validated topology |
 | `chrome-policy.json` | Root-owned native mandatory Chrome for Testing download policy |
 | `browser_run.py` | Trusted host ownership lock, browser creation, smoke, exact teardown |
-| `mission_run.py` / `mission_viewer.py` | Foreground mission ownership and disposable local viewer |
+| `mission_run.py` | Foreground mission ownership and native headed browser launch |
 | `../../plugins/signal-scout/scout_runtime/network/` | Direct `scout_runtime.network.firewall` and `scout_runtime.network.proxy` module entrypoints |
 | `chromium-seccomp.json` | Browser container namespace sandbox syscall profile |
 | `../../plugins/signal-scout/scout_runtime/` | Importable browser/network runtime, settings/readiness, mission data, and logging |
@@ -31,7 +31,7 @@ docker compose -f docker/signal-scout/compose.yaml run --rm -T scout status
 
 Smoke creates fresh browser, attests actual `chrome://sandbox`, navigates operator URL, observes one snapshot, and returns fixed success metadata. No model call, screenshot archive, raw page output, or model browser tool. Denied URL/fatal control/startup failure removes owned browser.
 
-Tests use the same host lifecycle, serialize helpers, restore prior running/stopped state, and retain auth/log volumes. Rotation-changing variants use disposable log volumes. Configured rotation can expire old archives. Controlled HTTP/TLS/DNS fixtures give the existing proxy test-owned public-classified addresses in `11.203.247.0/29` and `2606:4700:ffff:fffe::/64` after route-conflict checks. Their test image and disposable state volume keep controlled peers available after helper recreation. Host `openssl`, `ip`, and `google-chrome` are test prerequisites. Host Chrome uses a temporary profile solely to exercise local noVNC. One worker serializes shared-stack fixtures; existing 600-second per-file allowance changes no runtime deadline or test selection.
+Tests use the same host lifecycle, serialize helpers, restore prior running/stopped state, and retain auth/log volumes. Rotation-changing variants use disposable log volumes. Configured rotation can expire old archives. Controlled HTTP/TLS/DNS fixtures give the existing proxy test-owned public-classified addresses in `11.203.247.0/29` and `2606:4700:ffff:fffe::/64` after route-conflict checks. Their test image and disposable state volume keep controlled peers available after helper recreation. Host `openssl` and `ip` are controlled-network test prerequisites. Native-window checks additionally require WSLg and Windows PowerShell through WSL interoperability. Headless checks need no desktop. One worker serializes shared-stack fixtures; existing 600-second per-file allowance changes no runtime deadline or test selection.
 
 Run standalone link validation separately from test execution using the [plugin checker guide](../../plugins/signal-scout/README.md#validate-spec-links). This checks all promises, including uncovered work, without executing test bodies or assessing assertions; current missing coverage produces exit `1`:
 
@@ -49,13 +49,13 @@ docker compose -f docker/signal-scout/compose.yaml build scout browser proxy
 .venv/bin/python docker/signal-scout/mission_run.py --verbose "Research the history of bacon."
 ```
 
-One command owns one foreground mission. Normal stderr shows browser startup, model steps, proposed actions and activities, browser results, native recoverable warnings, and the outcome. Stdout contains the final research answer on success. Exit codes are `0` for completed research with a nonempty answer, `1` for execution or cleanup failure, `2` for invalid input, and `130` for handled Ctrl+C. Closing the viewer leaves research running. Ctrl+C stops the exact owned Scout and browser, closes the disposable viewer and observers, and restores helpers' initial running or stopped state while retaining auth and log volumes.
+One command owns one foreground mission. Normal stderr shows browser startup, model steps, proposed actions and activities, browser results, native recoverable warnings, and the outcome. Stdout contains the final research answer on success. Exit codes are `0` for completed research with a nonempty answer, `1` for execution or cleanup failure, `2` for invalid input, and `130` for handled Ctrl+C. Closing the native Chromium window closes Scout's actual browser and follows existing browser-loss handling. Ctrl+C stops the exact owned Scout and browser, closes diagnostic observers, and restores helpers' initial running or stopped state while retaining auth and log volumes.
 
 The mission exposes only `browser_scout`, preloads the full registered `signal-scout:browser-research` skill once before inference, and uses the configured main model, effort and native retry loop. Missing or disabled guidance fails before inference. Canonical `agent.run_budget_seconds: 0` disables the research budget. Research uses no Scout wall-clock or tool-call ceiling. Existing bootstrap `chat` retains its explicit 90-second budget, three iterations, and 120-second alarm.
 
 `--verbose` adds configured-level native Hermes diagnostics, new proxy/firewall log content, and current-run browser diagnostics. The host includes browser startup records and continues through browser teardown after Scout exits. Native secret redaction, saved handler levels, and rotation remain configured. Network followers start at current EOF and reopen replaced or truncated files. WARNING diagnostics remain visible in both modes. Verbose mode neither forces DEBUG nor replays older missions. Observer failure attempts a fixed stderr warning and cannot grant browser permission.
 
-For headed viewing, set `browser.mode: headed` and `browser.viewer: true` in `docker/signal-scout/config.yaml`, then invoke the same mission command. The next run captures those settings without rebuilding images. The launcher opens local authenticated noVNC in host `google-chrome` using a disposable profile and an available desktop display. Missing Chrome or desktop access reports an explicit viewer warning. Headless operation needs neither. Viewer passwords stay in memory and never enter arguments or progress. Restore `headless` and `false` before the next run to return to defaults.
+For local headed debugging, set `browser.mode: headed` in `docker/signal-scout/config.yaml`, then invoke the same mission command. The next run captures that setting without rebuilding images. Chromium stays in its container and opens a native WSLg window. The host resolves the standard `WAYLAND_DISPLAY` and `XDG_RUNTIME_DIR` environment to an existing WSLg socket. Missing or invalid display fails startup without changing modes. Restore `browser.mode: headless` for production. Headless operation does not require WSLg or a host display.
 
 Select another operating file with `--config /absolute/path/scout.yaml`. Repeated `--compose-file PATH` arguments apply explicit operator overrides in merge order, with the base Compose file first. Topology checks still apply. The host verifies the exact waiting Scout's read-only file, native config symlink, and complete settings digest before sending research text. Missing, invalid, writable, shadowed, or mismatched delivery fails before inference. Another active or leftover Scout/browser prevents startup. Host death, SIGKILL, and Docker loss can prevent cleanup. Durable missions, saved stop requests, resume, and Discord remain separate work.
 
@@ -84,17 +84,17 @@ Confirm no run still owns that browser before manual removal. Use configured `sc
 
 Four services remain `scout`, `browser`, `firewall`, and `proxy`. Hermes `.3` has own namespace and direct outbound/DNS connectivity. Browser shares firewall namespace `.4` and can reach browser-only proxy `.2:3128`, necessary replies, and narrow local relay/launcher control. All remaining browser IPv4/IPv6/direct DNS defaults to deny. Hermes host/LAN isolation is not enforced.
 
-Control path is `scout (.3) → browser relay (.4:9223) → Chromium loopback (127.0.0.1:9222)`. Only viewer TCP publishes on host loopback. CDP remains unpublished. Proxy admits public HTTP:80 and opaque HTTPS:443 after DNS, every-answer, numeric-connect, and actual-peer checks. TLS remains end-to-end verified.
+Control path is `scout (.3) → browser relay (.4:9223) → Chromium loopback (127.0.0.1:9222)`. No Scout service publishes a host port. CDP remains unpublished. Proxy admits public HTTP:80 and opaque HTTPS:443 after DNS, every-answer, numeric-connect, and actual-peer checks. TLS remains end-to-end verified.
 
 Startup attests actual sandbox, native mandatory download policy, and initial main-window size. Tabs share default context and normal window sizing. Popups retain own size. Source-IP checks are not cryptographic identity. [Security contracts](../../plugins/signal-scout/security/README.md) give exact confinement, forced-proxy, policy, sizing, and trust limits. Compromised browser/controller, Docker daemon, or kernel remains trust risk.
 
 Both applications run UID/GID 10000, read-only root, zero capabilities/no-new-privileges. Browser retains namespace/seccomp-BPF sandbox, 128 MiB tmpfs, 2,000,000,000-byte memory+swap, no CPU quota, 512 PIDs. Hermes: 1 GiB memory+swap, 1 CPU, 512 PIDs. Each helper: 256 MiB memory+swap, 0.5 CPU, 128 PIDs; limits are per container. Firewall initially needs NET_ADMIN/SETUID/SETGID/SETPCAP, then drops all capabilities/runs UID10000; Docker healthcheck retains startup identity.
 
-Pins remain `agent-browser 0.26.0`, Chrome for Testing `153.0.8010.36`, verified archives and existing base digests. Browser includes hash-verified `websockets==15.0.1` and Debian Xvfb/x11vnc/noVNC/websockify; no Hermes runtime/credentials. Browser seccomp derives from Playwright v1.58.2 commit `ce480a952553175eae75342aad2c5e86cdf2cbba`, with in-user-namespace `chroot` allowed. SQLite retains upstream WAL-reset fix. Build downloads are distinct from restricted runtime networking.
+Pins remain `agent-browser 0.26.0`, Chrome for Testing `153.0.8010.36`, verified archives and existing base digests. Browser includes hash-verified `websockets==15.0.1` and no Hermes runtime or credentials. Headed debugging uses the host WSLg Wayland service without a separate virtual display or VNC stack. Browser seccomp derives from Playwright v1.58.2 commit `ce480a952553175eae75342aad2c5e86cdf2cbba`, with in-user-namespace `chroot` allowed. SQLite retains upstream WAL-reset fix. Build downloads are distinct from restricted runtime networking.
 
 ## Settings and logs
 
-Edit `docker/signal-scout/config.yaml`, then start the next mission or browser run. Each owned run captures validated bytes after taking the project lock and refusing existing Scout/browser containers. It atomically publishes one private file at `~/.local/state/signal-scout/PROJECT/config.yaml` and gives all four services the same read-only Compose config at `/opt/scout/config.yaml`. Only that file crosses the host filesystem boundary. The Scout auth volume retains `/var/lib/scout/config.yaml` as a symlink to that canonical file. Images contain no operating-config fallback.
+Edit `docker/signal-scout/config.yaml`, then start the next mission or browser run. Each owned run captures validated bytes after taking the project lock and refusing existing Scout/browser containers. It atomically publishes one private file at `~/.local/state/signal-scout/PROJECT/config.yaml` and gives all four services the same read-only Compose config at `/opt/scout/config.yaml`. For configuration delivery, only that file crosses the host filesystem boundary. An explicitly headed browser additionally receives the narrow Wayland socket grant described below. Headless and other services receive no display grant. The Scout auth volume retains `/var/lib/scout/config.yaml` as a symlink to that canonical file. Images contain no operating-config fallback.
 
 Both helpers are recreated for each owned run, even when settings are unchanged. Their readiness records attest the configuration consumed by the running proxy and installed firewall rules. Host, browser, and the waiting Scout must agree before work. The original operator file remains editable. In-place edits and atomic replacement affect the next run only. Diagnostics also use the entry-captured settings.
 
@@ -111,12 +111,12 @@ Raw Compose `status`, `login`, `chat`, and helper commands receive the default f
 | `browser.observation_timeout` | 5 seconds after final effect acknowledgment |
 | `browser.interaction_observation_timeout` | 0.25 seconds for click/key navigation detection |
 | `browser.navigation_retries` | 1 additional explicit-navigation attempt after ordinary loading error |
-| `browser.mode/viewer` | `headless` / `false` (production) |
+| `browser.mode` | `headless` in production, `headed` for local WSLg debugging |
 | `browser.viewport.width/height/device_scale_factor` | 1280×720 main-window CSS contents / browser-wide scale 1 |
 | `scout_lifecycle.startup_timeout/control_connect_timeout` | 20 / 2 seconds |
 | `scout_lifecycle.shutdown_timeout/smoke_timeout` | 5 / 120 seconds |
 | `scout_proxy.dns_timeout/connect_timeout/idle_timeout` | 5 / 10 / 60 seconds |
-| `scout_network` | Restricted subnet/.2/.3/.4, viewer `172.30.243.0/30`/.2, proxy3128/control9222/relay9223/viewer6080 |
+| `scout_network` | Restricted subnet/.2/.3/.4, proxy3128/control9222/relay9223 |
 
 Command timeouts are integers from 1 through 120 seconds. Proxy/lifecycle timeouts range from 1 through 300 seconds. Log size ranges from 1 through 1024 MiB, backup count from 1 through 20, and level is DEBUG, INFO, WARNING, or ERROR.
 
@@ -134,13 +134,15 @@ docker compose -f docker/signal-scout/compose.yaml up -d --force-recreate --wait
 
 ## Watch and control a test browser
 
-Set `browser.mode: headed` and `browser.viewer: true` in `config.yaml`, then start next owned run without rebuilding. Headed mode with viewer false also works unattended. No automatic mode fallback exists. Restore `headless` and false before next production run.
+Set `browser.mode: headed` in `config.yaml`, then start the next owned run without rebuilding. Chromium opens directly on the local Windows desktop through WSLg. No separate host browser, viewer login or viewer URL exists. Restore `headless` before the next production run.
 
-Trusted `BrowserRun` caller obtains `run.viewer_access()` after owned readiness. Open returned local URL, by default `http://127.0.0.1:6080/vnc.html?autoconnect=1&resize=scale`. Enter returned `scout` username/session password in HTTP login prompt. Credentials live only in browser tmpfs and rotate each run. Never persist or log access details. Credentials never enter Scout environment/readiness/model tools or persisted logs.
+You can click and type in the actual Chromium window. Manual page changes can stale an original Scout reference. Closing this window closes the actual browser. Normal owned cleanup closes it too. No crash or reconnect policy is added.
 
-Packaged noVNC permits trusted clicks/typing. Manual changes can stale original Scout reference. Closing viewer tab leaves browser/research running. Normal owned cleanup removes display/VNC/viewer. No crash/reconnect policy is added.
+Only an explicitly headed browser receives one read-only bind of the resolved WSLg Wayland socket. The host fixes this grant with the run configuration and checks both declared and actual mounts. Chromium uses its own private runtime directory. Host X11, the whole WSLg directory, PulseAudio and GPU devices are not shared. Headless does not discover or mount a display. This local-debug connection grants access to the host display service, so it differs from the old container-local display boundary. [Headed security contracts](../../plugins/signal-scout/security/README.md#download-sizing-and-headed-safeguards) define the exception.
 
-Viewer stays container-local without host display/device/socket mounts. Authentication, local Host/Origin, dedicated viewer bridge, and localhost publication remain required. [Security viewer contracts](../../plugins/signal-scout/security/README.md#download-sizing-and-viewer-safeguards) describe boundary. Changing viewer subnet/address/port requires matching Compose bridge/address/localhost mapping. Topology mismatch fails. `scout_runtime/browser/viewer.py` pairs with mode/settings/launcher/firewall, SR_011 through SR_013, and real `test_browser_modes.py` checks.
+When migrating a saved operating file, remove `browser.viewer` and `scout_network.viewer_subnet`, `viewer_address` and `viewer_port`. The old viewer transport and its settings are retired. Invalid settings fail validation without a compatibility fallback.
+
+## Diagnostic logs
 
 Active persistent logs are `agent.log`, `errors.log`, `proxy.log`, `firewall.log`, and `browser.log` in the shared `scout-logs` volume. Hermes mounts it at `/var/lib/scout/logs`; proxy and firewall mount it at `/var/log/scout`. All three services have writable access to the same files. Browser has no log-volume mount. Renamed browser firewall appends to existing `firewall.log`, which can contain historical Hermes-firewall events. Historical `browser-firewall.log` and backups stay untouched; no migration or wiping.
 

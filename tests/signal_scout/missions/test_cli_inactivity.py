@@ -58,7 +58,7 @@ for path in Path('/proc').iterdir():
     if path.name.isdigit():
         try:
             name=(path/'comm').read_text().strip()
-            if name in {'chrome','chromium','chrome_crashpad','python3','Xvfb','node'}:
+            if name in {'chrome','chromium','chrome_crashpad','python3','node'}:
                 rows.append({'pid':int(path.name),'comm':name,'stat':(path/'stat').read_text().split()[2]})
         except OSError:
             pass

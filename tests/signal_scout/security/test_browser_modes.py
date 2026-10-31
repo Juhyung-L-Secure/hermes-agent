@@ -1,33 +1,30 @@
-"""SR_011–SR_013: real configured modes and trusted local viewer control."""
+"""Real headless production and native WSLg debugging behavior."""
 
-import base64
 from contextlib import contextmanager
 import copy
-import http.client
 import json
 import selectors
 import subprocess
+import time
+import uuid
 
 import pytest
 import yaml
-from websockets.exceptions import InvalidStatus
-from websockets.sync.client import connect
 
 from tests.signal_scout.support.stack import lifecycle
-from tests.signal_scout.support.browser import fixture_web
+from tests.signal_scout.support.browser import fixture_web, SETUP
 from tests.signal_scout.support.browser_policy import OBSERVE, settings
 from tests.signal_scout.support import browser as boundary
 from tests.signal_scout.support import browser_policy as safeguards
 from tests.signal_scout.support import browser as isolation
-from tests.signal_scout.support.browser import SETUP
-from tests.signal_scout.support.viewer import ViewerClient
+from tests.signal_scout.support.native_window import NativeWindow
 
 
 @contextmanager
-def configured_mode(stack, directory, mode, viewer):
+def configured_mode(stack, directory, mode):
     directory.mkdir()
     config = settings.load_settings(lifecycle.CONFIG)
-    config['browser']['mode'], config['browser']['viewer'] = mode, viewer
+    config['browser']['mode'] = mode
     path = directory / 'config.yaml'
     path.write_text(yaml.safe_dump(config))
     override = directory / 'images.yaml'
@@ -36,16 +33,15 @@ def configured_mode(stack, directory, mode, viewer):
 
 
 def probe(run, code, timeout=90):
-    """Use configured runtime image and exact owned browser attachment."""
     options = [value for key,setting in run.scout_environment().items() for value in ('-e',key+'='+setting)]
     return lifecycle.checked(run.compose + ['run','--rm','--no-deps','-T',*options,
         '--entrypoint','python','scout','-c',code], timeout=timeout)
 
 
 @pytest.fixture(scope='module')
-def headed_web(scout_stack, tmp_path_factory):
+def headed_web(scout_stack, tmp_path_factory, native_display):
     directory = tmp_path_factory.mktemp('headed-web')/'images'
-    with configured_mode(scout_stack,directory,'headed',True) as configured:
+    with configured_mode(scout_stack,directory,'headed') as configured:
         previous = (scout_stack.compose_command,scout_stack.browser_compose_files,scout_stack.browser_config_path)
         scout_stack.compose_command = configured.compose
         scout_stack.browser_compose_files = (lifecycle.COMPOSE,directory/'images.yaml')
@@ -60,168 +56,95 @@ def headed_web(scout_stack, tmp_path_factory):
                 scout_stack.compose_command,scout_stack.browser_compose_files,scout_stack.browser_config_path = previous
 
 
-def http_viewer(port, authorization=None, host=None, origin=None):
-    """Check real HTTP authentication without including secret response data."""
-    headers = {}
-    if authorization is not None:
-        headers['Authorization'] = authorization
-    if host is not None:
-        headers['Host'] = host
-    if origin is not None:
-        headers['Origin'] = origin
-    client = http.client.HTTPConnection('127.0.0.1', port, timeout=3)
-    try:
-        client.request('GET','/vnc.html',headers=headers)
-        response = client.getresponse()
-        return response.status, response.read()
-    finally:
-        client.close()
-
-
-@pytest.mark.parametrize('case', ['mode-missing','mode-invalid','mode-bool','viewer-missing','viewer-text',
-                                  'viewer-headless','viewer-port-missing','viewer-port-cdp','viewer-port-bool',
-                                  'viewer-subnet-missing','viewer-address-missing','viewer-subnet-overlap',
-                                  'viewer-subnet-public','viewer-address-outside','viewer-address-gateway',
-                                  'viewer-address-ipv6'])
-def test_SR_011_required_mode_and_viewer_settings_fail_explicitly(tmp_path, case):
+@pytest.mark.parametrize('value', [None, 'auto', True, []])
+def test_SR_011_invalid_or_missing_mode_fails_explicitly(tmp_path, value):
     config = settings.load_settings(lifecycle.CONFIG)
-    if case == 'mode-missing':
+    if value is None:
         del config['browser']['mode']
-    elif case.startswith('mode-'):
-        config['browser']['mode'] = True if case == 'mode-bool' else 'auto'
-    elif case == 'viewer-missing':
-        del config['browser']['viewer']
-    elif case in {'viewer-text','viewer-headless'}:
-        config['browser']['viewer'] = 'true' if case == 'viewer-text' else True
-    elif case in {'viewer-port-cdp','viewer-port-bool'}:
-        config['scout_network']['viewer_port'] = True if case == 'viewer-port-bool' else 9222
-    elif case.endswith('-missing'):
-        del config['scout_network'][case.removesuffix('-missing').replace('-','_')]
     else:
-        key, value = {
-            'viewer-subnet-overlap': ('viewer_subnet','172.30.242.0/29'),
-            'viewer-subnet-public': ('viewer_subnet','8.8.8.0/30'),
-            'viewer-address-outside': ('viewer_address','172.30.242.4'),
-            'viewer-address-gateway': ('viewer_address','172.30.243.1'),
-            'viewer-address-ipv6': ('viewer_address','::1'),
-        }[case]
-        config['scout_network'][key] = value
+        config['browser']['mode'] = value
     path = tmp_path / 'invalid.yaml'
     path.write_text(yaml.safe_dump(config))
     with pytest.raises(ValueError, match=r'^Invalid Scout operating settings\.$'):
         settings.load_settings(path)
 
 
-def test_SR_012_topology_rejects_nonlocal_viewer_or_any_published_control():
+def test_SR_012_topology_rejects_published_ports_and_extra_networks():
     run = lifecycle.BrowserRun()
-    for change in ('lan','missing','cdp','extra','browser','scout','proxy',
-                   'restricted-external','viewer-internal','viewer-subnet','viewer-address','viewer-scout'):
+    lifecycle.validate_topology(run.model, run.config)
+    for service in ('scout', 'browser', 'proxy', 'firewall'):
         model = copy.deepcopy(run.model)
-        port = model['services']['firewall']['ports'][0]
-        if change == 'lan': port['host_ip'] = '0.0.0.0'
-        elif change == 'missing': del model['services']['firewall']['ports']
-        elif change == 'cdp': port['target'] = 9222
-        elif change == 'extra': model['services']['firewall']['ports'].append(dict(port))
-        elif change == 'restricted-external': model['networks']['restricted']['internal'] = False
-        elif change == 'viewer-internal': model['networks']['viewer']['internal'] = True
-        elif change == 'viewer-subnet': model['networks']['viewer']['ipam']['config'][0]['subnet'] = '172.30.244.0/30'
-        elif change == 'viewer-address': model['services']['firewall']['networks']['viewer']['ipv4_address'] = '172.30.243.1'
-        elif change == 'viewer-scout': model['services']['scout']['networks']['viewer'] = {}
-        else: model['services'][change]['ports'] = [dict(port)]
+        model['services'][service]['ports'] = [{'host_ip':'127.0.0.1', 'target':9222, 'published':'9222'}]
+        with pytest.raises(ValueError, match='Scout network configuration mismatch'):
+            lifecycle.validate_topology(model, run.config)
+    for change in ('external', 'extra-network', 'extra-grant'):
+        model = copy.deepcopy(run.model)
+        if change == 'external':
+            model['networks']['restricted']['internal'] = False
+        elif change == 'extra-network':
+            model['networks']['desktop'] = {}
+        else:
+            model['services']['firewall']['networks']['outbound'] = {}
         with pytest.raises(ValueError, match='Scout network configuration mismatch'):
             lifecycle.validate_topology(model, run.config)
 
 
-def test_SR_011_production_headless_has_no_display_or_viewer(scout_stack):
+def test_SR_011_SR_012_production_headless_has_no_host_display(scout_stack, monkeypatch):
+    monkeypatch.delenv('WAYLAND_DISPLAY', raising=False)
+    monkeypatch.delenv('XDG_RUNTIME_DIR', raising=False)
+    monkeypatch.setattr(lifecycle.wayland, 'resolve_wayland', lambda: pytest.fail('Headless discovered a display'))
     with scout_stack.browser_run() as run:
-        assert run.config['browser']['mode'] == 'headless' and run.config['browser']['viewer'] is False
-        with pytest.raises(RuntimeError, match='Browser viewer disabled'):
-            run.viewer_access()
+        assert run.config['browser']['mode'] == 'headless' and run._run_config.wayland is None
+        info = run.inspect_owned()
+        assert [m['Destination'] for m in info['Mounts'] if m['Type']=='bind'] == ['/opt/scout/config.yaml']
+        assert not info['HostConfig']['PortBindings']
+        assert set(run.inspect_helper('firewall')['NetworkSettings']['Networks']) == {run.model['networks']['restricted']['name']}
+        probe(run, OBSERVE + r'''
+with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'],proxy=None,open_timeout=2) as observer:
+    assert dimensions(attach(pages()[0]))==browser.settings['browser']['viewport']
+''')
         lifecycle.checked(['docker','exec',run.container,'python3','-c',r'''
 from pathlib import Path
 import json
 ready=json.loads(Path('/tmp/browser-ready.json').read_text())
 assert b'--headless=new' in Path(f"/proc/{ready['pid']}/cmdline").read_bytes().split(b'\0')
-assert b'DISPLAY=' not in Path(f"/proc/{ready['pid']}/environ").read_bytes()
-assert not Path('/tmp/browser-viewer-password').exists() and not Path('/tmp/.X11-unix/X99').exists()
+environment=Path(f"/proc/{ready['pid']}/environ").read_bytes().split(b'\0')
+assert not any(s.startswith((b'DISPLAY=',b'WAYLAND_DISPLAY=',b'XDG_RUNTIME_DIR=',b'PULSE_SERVER=')) for s in environment)
+assert not Path('/run/scout-wayland/wayland-0').exists()
 assert not any((p/'comm').read_text().strip() in {'Xvfb','x11vnc'} for p in Path('/proc').iterdir() if p.name.isdigit())
 '''])
-        probe(run, OBSERVE + r'''
-with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'],proxy=None,open_timeout=2) as observer:
-    assert dimensions(attach(pages()[0]))==browser.settings['browser']['viewport']
-''')
-        with pytest.raises(OSError):
-            http_viewer(run.config['scout_network']['viewer_port'])
 
 
-def test_SR_011_headed_without_viewer_uses_only_container_display(scout_stack, tmp_path):
-    with configured_mode(scout_stack,tmp_path/'no-viewer','headed',False) as run, run:
+def test_SR_011_SR_012_native_headed_uses_only_granted_socket(scout_stack, tmp_path, native_display):
+    with configured_mode(scout_stack,tmp_path/'native','headed') as run, run:
+        info = run.inspect_owned()
+        binds={m['Destination']:m for m in info['Mounts'] if m['Type']=='bind'}
+        assert set(binds)=={'/opt/scout/config.yaml',str(lifecycle.wayland.SOCKET)}
+        assert binds[str(lifecycle.wayland.SOCKET)]['Source']==str(run._run_config.wayland.source)
+        assert binds[str(lifecycle.wayland.SOCKET)]['RW'] is False
+        for service in ('proxy','firewall'):
+            assert [m['Destination'] for m in run.inspect_helper(service)['Mounts'] if m['Type']=='bind']==['/opt/scout/config.yaml']
         lifecycle.checked(['docker','exec',run.container,'python3','-c',r'''
 from pathlib import Path
 import json
 ready=json.loads(Path('/tmp/browser-ready.json').read_text())
-assert b'--headless=new' not in Path(f"/proc/{ready['pid']}/cmdline").read_bytes().split(b'\0')
-assert b'DISPLAY=:99' in Path(f"/proc/{ready['pid']}/environ").read_bytes().split(b'\0')
-assert Path('/tmp/.X11-unix/X99').is_socket() and not Path('/tmp/browser-viewer-password').exists()
+assert b'--ozone-platform=wayland' in Path(f"/proc/{ready['pid']}/cmdline").read_bytes().split(b'\0')
+environment=Path(f"/proc/{ready['pid']}/environ").read_bytes().split(b'\0')
+assert b'WAYLAND_DISPLAY=/run/scout-wayland/wayland-0' in environment
+assert not any(s.startswith((b'DISPLAY=',b'PULSE_SERVER=')) for s in environment)
+runtime=next(s.split(b'=',1)[1].decode() for s in environment if s.startswith(b'XDG_RUNTIME_DIR='))
+assert Path(runtime).stat().st_mode & 0o777==0o700
+assert Path(runtime).stat().st_uid==10000
+assert Path('/run/scout-wayland/wayland-0').is_socket()
+assert not any((p/'comm').read_text().strip() in {'Xvfb','x11vnc'} for p in Path('/proc').iterdir() if p.name.isdigit())
 '''])
         probe(run,OBSERVE + r'''
 with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'],proxy=None,open_timeout=2) as observer:
     assert dimensions(attach(pages()[0]))==browser.settings['browser']['viewport']
 ''')
-        with pytest.raises(RuntimeError,match='Browser viewer disabled'): run.viewer_access()
-        with pytest.raises(OSError): http_viewer(run.config['scout_network']['viewer_port'])
 
 
-def test_SR_012_real_viewer_authentication_rotation_and_no_lan_control(scout_stack, tmp_path):
-    previous = None
-    with configured_mode(scout_stack,tmp_path/'auth','headed',True):
-        for _ in range(2):
-            run = lifecycle.BrowserRun(compose_files=(lifecycle.COMPOSE,tmp_path/'auth/images.yaml'),
-                                       config_path=tmp_path/'auth/config.yaml')
-            with run:
-                owned = run.container
-                access = run.viewer_access()
-                assert access['password'] != previous and len(access['password']) == 43
-                assert access['password'] not in json.dumps(run.scout_environment())
-                port = run.config['scout_network']['viewer_port']
-                auth = 'Basic '+base64.b64encode(('scout:'+access['password']).encode()).decode()
-                assert http_viewer(port)[0] == 401
-                assert http_viewer(port,'Basic '+base64.b64encode(b'scout:wrong').decode())[0] == 401
-                status, page = http_viewer(port,auth)
-                assert status == 200 and b'noVNC' in page
-                assert http_viewer(port,auth,host='untrusted.test:'+str(port))[0] == 403
-                assert http_viewer(port,auth,origin='https://untrusted.test')[0] == 403
-                for header in ({}, {'Authorization':auth,'Origin':'https://untrusted.test'}):
-                    with pytest.raises(InvalidStatus) as error:
-                        connect(f'ws://127.0.0.1:{port}/websockify',additional_headers=header,proxy=None,open_timeout=3)
-                    assert error.value.response.status_code == (401 if not header else 403)
-                if previous is not None:
-                    stale = 'Basic '+base64.b64encode(('scout:'+previous).encode()).decode()
-                    assert http_viewer(port,stale)[0] == 401
-                previous = access['password']
-                firewall=json.loads(lifecycle.checked(['docker','inspect',lifecycle.checked(run.compose+['ps','-q','firewall'])]))[0]
-                assert firewall['HostConfig']['PortBindings']=={f'{port}/tcp':[{'HostIp':'127.0.0.1','HostPort':str(port)}]}
-                assert firewall['NetworkSettings']['Ports']=={f'{port}/tcp':[{'HostIp':'127.0.0.1','HostPort':str(port)}]}
-                assert not run.inspect_owned()['HostConfig']['PortBindings']
-                probe(run, """
-import socket
-for address,port in (('172.30.243.2',6080),('172.30.242.4',9222)):
-    try: socket.create_connection((address,port),timeout=1)
-    except OSError: pass
-    else: raise AssertionError('Scout reached viewer/raw CDP')
-""")
-                lifecycle.checked(['docker','exec',run.container,'python3','-c',r'''
-from pathlib import Path
-assert Path('/tmp/browser-viewer-password').stat().st_mode & 0o777 == 0o600
-secret=Path('/tmp/browser-viewer-password').read_bytes()
-assert secret not in Path('/tmp/browser-ready.json').read_bytes()
-assert not any(secret in (p/'cmdline').read_bytes() for p in Path('/proc').iterdir() if p.name.isdigit())
-assert not any(Path(p).exists() for p in ('/var/lib/scout','/opt/hermes','/var/run/docker.sock'))
-'''])
-            assert subprocess.run(['docker','inspect',owned],capture_output=True).returncode != 0
-
-
-def test_SR_012_SR_013_real_noVNC_mouse_keys_and_stale_scout_reference_rejects(headed_web, tmp_path):
+def test_SR_012_SR_013_native_window_mouse_keys_and_stale_scout_reference_rejects(headed_web):
     stack, _, _, _ = headed_web
     with stack.browser_run() as run:
         options = [value for key,setting in run.scout_environment().items() for value in ('-e',key+'='+setting)]
@@ -231,13 +154,15 @@ with Browser() as browser:
     gate=browser.session(target_id=tab)
     successful(gate,'navigate',{'url':'http://public.test/gate'});wait_ready(browser)
     snapshot=successful(gate,'snapshot')['snapshot']
+    title="Scout native input "+__import__("uuid").uuid4().hex
+    browser.command("eval", "document.title="+json.dumps(title))
     points=browser.command('eval',"""(() => {
       const point=id=>{const r=document.querySelector('#'+id).getBoundingClientRect();
-        return [screenX+(outerWidth-innerWidth)/2+r.x+r.width/2,
-                screenY+outerHeight-innerHeight+r.y+r.height/2];};
-      return {click:point('click'),query:point('query')};
+        return [(outerWidth-innerWidth)/2+r.x+r.width/2,
+                outerHeight-innerHeight+r.y+r.height/2];};
+      return {click:point('click'),query:point('query'),width:outerWidth,height:outerHeight};
     })()""")['result']
-    print(json.dumps(points),flush=True);input()
+    print(json.dumps({'title':title, **points}),flush=True);input()
     actual=browser.command('eval',"""(async () => {
       const deadline=Date.now()+10000;
       while(window.clicks!==1 || document.querySelector('#query').value!=='initialhuman') {
@@ -271,7 +196,7 @@ with Browser() as browser:
         def line():
             with selectors.DefaultSelector() as ready:
                 ready.register(child.stdout,selectors.EVENT_READ)
-                assert ready.select(45), 'Controlled Scout/viewer synchronization timed out'
+                assert ready.select(45), 'Controlled Scout/native-window synchronization timed out'
             value=child.stdout.readline().decode().strip()
             if not value:
                 _, errors = child.communicate(timeout=30)
@@ -281,28 +206,19 @@ with Browser() as browser:
             child.stdin.write(b'\n');child.stdin.flush()
         try:
             points=json.loads(line())
-            with ViewerClient(tmp_path/'viewer-chrome',run.viewer_access()) as viewer:
-                # Actual canvas contains VNC framebuffer, not merely HTML assets.
-                frame = viewer.evaluate("""(async () => {
-                    const deadline=Date.now()+15000;
-                    while (true) {
-                        const c=document.querySelector('canvas');let colored=0;
-                        if(c.width && c.height) {
-                            const pixels=c.getContext('2d').getImageData(0,0,c.width,c.height).data;
-                            for(let i=0;i<pixels.length;i+=4) if(pixels[i]+pixels[i+1]+pixels[i+2]>0)colored++;
-                        }
-                        if(c.width===1280 && c.height>=720 && colored>10000 || Date.now()>deadline)
-                            return {width:c.width,height:c.height,colored};
-                        await new Promise(resolve=>setTimeout(resolve,50));
-                    }
-                })()""")
-                assert frame['width']==1280 and frame['height']>=720 and frame['colored']>10000, frame
-                viewer.click(*points['click'])
-                viewer.click(*points['query']);viewer.type('human')
-                resume();assert line()=='manual-ok';assert line()=='manual-wait'
-                viewer.click(*points['click'])
-                resume();assert line()=='stale-ok'
-            # Viewer disconnect is independent of browser mission lifetime.
+            window = NativeWindow(points['title'])
+            observed = window.inspect()
+            assert observed['visible'] is True and observed['width'] > 0 and observed['height'] > 0
+            window.click(*points['click'], points['width'], points['height'])
+            window.click(*points['query'], points['width'], points['height'])
+            window.type('human')
+            resume()
+            try:
+                assert line()=='manual-ok';assert line()=='manual-wait'
+            except BaseException as error:
+                raise AssertionError({'page':points,'native':observed}) from error
+            window.click(*points['click'], points['width'], points['height'])
+            resume();assert line()=='stale-ok'
             assert run.inspect_owned()['State']['Running']
             resume();assert line()=='done'
             _, errors=child.communicate(timeout=30)
@@ -310,6 +226,26 @@ with Browser() as browser:
         finally:
             if child.poll() is None:
                 child.terminate();child.communicate(timeout=30)
+
+
+def test_SR_013_SR_005_closing_native_window_ends_owned_browser(scout_stack, tmp_path, native_display):
+    with configured_mode(scout_stack, tmp_path/'native-close', 'headed') as run, run:
+        identity = run.container
+        title = 'Scout native close ' + uuid.uuid4().hex
+        probe(run, SETUP + '\nwith Browser() as browser:\n    browser.command("eval", ' +
+              repr('document.title=' + json.dumps(title)) + ')\n')
+        window = NativeWindow(title)
+        assert window.inspect()['visible'] is True
+        window.close()
+        deadline = time.monotonic() + 15
+        while run.inspect_owned()['State']['Running']:
+            assert time.monotonic() < deadline, 'Native window closure did not end Chromium'
+            time.sleep(.05)
+        with pytest.raises(RuntimeError, match='Browser control unavailable'):
+            run.scout_environment()
+        assert lifecycle.checked(['docker', 'ps', '-aq', '--filter', 'label=com.docker.compose.service=browser',
+            '--filter', 'label=com.docker.compose.project=signal-scout-bootstrap']).strip() == identity[:12]
+    assert subprocess.run(['docker', 'inspect', identity], capture_output=True).returncode != 0
 
 
 def test_SR_011_SR_001_SR_002_SR_019_headed_sandbox_public_web_and_network_denials(headed_web):

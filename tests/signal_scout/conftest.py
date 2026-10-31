@@ -26,3 +26,15 @@ def scout_stack():
             stop = [name for name in ("firewall", "proxy") if name not in running]
             if stop:
                 stack.compose("stop", "-t", "2", *stop)
+
+
+@pytest.fixture(scope="module")
+def native_display():
+    from tests.signal_scout.support.stack import lifecycle
+
+    socket = lifecycle.wayland.WSLG_RUNTIME / 'wayland-0'
+    if not socket.is_socket():
+        pytest.skip('Native headed verification requires local WSLg')
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv('WAYLAND_DISPLAY', str(socket))
+        yield socket

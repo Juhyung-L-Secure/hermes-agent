@@ -7,32 +7,34 @@
 | SR_001 and SR_002, sandbox and exact owned control | `../scout_runtime/browser/owner.py`, `control.py`, and `chromium.py` |
 | SR_004 and SR_005, container separation and disposable lifetime | `../../../docker/signal-scout/browser_run.py` and `../scout_runtime/browser/chromium.py` |
 | SR_006 through SR_010, native download policy and verified sizing | `../../../docker/signal-scout/chrome-policy.json` and `../scout_runtime/browser/chromium.py` |
-| SR_011 through SR_013, explicit modes and authenticated local viewer | `../scout_runtime/browser/viewer.py`, `chromium.py`, settings, firewall, and Docker mapping |
+| SR_011 through SR_013, explicit modes and narrow native display access | `../scout_runtime/browser/wayland.py`, `chromium.py`, settings and host run ownership |
 | SR_019, browser-only public-web filtering | `../scout_runtime/network/proxy.py`, `firewall.py`, and `urls.py` |
 | SR_003 and SR_022 through SR_024, persistent best-effort diagnostics | `../scout_runtime/runtime_logging.py`, `process_output.py`, browser runtime, and host `browser_diagnostics.py` |
 | Validated read-only operating settings and consistency | `../scout_runtime/settings.py`, `readiness.py`, and host run ownership, paired with BT_004 and BT_006 |
 
 ## Container and control boundary
 
-Hermes and pinned native helper run in `scout`. Chrome and trusted launcher run in disposable `browser`, without shared PID, mount, or network namespace. Browser has no Hermes runtime/auth/log volume, host folder, Docker socket, or writable artifact mount. Chrome runs non-root with sandbox, read-only root, dropped capabilities, no-new-privileges, and bounded anonymous `/tmp`.
+Hermes and pinned native helper run in `scout`. Chrome and trusted launcher run in disposable `browser`, without shared PID, mount, or network namespace. Browser has no Hermes runtime/auth/log volume, personal host folder, Docker socket or writable artifact mount. Its operating file is read-only. Explicit local headed debugging additionally allows the single Wayland socket under SR_012. Headless receives no display mount. Chrome runs non-root with sandbox, read-only root, dropped capabilities, no-new-privileges, and bounded anonymous `/tmp`.
 
 Trusted host locks one run, refuses existing or stopped Scout/browser containers, and verifies exact Docker ID/project/service/run labels and readiness. Create/start failure cleanup resolves only exact attempted name/project/service/current-run match. Launcher starts one fresh child/profile, proves socket inode owns loopback CDP, and opens relay accepting only Hermes IP and forwarding only to owned endpoint. Exact host, port, and browser UUID path must match non-redirecting discovery. Child exit closes relay. No replacement, external attachment, fallback, reuse, or adoption occurs.
 
 Actual `chrome://sandbox` must attest PID/network namespaces and seccomp-BPF before browsing. Failure stops startup without disabling sandbox. Healthy HTTP discovery cannot override observed action-driver CDP loss. Source-IP checks are not cryptographic authentication. Authorized trusted code can reach control. Compromised Chromium, kernel, Docker, or host remains trust risk.
 
-## Download, sizing, and viewer safeguards
+## Download, sizing, and headed safeguards
 
 Chrome for Testing loads root-owned `0444` policy at `/etc/opt/chrome_for_testing/policies/managed/scout.json` with `DownloadRestrictions: 3`. Startup requires validated native `chrome://policy` value 3, mandatory/machine/platform scope, and no errors or ignored policy. Missing, invalid, or unapplied policy fails startup. Startup policy CDP closes before readiness. Policy persists for fresh default-context tabs and popups without another context or filter. HTML, images, audio, and video still load. Save Page and print-to-PDF remain outside policy. Native canceled download leaves browser healthy.
 
 `browser.viewport` sets initial main contents and browser-wide scale. Startup verifies actual `innerWidth`, `innerHeight`, and `devicePixelRatio`. Normal tabs share window. Popups retain native size and shared scale/download/network protections. No per-tab emulation, later resize, continuous guard, or all-window sizing guarantee exists.
 
-Explicit `browser.mode` selects headless default or container-local Xvfb. `browser.viewer` defaults false and requires headed when true. Container-local Xvfb/x11vnc UNIX sockets and packaged websockify/noVNC need no host display/device mounts or extra service. HTTP and WebSocket require fresh per-run Basic auth plus local Host/Origin. Secret stays in tmpfs, outside Chrome/Scout environment, arguments, readiness, and logs. Disabled viewer creates no listener or secret. Host publishes only `127.0.0.1:6080`; CDP stays private. Closing viewer leaves research running. Human input can stale original Scout references, which ordinary action checks reject.
+Explicit `browser.mode` selects headless production or native local WSLg headed debugging. Headless does not require or receive display access. Headed receives exactly one validated read-only Wayland socket bind. Host resolves its canonical WSLg location and fixes the grant with run configuration. Both declared and actual mount checks reject unrelated sockets, symlink escapes, extra binds and display grants to other services. Missing display fails without fallback. Chromium gets a private runtime directory, without host X11, full runtime directories, PulseAudio, GPU devices, extra capabilities or host networking.
+
+This headed-only connection intentionally exposes the host display service to the browser container. A read-only socket mount does not prevent socket communication. There is no VNC listener, published viewer port or viewer credential. Human input reaches actual Chromium and can stale original Scout references, which ordinary action checks reject. Closing the native window closes the browser and follows existing browser-loss handling.
 
 ## Browser network boundary
 
 Browser shares `firewall` namespace at `.4` on internal `172.30.242.0/29`. Proxy `.2:3128` accepts only browser. Hermes `.3` keeps own namespace and direct outbound/DNS access. Scout does not enforce Hermes host/LAN isolation. Hermes reaches private relay `.4:9223`, which forwards only to owned `127.0.0.1:9222`. Remaining browser IPv4/IPv6/direct DNS defaults to deny. Browser cannot initiate into Hermes, host/LAN, metadata, direct Internet, or DNS.
 
-Viewer bridge `172.30.243.0/30` joins only firewall/browser namespace. Firewall permits only its host gateway's viewer ingress and established replies, while retaining denial on both interfaces. Host validates resolved Compose topology against operating settings.
+No viewer bridge or host-published Scout port exists. The local headed display grant uses a UNIX socket and adds no IP-network exception. Host validates resolved Compose topology against operating settings.
 
 Raw URL validation checks HTTP(S) syntax and rejects embedded credentials. Proxy owns fresh DNS, every-answer classification, numeric connect, and actual-peer checks. Mixed public/private answers fail. New connections resolve again. Existing connections stay pinned. Only public HTTP:80 and opaque HTTPS CONNECT:443 pass. TLS remains end-to-end verified without MITM. Forbidden main navigation fails. Embedded requests fail individually while public document can survive.
 

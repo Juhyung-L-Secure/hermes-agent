@@ -9,7 +9,7 @@ Verify Signal Scout through its Docker/operator CLI, existing real-browser harne
 
 ## When to Use
 
-Use `$verify-scout` after Scout runtime, browser, action session, viewer, or spec-link changes, or when asked to prove one of those features. Read [features/README.md](features/README.md) first, then the relevant feature recipe. This skill does not verify every interface of upstream Hermes.
+Use `$verify-scout` after Scout runtime, browser, action session, native headed mode, or spec-link changes, or when asked to prove one of those features. Read [features/README.md](features/README.md) first, then the relevant feature recipe. This skill does not verify every interface of upstream Hermes.
 
 ## Prerequisites
 
@@ -19,8 +19,8 @@ Runtime and browser routes require the following:
 
 - Linux, including Ubuntu on WSL2, with Docker Engine reachable and Docker Compose supporting native `include`.
 - Run documented commands from repository root. Use existing `.venv/bin/python`; if checkout uses `venv`, substitute `venv/bin/python` consistently.
-- Existing development dependencies must be installed. Controlled browser tests additionally require host `openssl` and `ip`; viewer tests require host `google-chrome`, using a disposable profile.
-- Compose networks and configured addresses must not conflict with host routes. Defaults are `172.30.242.0/29` and `172.30.243.0/30`; controlled-web tests also use the ranges documented in `docker/signal-scout/README.md`.
+- Existing development dependencies must be installed. Controlled browser tests additionally require host `openssl` and `ip`. Native-window checks additionally require WSLg and Windows PowerShell through WSL interoperability. Headless checks need neither a display nor host Chrome.
+- Compose networks and configured addresses must not conflict with host routes. The restricted subnet defaults to `172.30.242.0/29`; controlled-web tests also use the ranges documented in `docker/signal-scout/README.md`.
 - No active or leftover Scout/browser container. One Scout run at a time. Do not drive someone else's browser or run Docker tests concurrently with a mission.
 - No model credentials needed for status, deterministic smoke, spec checks, or mapped offline integration tests. Do not run `login` or `chat` as a setup shortcut.
 
@@ -45,7 +45,7 @@ From repository root, run these through the available terminal tool. The helper 
 | Runtime operating file | [features/runtime-config.md](features/runtime-config.md) | Fixed per-run settings and same-image changes |
 | Public browser smoke | `scripts/verify.py smoke` through the Python invocation above | Owned Chromium, sandbox, navigation, snapshot, teardown |
 | Browser actions | [browser-actions.md](features/browser-actions.md) | Real action session/browser, offline main transport |
-| Local headed viewer | [browser-viewer.md](features/browser-viewer.md) | Real noVNC, disposable host browser, no provider |
+| Native headed debugging | [browser-viewer.md](features/browser-viewer.md) | Actual WSLg window and native input, no provider |
 | Spec traceability | [spec-traceability.md](features/spec-traceability.md) | Link validation, not test execution |
 
 ## Procedure
@@ -71,7 +71,7 @@ The helper records initially running/stopped helpers and stops only exact helper
 .venv/bin/python .agents/skills/verify-scout/scripts/verify.py doctor
 ```
 
-Require exit zero. Doctor validates resolved Compose/settings delivery, availability of all three image targets, helper image identity and actual read-only file mounts, running helper health and startup-consumed settings, localhost-only viewer publication, and absence of active or leftover Scout/browser containers. Missing or stopped helpers are reported as needing startup, not healthy. Owned launchers recreate both helpers from the fixed run file before browsing. Constructor-only doctor allocates no snapshot and mutates no helpers. An existing run or test lock must be free.
+Require exit zero. Doctor validates resolved Compose/settings delivery, availability of all three image targets, helper image identity and actual read-only file mounts, running helper health and startup-consumed settings, absence of host-published Scout ports, and absence of active or leftover Scout/browser containers. Missing or stopped helpers are reported as needing startup, not healthy. Owned launchers recreate both helpers from the fixed run file before browsing. Constructor-only doctor allocates no snapshot and mutates no helpers. An existing run or test lock must be free.
 
 Doctor never reads credentials or claims provider auth is valid. Its selected anonymous/offline paths do not require auth. Image IDs identify artifacts, not proof that their source matches the working tree; rebuild after relevant changes. Browser readiness and policy application remain launch-time checks, not doctor claims.
 
@@ -96,7 +96,7 @@ Default helper receipts live in a newly created `/tmp/scout-verification-*` dire
 
 Exercise the real user entry point. Capture action and outcome, plus relevant stored/network/container effects. Do not substitute internal setters or test-only shortcuts for the feature under test. Existing provider transport doubles in integration tests stand at the external model boundary; they do not prove provider availability, quality, billing, or live image support. If using a dry-run, observe what it actually skips rather than trust its name.
 
-Smoke output proves sandbox/navigation/observation completed and the browser was removed. It contains no raw page or screenshot, so it does not prove specific page text, native click effects, downloads, viewer input, or a research mission. Test proofs retain the exact runner output and exit code outside scratch cleanup; report deselections, skips, and uncovered entry points. Do not retain auth data, viewer passwords, full Docker environment dumps, or raw private request packets.
+Smoke output proves sandbox/navigation/observation completed and the browser was removed. It contains no raw page or screenshot, so it does not prove specific page text, native click effects, downloads, native-window input, or a research mission. Test proofs retain the exact runner output and exit code outside scratch cleanup; report deselections, skips, and uncovered entry points. Do not retain auth data, full Docker environment dumps, or raw private request packets.
 
 ### Cleanup
 
@@ -114,11 +114,11 @@ The executable [scripts/verify.py](scripts/verify.py) supports `doctor`, `status
 - A persistent private project file backs retained helpers after cleanup. Do not delete it while a helper still references it. Only disposable overrides are removed by normal cleanup.
 - Status still returns `research` and `research_security` as `not_implemented`. Do not interpret `status: ready` as mission readiness.
 - Live subscription `chat` is status-only and consumes usage; none of these baseline checks starts it.
-- Viewer connection and framebuffer readiness do not prove input readiness. The fixture waits until the canvas receives the hit test before sending real mouse input; see its feature's Gotchas.
+- CDP screenshots and injected browser actions do not prove native WSLg input. Use the headed recipe's actual native-window checks. Missing desktop prerequisites leave that route unverified.
 - Do not settle deferred recovery, selected-tab closure, evidence caps, messaging, or reviewer-restoration choices while verifying.
 
 ## Verification
 
 For new or changed runtime/browser procedures, execute launch/doctor/one mapped journey/cleanup and inspect retained evidence before claiming that route works. The original seed uses `verify.py smoke` and requires successful behavior and cleanup checks. For the spec route, execute its standalone CLI checks and report missing coverage without claiming browser verification. Run the available `skill-creator` frontmatter validator too; that checks packaging, not app behavior.
 
-Map routes not exercised remain unverified. Seed proof uses existing local images and named auth/log volumes, not a fresh machine. It does not execute dependency/image installation, first-time volume initialization, fresh-VPS provisioning, remote Docker/network setup, remote viewer access, or live account/model availability. Track those setup steps separately when that target is authorized. Update this map when app entry points change. No maintenance scheduler is installed.
+Map routes not exercised remain unverified. Seed proof uses existing local images and named auth/log volumes, not a fresh machine. It does not execute dependency/image installation, first-time volume initialization, fresh-VPS provisioning, remote Docker/network setup, remote desktop access, or live account/model availability. Track those setup steps separately when that target is authorized. Update this map when app entry points change. No maintenance scheduler is installed.

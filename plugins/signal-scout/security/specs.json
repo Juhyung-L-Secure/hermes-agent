@@ -6,8 +6,8 @@
     {
       "id": "SR_011",
       "subfeature": "browser-modes",
-      "title": "Explicit isolated browser modes",
-      "contract": "Trusted startup browser.mode requires headless or headed, with headless and browser.viewer=false as production defaults. Invalid or missing modes/viewer settings fail without fallback; a viewer requires headed mode. Headed Chrome uses container-local Xvfb UNIX sockets, with no host display/device/socket mount. Headless launches no display/viewer. Both modes preserve owned disposable browser lifecycle, required sandbox/native download policy, sole anonymous default context, private CDP and verified configured main-window contents/global scale.",
+      "title": "Explicit headless and native headed browser modes",
+      "contract": "Trusted startup browser.mode requires headless or headed, with headless as production default. Missing or invalid mode fails without fallback. Headed is local debugging through a native WSLg Wayland window from the same owned Chromium container; there is no virtual display, noVNC transport or separate host viewer browser. Headless starts no display or viewer process and requires no host display environment, socket mount or WSLg installation. Both modes preserve owned disposable browser lifecycle, actual Chromium sandbox, managed native download denial, sole anonymous default context, private CDP and verified configured main-window contents and global scale.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -16,27 +16,37 @@
         {
           "layer": "unit",
           "file": "tests/signal_scout/security/test_browser_modes.py",
-          "test": "test_SR_011_required_mode_and_viewer_settings_fail_explicitly"
+          "test": "test_SR_011_invalid_or_missing_mode_fails_explicitly"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_wayland.py",
+          "test": "test_SR_011_SR_012_resolve_native_socket_and_reject_other_host_ipc"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_wayland.py",
+          "test": "test_SR_011_SR_012_missing_display_fails_before_container_work"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_browser_modes.py",
-          "test": "test_SR_011_production_headless_has_no_display_or_viewer"
+          "test": "test_SR_011_SR_012_production_headless_has_no_host_display"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_browser_modes.py",
-          "test": "test_SR_011_headed_without_viewer_uses_only_container_display"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_browser_modes.py",
-          "test": "test_SR_011_SR_006_SR_007_SR_008_SR_009_SR_010_headed_context_viewport_and_native_download_denial"
+          "test": "test_SR_011_SR_012_native_headed_uses_only_granted_socket"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_browser_modes.py",
           "test": "test_SR_011_SR_001_SR_002_SR_019_headed_sandbox_public_web_and_network_denials"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_browser_modes.py",
+          "test": "test_SR_011_SR_006_SR_007_SR_008_SR_009_SR_010_headed_context_viewport_and_native_download_denial"
         }
       ],
       "otherCoverage": [],
@@ -45,8 +55,8 @@
     {
       "id": "SR_012",
       "subfeature": "browser-modes",
-      "title": "Local session-authenticated browser viewer",
-      "contract": "Existing browser container optionally serves packaged noVNC through websockify and container-local x11vnc UNIX socket. Docker publishes only configured viewer TCP port on 127.0.0.1 through existing firewall service and its dedicated viewer bridge; restricted browser bridge stays internal and CDP remains unpublished. Enabled viewer accepts only viewer-bridge host-gateway initiated traffic and established replies, preserving other browser network denials. HTTP assets and WebSocket require fresh per-browser-run high-entropy Basic authentication; Host and supplied Origin must name local viewer. Trusted BrowserRun.viewer_access returns URL/login only after owned readiness, separately from Scout environment/model tools. Session secret exists only in browser tmpfs, never process arguments, readiness or persisted logs; credentials rotate on each fresh run. Disabled viewer starts no listener or credential. Closing viewer connection leaves browser and mission running; normal owned cleanup removes display/viewer too. No fifth service, custom viewer framework, automatic reconnect/recovery or public/LAN/CDP access is added.",
+      "title": "Narrow local headed display access",
+      "contract": "Only an explicitly headed browser may receive one validated local Wayland display socket through a narrow read-only bind mount. The trusted host resolves and fixes this display grant for that run, and validates both declared configuration and actual container mounts against it. Headless browser and every other service receive no display grant. Missing, invalid or unavailable native display fails clearly without falling back to X11, noVNC or headless. Do not mount host X11, an entire host runtime directory, all WSLg services, PulseAudio, GPU devices, Docker socket, personal folders or credentials. No privileged mode, host networking, viewer TCP listener, viewer bridge, published viewer port or viewer credentials remain. This intentional local-debug display connection changes the prior container-local-display boundary; no equivalent host-display isolation is claimed.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -55,17 +65,42 @@
         {
           "layer": "unit",
           "file": "tests/signal_scout/security/test_browser_modes.py",
-          "test": "test_SR_012_topology_rejects_nonlocal_viewer_or_any_published_control"
+          "test": "test_SR_012_topology_rejects_published_ports_and_extra_networks"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_wayland.py",
+          "test": "test_SR_011_SR_012_resolve_native_socket_and_reject_other_host_ipc"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_wayland.py",
+          "test": "test_SR_011_SR_012_missing_display_fails_before_container_work"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_wayland.py",
+          "test": "test_SR_011_SR_012_BT_006_frozen_mode_and_socket_drive_both_mount_guards"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_wayland.py",
+          "test": "test_SR_011_SR_012_container_environment_owns_private_runtime"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_browser_modes.py",
-          "test": "test_SR_012_real_viewer_authentication_rotation_and_no_lan_control"
+          "test": "test_SR_011_SR_012_production_headless_has_no_host_display"
         },
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_browser_modes.py",
-          "test": "test_SR_012_SR_013_real_noVNC_mouse_keys_and_stale_scout_reference_rejects"
+          "test": "test_SR_011_SR_012_native_headed_uses_only_granted_socket"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/integration/test_runtime_config.py",
+          "test": "test_BT_006_SR_012_headed_display_and_configuration_are_fixed"
         }
       ],
       "otherCoverage": [],
@@ -74,8 +109,8 @@
     {
       "id": "SR_013",
       "subfeature": "browser-modes",
-      "title": "Trusted human input and ordinary Scout actions",
-      "contract": "Authenticated noVNC lets a trusted operator see headed Chrome and click/type through native VNC input. Scout actions use the ordinary run-owned browser executor without independent review. Manual changes can make an observed original reference stale, which must reject before proposed effect; there is no pending approval or cross-review context baseline. Controlled-page tests exercise actual noVNC canvas, mouse and keys, page effects and continued browser use after viewer closure. No human-input interception, replacement selection, automatic action replay or deferred tab-closure/crash behavior is introduced.",
+      "title": "Trusted native interaction and ordinary Scout actions",
+      "contract": "A trusted operator can watch and interact with the actual headed Chromium window through native WSLg. Scout actions continue through the same ordinary run-owned browser executor without independent review. Manual page changes may stale an observed original reference, which must reject before the proposed effect. Repeatable controlled-page checks distinguish real native-window visibility and input from direct CDP action execution. Closing the actual Chromium window is browser closure and follows existing browser-loss and owned-cleanup behavior; there is no separate viewer whose closure leaves the browser alive. No human-input interception, replacement selection, automatic action replay or new tab-closure, crash or recovery policy is introduced.",
       "requiredCoverage": [
         "e2e"
       ],
@@ -83,7 +118,12 @@
         {
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_browser_modes.py",
-          "test": "test_SR_012_SR_013_real_noVNC_mouse_keys_and_stale_scout_reference_rejects"
+          "test": "test_SR_012_SR_013_native_window_mouse_keys_and_stale_scout_reference_rejects"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/security/test_browser_modes.py",
+          "test": "test_SR_013_SR_005_closing_native_window_ends_owned_browser"
         }
       ],
       "otherCoverage": [],
@@ -235,7 +275,7 @@
       "id": "SR_002",
       "subfeature": "browser-security",
       "title": "Narrow owned browser management exceptions",
-      "contract": "Hermes connects directly to configured private browser relay in its own unrestricted-by-Scout namespace. Browser namespace firewall permits only configured Hermes source into relay, narrow loopback launcher/relay-to-Chromium CDP control and necessary replies in addition to browser proxy access. Relay admits configured Hermes source IP only and forwards solely to newly owned child's loopback listener; child exit closes relay. No host-published CDP port, broad browser loopback allowance or private-web exception; optional authenticated localhost viewer transport is separately owned under SR_012. Endpoint host/port/browser path and discovery are checked; redirects, wrong ownership and stale paths fail. Network/source-IP checks are not cryptographic authentication and do not protect against compromised trusted controller/browser. Ordinary page HTTP, WebSocket, frame, image and fetch traffic remains proxy-forced, including loopback; proxy rejects raw CDP and relay even with known active WebSocket paths. Authorized native controller remains usable without Hermes proxy environment settings.",
+      "contract": "Hermes connects directly to configured private browser relay in its own unrestricted-by-Scout namespace. Browser namespace firewall permits only configured Hermes source into relay, narrow loopback launcher/relay-to-Chromium CDP control and necessary replies in addition to browser proxy access. Relay admits configured Hermes source IP only and forwards solely to newly owned child's loopback listener; child exit closes relay. No host-published CDP port, broad browser loopback allowance or private-web exception; headed-only local Wayland display access is separately owned under SR_012 and grants no extra IP-network exception. Endpoint host/port/browser path and discovery are checked; redirects, wrong ownership and stale paths fail. Network/source-IP checks are not cryptographic authentication and do not protect against compromised trusted controller/browser. Ordinary page HTTP, WebSocket, frame, image and fetch traffic remains proxy-forced, including loopback; proxy rejects raw CDP and relay even with known active WebSocket paths. Authorized native controller remains usable without Hermes proxy environment settings.",
       "requiredCoverage": [
         "e2e"
       ],
@@ -317,7 +357,7 @@
       "id": "SR_004",
       "subfeature": "browser-security",
       "title": "Isolated browser container boundary",
-      "contract": "Trusted host creates browser separately from credential-bearing Hermes: no shared PID/mount/network namespace, Hermes runtime, auth/research/log mounts, host folders other than the sole read-only operating-config file allowed by BT_006, Docker socket or writable shared artifact mount. Browser is non-root, readonly, capability-free, no-new-privileges and actually sandboxed with anonymous bounded temporary storage. Compose owns 2,000,000,000-byte memory and equal memory+swap, no CPU quota, PID512 and bounded tmpfs; changed resource configuration reaches actual containers. Private fixed-destination control relay is bound to exact newly created container/run and owned Chromium listener. Wrong ownership, discovery redirect, wrong/stale endpoint, unavailable sandbox or control startup fail safely without adopting/replacing browser. Network/source checks and live positive-control tests enforce boundary; no claim of immunity to browser/kernel/host compromise.",
+      "contract": "Trusted host creates browser separately from credential-bearing Hermes: no shared PID/mount/network namespace, Hermes runtime, auth/research/log mounts, host folders other than the read-only operating-config file allowed by BT_006 and the exact headed-only Wayland socket allowed by SR_012, Docker socket or writable shared artifact mount. Browser is non-root, readonly, capability-free, no-new-privileges and actually sandboxed with anonymous bounded temporary storage. Compose owns 2,000,000,000-byte memory and equal memory+swap, no CPU quota, PID512 and bounded tmpfs; changed resource configuration reaches actual containers. Private fixed-destination control relay is bound to exact newly created container/run and owned Chromium listener. Wrong ownership, discovery redirect, wrong/stale endpoint, unavailable sandbox or control startup fail safely without adopting/replacing browser. Network/source checks and live positive-control tests enforce boundary; no claim of immunity to browser/kernel/host compromise.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -440,7 +480,7 @@
       "id": "SR_006",
       "subfeature": "browser-security",
       "title": "Persistent native browser download denial",
-      "contract": "Pinned Chrome for Testing loads root-owned/read-only /etc/opt/chrome_for_testing/policies/managed/scout.json with mandatory DownloadRestrictions: 3. Before readiness launcher verifies Chrome's validated native policy model reports value 3, mandatory/machine/platform and no error, ignored, warning, conflict or superseded policy. Native policy persists after bounded startup CDP closes, without a download override or policy-only run-lived connection. Real attachment, redirected attachment and generated-blob attempts in initial/new tabs and separate popups emit attempted-download and canceled-progress events and save no file after startup disconnect. Controlled transient policy-free images prove real attachment/redirect downloads enter native progress, then native UI cancels before payload. Ordinary HTML, image, audio and video loading remains available. Native policy blocks ordinary webpage downloads, not Save Page or print-to-PDF. No allow toggle, custom download filter or download destination is introduced. Sole fresh anonymous default context remains supported; arbitrary trusted CDP remains trusted outside the model-facing gate under AG_001–AG_007.",
+      "contract": "Pinned Chrome for Testing loads root-owned/read-only /etc/opt/chrome_for_testing/policies/managed/scout.json with mandatory DownloadRestrictions: 3. Before readiness launcher verifies Chrome's validated native policy model reports value 3, mandatory/machine/platform and no error, ignored, warning, conflict or superseded policy. Native policy persists after bounded startup CDP closes, without a download override or policy-only run-lived connection. Real attachment, redirected attachment and generated-blob attempts in initial/new tabs and separate popups emit attempted-download and canceled-progress events and save no file after startup disconnect. Controlled transient policy-free images prove real attachment/redirect downloads enter native progress, then native UI cancels before payload. Ordinary HTML, image, audio and video loading remains available. Native policy blocks ordinary webpage downloads, not Save Page or print-to-PDF. No allow toggle, custom download filter or download destination is introduced. Sole fresh anonymous default context remains supported; arbitrary trusted CDP remains trusted outside the model-facing gate under AG_001\u2013AG_007.",
       "requiredCoverage": [
         "e2e"
       ],

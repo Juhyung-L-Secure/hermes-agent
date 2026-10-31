@@ -20,7 +20,7 @@ EVIDENCE = Path(os.environ.get('SCOUT_CHROMIUM_REPRO_EVIDENCE_DIR',
 CASE = {
     'name': 'headed-google-baseline',
     'url': 'https://www.google.com/search?q=why+rice+became+a+staple+food',
-    'config': {'mode': 'headed', 'viewer': True},
+    'config': {'mode': 'headed'},
     'observation_deadline': 180,
 }
 
@@ -44,7 +44,7 @@ for p in Path('/proc').iterdir():
         item={'pid':int(p.name),'comm':p.joinpath('comm').read_text().strip(),
               'status':{k:status[k].strip() for k in ('PPid','NSpid','State','VmRSS','VmSize','Threads','CapEff','Seccomp','NoNewPrivs') if k in status},
               'fd_count':len(list(p.joinpath('fd').iterdir())), 'limits':p.joinpath('limits').read_text()}
-        if any('chrome' in arg or 'Xvfb' in arg or 'x11vnc' in arg or 'websockify' in arg for arg in argv[:1]):
+        if any('chrome' in arg for arg in argv[:1]):
             item['argv']=argv
         item['type']=next((arg for arg in argv if arg.startswith('--type=')),None)
         item['subtype']=next((arg for arg in argv if arg.startswith('--utility-sub-type=')),None)

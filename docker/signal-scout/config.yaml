@@ -33,7 +33,6 @@ scout_diagnostics:
   max_pending_bytes: 1048576
 browser:
   mode: headless
-  viewer: false
   cloud_provider: local
   engine: chrome
   use_real_profile: false
@@ -77,6 +76,3 @@ scout_network:
   proxy_port: 3128
   control_port: 9222
   relay_port: 9223
-  viewer_port: 6080
-  viewer_subnet: 172.30.243.0/30
-  viewer_address: 172.30.243.2

@@ -39,12 +39,12 @@ def defer_creation_cancellation():
 
 
 class MissionRun:
-    """Own the exact foreground Scout, browser, helpers and optional local viewer."""
+    """Own the exact foreground Scout, browser and helpers."""
 
     def __init__(self, request, *, verbose=False, compose_files=(COMPOSE,), config_path=CONFIG):
         self.request, self.verbose = request, verbose
         self.browser = BrowserRun(compose_files, config_path, restore_helpers=True, verbose=verbose)
-        self.child = self.viewer = None
+        self.child = None
         self.name = self.browser.project + "-mission-" + self.browser.run
 
     def _scout(self):
@@ -73,15 +73,6 @@ class MissionRun:
             with defer_creation_cancellation():
                 self.browser.__enter__()
             print("Scout browser ready (" + self.browser.config["browser"]["mode"] + ").", file=sys.stderr, flush=True)
-            if self.browser.config["browser"]["viewer"]:
-                from mission_viewer import MissionViewer
-
-                try:
-                    self.viewer = MissionViewer(self.browser.viewer_access())
-                    self.viewer.__enter__()
-                    print("Scout local viewer opened.", file=sys.stderr, flush=True)
-                except Exception:
-                    print("Scout local viewer unavailable; check host Chrome and desktop display.", file=sys.stderr, flush=True)
             environment = [part for key, value in self.browser.scout_environment().items()
                            for part in ("-e", key + "=" + value)]
             command = self.browser.compose + ["run", "--no-deps", "-d", "-T", "--name", self.name,
@@ -142,11 +133,6 @@ class MissionRun:
                     self.child.kill()
                     self.child.wait(timeout=5)
                 errors.append(RuntimeError("Scout foreground client did not stop."))
-        try:
-            if self.viewer is not None:
-                self.viewer.close()
-        except Exception as error:
-            errors.append(error)
         try:
             self.browser.close()
         except Exception as error:

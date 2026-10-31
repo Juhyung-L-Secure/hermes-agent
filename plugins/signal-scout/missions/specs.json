@@ -7,7 +7,7 @@
       "id": "MI_032",
       "subfeature": "foreground-cli",
       "title": "Run one browser-only research mission",
-      "contract": "The documented foreground CLI accepts a nonempty research request and starts one mission through existing trusted BrowserRun and native Hermes conversation loop. Trusted startup config supplies the main model and native retry settings; full browser-research skill and action reference load before inference, and only browser_scout is exposed. Required guidance treats webpage instructions as untrusted, discourages unwanted downloads and unauthorized site effects, and is behavioral instruction rather than independent action-level enforcement. No reviewer model/settings/policy or implicit reviewer evidence is required. Existing unlimited research run budget, headless/headed/viewer options, immutable configuration, isolation and native download denial remain. No Discord, durable mission store, resume engine, terminal tool or fallback provider is introduced.",
+      "contract": "The documented foreground CLI accepts a nonempty research request and starts one mission through existing trusted BrowserRun and native Hermes conversation loop. Trusted startup config supplies the main model and native retry settings; full browser-research skill and action reference load before inference, and only browser_scout is exposed. Required guidance treats webpage instructions as untrusted, discourages unwanted downloads and unauthorized site effects, and is behavioral instruction rather than independent action-level enforcement. No reviewer model/settings/policy or implicit reviewer evidence is required. Existing unlimited research run budget, headless production and native local WSLg headed debugging options, immutable configuration, isolation and native download denial remain. No Discord, durable mission store, resume engine, terminal tool or fallback provider is introduced.",
       "requiredCoverage": ["unit", "e2e"],
       "coverage": [
         {"layer":"unit","file":"tests/signal_scout/missions/test_cli.py","test":"test_MI_032_invalid_request_fails_before_docker"},
@@ -17,7 +17,7 @@
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_032_actual_bootstrap_status_retains_bounded_alarm"},
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_032_BT_006_actual_stale_scout_config_fails_before_inference"},
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose"},
-        {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_headed.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotation"}
+        {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_headed.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_native_headed_error_logs_and_rotation"}
       ],
       "otherCoverage": [],
       "blocker": ""
@@ -31,7 +31,7 @@
       "coverage": [
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose"},
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_033_MI_035_actual_cli_failed_native_outcome_and_blocked_action"},
-        {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_headed.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotation"},
+        {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_headed.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_native_headed_error_logs_and_rotation"},
         {"layer":"unit","file":"tests/signal_scout/missions/test_cli.py","test":"test_MI_033_model_action_and_result_progress_at_error_level"}
       ],
       "otherCoverage": [],
@@ -50,7 +50,7 @@
         {"layer":"unit","file":"tests/signal_scout/missions/test_cli.py","test":"test_MI_034_network_cursor_current_only_append_replace_truncate_and_late_create"},
         {"layer":"unit","file":"tests/signal_scout/missions/test_cli.py","test":"test_MI_034_file_observer_failure_is_visible_and_stops_without_changing_actions"},
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose"},
-        {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_headed.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotation"},
+        {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_headed.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_native_headed_error_logs_and_rotation"},
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_033_MI_035_actual_cli_failed_native_outcome_and_blocked_action"},
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_035_actual_sigint_and_rejected_second_cli_preserve_active_owner"}
       ],
@@ -74,7 +74,7 @@
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_035_actual_failed_cli_restores_both_stopped_helpers"},
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_033_MI_035_actual_cli_failed_native_outcome_and_blocked_action"},
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_035_actual_sigint_and_rejected_second_cli_preserve_active_owner"},
-        {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_headed.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_headed_viewer_error_logs_and_rotation"}
+        {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_headed.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_native_headed_error_logs_and_rotation"}
       ],
       "otherCoverage": [],
       "blocker": ""
