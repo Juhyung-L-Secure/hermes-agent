@@ -60,12 +60,13 @@ $deadline = [DateTime]::UtcNow.AddSeconds(15)
 do {
  $hits = [System.Collections.Generic.List[object]]::new()
  [ScoutWindow]::EnumWindows({param($h,$p)
+  if ($request.handle -and $h.ToInt64() -ne $request.handle) { return $true }
   $s = [Text.StringBuilder]::new(1024)
   [void][ScoutWindow]::GetWindowText($h,$s,1024)
-  if ($s.ToString().StartsWith($request.title + ' - Google Chrome') -and [ScoutWindow]::IsWindowVisible($h)) {
+  if ($request.handle -or $s.ToString().Contains($request.title)) {
    $r = [ScoutWindow+Rect]::new()
    [void][ScoutWindow]::GetWindowRect($h,[ref]$r)
-   $hits.Add([pscustomobject]@{handle=$h;visible=$true;left=$r.Left;top=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top})
+   $hits.Add([pscustomobject]@{handle=$h;title=$s.ToString();visible=[ScoutWindow]::IsWindowVisible($h);left=$r.Left;top=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top})
   }
   return $true
  },[IntPtr]::Zero) | Out-Null
@@ -76,6 +77,7 @@ do {
 if ($hits.Count -ne 1) { throw 'Owned native window not visible' }
 $window = $hits[0]
 if ($request.action -ne 'inspect') {
+ if (-not $window.visible -or -not $window.title.Contains($request.title)) { throw 'Owned native window changed' }
  if ($request.action -eq 'click' -or $request.action -eq 'type') { [ScoutWindow]::Focus($window.handle) }
  if ($request.action -eq 'click') {
   $x = [int]($window.left + $request.x * $window.width / $request.width)
@@ -89,7 +91,7 @@ if ($request.action -ne 'inspect') {
   if (-not [ScoutWindow]::PostMessage($window.handle,16,[IntPtr]::Zero,[IntPtr]::Zero)) { throw 'Native close refused' }
  } else { throw 'Unsupported native test action' }
 }
-$window.handle = $null
+$window.handle = $window.handle.ToInt64()
 ConvertTo-Json -InputObject $window -Compress
 '''
 
@@ -97,19 +99,22 @@ ConvertTo-Json -InputObject $window -Compress
 class NativeWindow:
     def __init__(self, title):
         self.title = title
+        self.handle = None
 
     def _perform(self, action, **args):
         executable = shutil.which('powershell.exe')
         if not executable:
             raise RuntimeError('Native WSLg window verification requires Windows PowerShell interop.')
-        payload = base64.b64encode(json.dumps({'title':self.title,'action':action,**args}).encode()).decode()
+        payload = base64.b64encode(json.dumps({'title':self.title,'handle':self.handle,'action':action,**args}).encode()).decode()
         script = SCRIPT.replace('REQUEST',payload)
         encoded = base64.b64encode(script.encode('utf-16-le')).decode()
         result = subprocess.run([executable,'-NoProfile','-NonInteractive','-EncodedCommand',encoded],
                                 text=True,capture_output=True,timeout=30)
         if result.returncode:
             raise RuntimeError('Native WSLg test interaction failed: '+result.stderr[-1500:])
-        return json.loads(result.stdout.strip().lstrip('\ufeff'))
+        observed = json.loads(result.stdout.strip().lstrip('\ufeff'))
+        self.handle = observed['handle']
+        return observed
 
     def inspect(self):
         return self._perform('inspect')

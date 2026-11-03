@@ -1,5 +1,3 @@
-"""Real headless production and native WSLg debugging behavior."""
-
 from contextlib import contextmanager
 import copy
 import json
@@ -152,17 +150,20 @@ def test_SR_012_SR_013_native_window_mouse_keys_and_stale_scout_reference_reject
 with Browser() as browser:
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
+    title="Scout native input "+__import__("uuid").uuid4().hex
+    browser.command("eval", "document.title="+json.dumps(title))
+    print(json.dumps({'title':title}),flush=True);input()
     successful(gate,'navigate',{'url':'http://public.test/gate'});wait_ready(browser)
     snapshot=successful(gate,'snapshot')['snapshot']
-    title="Scout native input "+__import__("uuid").uuid4().hex
     browser.command("eval", "document.title="+json.dumps(title))
     points=browser.command('eval',"""(() => {
       const point=id=>{const r=document.querySelector('#'+id).getBoundingClientRect();
         return [(outerWidth-innerWidth)/2+r.x+r.width/2,
                 outerHeight-innerHeight+r.y+r.height/2];};
-      return {click:point('click'),query:point('query'),width:outerWidth,height:outerHeight};
+      return {click:point('click'),query:point('query'),width:outerWidth,height:outerHeight,
+              visibility:document.visibilityState,focused:document.hasFocus(),href:location.href};
     })()""")['result']
-    print(json.dumps({'title':title, **points}),flush=True);input()
+    print(json.dumps({'title':title,'tabs':adapter._tabs(),'selected':tab, **points}),flush=True);input()
     actual=browser.command('eval',"""(async () => {
       const deadline=Date.now()+10000;
       while(window.clicks!==1 || document.querySelector('#query').value!=='initialhuman') {
@@ -205,9 +206,15 @@ with Browser() as browser:
         def resume():
             child.stdin.write(b'\n');child.stdin.flush()
         try:
+            initial=json.loads(line())
+            window = NativeWindow(initial['title'])
+            initial_window=window.inspect()
+            print(json.dumps({'native_initial_window':initial_window}),flush=True)
+            resume()
             points=json.loads(line())
-            window = NativeWindow(points['title'])
+            print(json.dumps({'native_fixture':points}),flush=True)
             observed = window.inspect()
+            print(json.dumps({'native_loaded_window':observed}),flush=True)
             assert observed['visible'] is True and observed['width'] > 0 and observed['height'] > 0
             window.click(*points['click'], points['width'], points['height'])
             window.click(*points['query'], points['width'], points['height'])
