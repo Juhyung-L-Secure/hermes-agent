@@ -12,7 +12,7 @@ using System.Text;
 using System.Runtime.InteropServices;
 public class ScoutWindow {
  public delegate bool Callback(IntPtr h, IntPtr p);
- [DllImport("user32.dll")] public static extern bool EnumWindows(Callback cb, IntPtr p);
+ [DllImport("user32.dll", SetLastError=true)] public static extern bool EnumWindows(Callback cb, IntPtr p);
  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out Rect r);
@@ -21,6 +21,7 @@ public class ScoutWindow {
  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr h, IntPtr p);
  [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+ [DllImport("kernel32.dll")] public static extern void SetLastError(uint error);
  [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool attach);
  [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
  [DllImport("user32.dll")] public static extern void mouse_event(uint f, uint x, uint y, uint d, UIntPtr p);
@@ -36,11 +37,14 @@ public class ScoutWindow {
  [StructLayout(LayoutKind.Sequential)] public struct Mouse { public int x, y; public uint data, flags, time; public UIntPtr extra; }
  public static void Type(string value) {
   foreach (char c in value) {
+   if(c < 'a' || c > 'z') throw new Exception("Unsupported native test text");
+  }
+  foreach (char c in value) {
    var inputs = new Input[2];
    inputs[0].type = inputs[1].type = 1;
-   inputs[0].data.keyboard.scan = inputs[1].data.keyboard.scan = c;
-   inputs[0].data.keyboard.flags = 4;
-   inputs[1].data.keyboard.flags = 6;
+   inputs[0].data.keyboard.vk = inputs[1].data.keyboard.vk = (ushort)char.ToUpperInvariant(c);
+   inputs[0].data.keyboard.flags = 0;
+   inputs[1].data.keyboard.flags = 2;
    if (SendInput(2, inputs, Marshal.SizeOf(typeof(Input))) != 2) throw new Exception("Native input refused");
   }
  }
@@ -59,23 +63,35 @@ $request = ConvertFrom-Json ([Text.Encoding]::UTF8.GetString([Convert]::FromBase
 $deadline = [DateTime]::UtcNow.AddSeconds(15)
 do {
  $hits = [System.Collections.Generic.List[object]]::new()
- [ScoutWindow]::EnumWindows({param($h,$p)
-  if ($request.handle -and $h.ToInt64() -ne $request.handle) { return $true }
-  $s = [Text.StringBuilder]::new(1024)
-  [void][ScoutWindow]::GetWindowText($h,$s,1024)
-  if ($request.handle -or $s.ToString().Contains($request.title)) {
-   $r = [ScoutWindow+Rect]::new()
-   [void][ScoutWindow]::GetWindowRect($h,[ref]$r)
-   $hits.Add([pscustomobject]@{handle=$h;title=$s.ToString();visible=[ScoutWindow]::IsWindowVisible($h);left=$r.Left;top=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top})
+ $enumeration = [pscustomobject]@{success=$false;error=0;callbacks=0;callback_exception=$null}
+ [ScoutWindow]::SetLastError(0)
+ $enumeration.success = [ScoutWindow]::EnumWindows({param($h,$p)
+  $enumeration.callbacks++
+  try {
+   if ($request.handle -and $h.ToInt64() -ne $request.handle) { return $true }
+   $s = [Text.StringBuilder]::new(1024)
+   [void][ScoutWindow]::GetWindowText($h,$s,1024)
+   if ($request.handle -or $s.ToString().Contains($request.title)) {
+    $r = [ScoutWindow+Rect]::new()
+    [void][ScoutWindow]::GetWindowRect($h,[ref]$r)
+    $hits.Add([pscustomobject]@{handle=$h;title=$s.ToString();visible=[ScoutWindow]::IsWindowVisible($h);left=$r.Left;top=$r.Top;width=$r.Right-$r.Left;height=$r.Bottom-$r.Top})
+   }
+   return $true
+  } catch {
+   $enumeration.callback_exception = $_.Exception.GetType().FullName
+   [ScoutWindow]::SetLastError(87)
+   return $false
   }
-  return $true
- },[IntPtr]::Zero) | Out-Null
+ },[IntPtr]::Zero)
+ $enumeration.error = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+ if (-not $enumeration.success) { throw "Windows enumeration failed (error=$($enumeration.error); callbacks=$($enumeration.callbacks); callback_exception=$($enumeration.callback_exception))" }
  if ($hits.Count -eq 1) { break }
  if ($hits.Count -gt 1) { throw 'Ambiguous owned native window' }
  Start-Sleep -Milliseconds 100
 } while ([DateTime]::UtcNow -lt $deadline)
-if ($hits.Count -ne 1) { throw 'Owned native window not visible' }
+if ($hits.Count -ne 1) { throw "Owned native window title not found (enumeration_success=$($enumeration.success); callbacks=$($enumeration.callbacks))" }
 $window = $hits[0]
+$window | Add-Member -NotePropertyName enumeration -NotePropertyValue $enumeration
 if ($request.action -ne 'inspect') {
  if (-not $window.visible -or -not $window.title.Contains($request.title)) { throw 'Owned native window changed' }
  if ($request.action -eq 'click' -or $request.action -eq 'type') { [ScoutWindow]::Focus($window.handle) }

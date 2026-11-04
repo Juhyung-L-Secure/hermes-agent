@@ -85,6 +85,8 @@ def test_MI_032_MI_033_MI_034_MI_035_actual_native_headed_error_logs_and_rotatio
         title='Scout native mission '+uuid.uuid4().hex
         lifecycle.checked(["docker","exec",browser,"python3","-c",r'''
 import json
+from html import escape
+from urllib.parse import quote
 from websockets.sync.client import connect
 from scout_runtime.browser.control import discover
 with connect(discover('127.0.0.1',9222,2),proxy=None,open_timeout=2) as c:
@@ -99,7 +101,7 @@ with connect(discover('127.0.0.1',9222,2),proxy=None,open_timeout=2) as c:
                 return reply['result']
     target=next(t['targetId'] for t in call(1,'Target.getTargets')['targetInfos'] if t['type']=='page')
     session=call(2,'Target.attachToTarget',{'targetId':target,'flatten':True})['sessionId']
-    call(3,'Runtime.evaluate',{'expression':'document.title='+json.dumps(TITLE)},session)
+    call(3,'Page.navigate',{'url':'data:text/html,'+quote('<title>'+escape(TITLE)+'</title><h1>Native mission fixture</h1>')},session)
 '''.replace('TITLE',repr(title))])
         assert NativeWindow(title).inspect()['visible'] is True
         probe("from pathlib import Path; p=Path('/var/log/scout/proxy.log'); p.open('a').write('CLI current network\\n  native multiline detail\\n')")

@@ -2,6 +2,7 @@
 from collections import Counter
 import base64
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from html import escape
 import json
 from pathlib import Path
 import socket
@@ -9,6 +10,7 @@ import ssl
 import struct
 import threading
 import time
+from urllib.parse import parse_qs, urlsplit
 
 BASE = Path('/tmp/scout-network-fixture')
 COUNTS = Counter()
@@ -178,6 +180,18 @@ class Handler(BaseHTTPRequestHandler):
                 document.querySelector('#form').addEventListener('submit',e=>{e.preventDefault();window.submits++});
                 addEventListener('load',()=>window.fixtureReady=true);
               </script></body></html>'''
+            query = parse_qs(urlsplit(self.path).query)
+            title = query.get('native_title', ['Gate fixture'])[0]
+            body = body.replace(b'<title>Gate fixture</title>', ('<title>' + escape(title) + '</title>').encode())
+            if 'native_title' in query:
+                body = body.replace(b'aria-label="Gate query" value="initial"', b'aria-label="Gate query" value=""')
+                body = body.replace(b'</head>', b'<style>#click,#query{box-sizing:border-box;display:block;width:320px;height:128px;margin-bottom:48px}</style></head>')
+                body = body.replace(b'</body>', b'''<script>
+                  const original=document.querySelector('#click');
+                  original.addEventListener('click',()=>{
+                    if(window.clicks===2)original.replaceWith(original.cloneNode(true));
+                  });
+                </script></body>''')
         elif self.path.startswith('/evidence-focus'):
             body = b'''<html><body><div id="focus-host"></div>
               <script>

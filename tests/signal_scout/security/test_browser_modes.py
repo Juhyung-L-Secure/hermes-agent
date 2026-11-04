@@ -5,6 +5,7 @@ import selectors
 import subprocess
 import time
 import uuid
+from urllib.parse import quote
 
 import pytest
 import yaml
@@ -147,15 +148,13 @@ def test_SR_012_SR_013_native_window_mouse_keys_and_stale_scout_reference_reject
     with stack.browser_run() as run:
         options = [value for key,setting in run.scout_environment().items() for value in ('-e',key+'='+setting)]
         code = SETUP + r'''
+from urllib.parse import urlencode
 with Browser() as browser:
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
     title="Scout native input "+__import__("uuid").uuid4().hex
-    browser.command("eval", "document.title="+json.dumps(title))
-    print(json.dumps({'title':title}),flush=True);input()
-    successful(gate,'navigate',{'url':'http://public.test/gate'});wait_ready(browser)
+    successful(gate,'navigate',{'url':'http://public.test/gate?'+urlencode({'native_title':title})});wait_ready(browser)
     snapshot=successful(gate,'snapshot')['snapshot']
-    browser.command("eval", "document.title="+json.dumps(title))
     points=browser.command('eval',"""(() => {
       const point=id=>{const r=document.querySelector('#'+id).getBoundingClientRect();
         return [(outerWidth-innerWidth)/2+r.x+r.width/2,
@@ -164,29 +163,29 @@ with Browser() as browser:
               visibility:document.visibilityState,focused:document.hasFocus(),href:location.href};
     })()""")['result']
     print(json.dumps({'title':title,'tabs':adapter._tabs(),'selected':tab, **points}),flush=True);input()
+    caret=browser.command('eval',"({query:document.querySelector('#query').value,focus:document.activeElement.id,start:document.querySelector('#query').selectionStart,end:document.querySelector('#query').selectionEnd})")['result']
+    print(json.dumps(caret),flush=True);input()
     actual=browser.command('eval',"""(async () => {
       const deadline=Date.now()+10000;
-      while(window.clicks!==1 || document.querySelector('#query').value!=='initialhuman') {
+      while(window.clicks!==1 || document.querySelector('#query').value!=='human') {
         if(Date.now()>deadline)break;await new Promise(resolve=>setTimeout(resolve,50));
       }
       return {clicks:window.clicks,query:document.querySelector('#query').value,
               focus:document.activeElement.id,innerWidth,innerHeight,outerWidth,outerHeight,screenX,screenY};
     })()""")['result']
-    assert actual['clicks']==1 and actual['query']=='initialhuman',actual
+    assert actual['clicks']==1 and actual['query']=='human',actual
     print('manual-ok',flush=True)
     print('manual-wait',flush=True);input()
     deadline=time.monotonic()+10
     while browser.command('eval','window.clicks')['result']!=2:
         assert time.monotonic()<deadline,'Manual click did not arrive'
         time.sleep(.05)
-    browser.command('eval',"document.querySelector('#click').replaceWith(document.querySelector('#click').cloneNode(true));true")
     result=dispatch(gate,'click',{'ref':reference(snapshot,'Controlled click')})
     assert result['status']=='rejected' and result['execution_started'] is False
     assert browser.command('eval','window.submits')['result']==0
     assert browser.command('eval','window.clicks')['result']==2
     print('stale-ok',flush=True);input()
     snapshot=successful(gate,'snapshot')['snapshot']
-    browser.command('eval',"document.querySelector('#click').onclick=()=>window.clicks++;true")
     successful(gate,'click',{'ref':reference(snapshot,'Controlled click')})
     assert browser.command('eval','window.clicks')['result']==3
     print('done',flush=True)
@@ -206,18 +205,18 @@ with Browser() as browser:
         def resume():
             child.stdin.write(b'\n');child.stdin.flush()
         try:
-            initial=json.loads(line())
-            window = NativeWindow(initial['title'])
-            initial_window=window.inspect()
-            print(json.dumps({'native_initial_window':initial_window}),flush=True)
-            resume()
             points=json.loads(line())
             print(json.dumps({'native_fixture':points}),flush=True)
+            window = NativeWindow(points['title'])
             observed = window.inspect()
             print(json.dumps({'native_loaded_window':observed}),flush=True)
             assert observed['visible'] is True and observed['width'] > 0 and observed['height'] > 0
             window.click(*points['click'], points['width'], points['height'])
             window.click(*points['query'], points['width'], points['height'])
+            resume()
+            caret=json.loads(line())
+            print(json.dumps({'native_caret':caret}),flush=True)
+            assert caret=={'query':'','focus':'query','start':0,'end':0},caret
             window.type('human')
             resume()
             try:
@@ -239,8 +238,8 @@ def test_SR_013_SR_005_closing_native_window_ends_owned_browser(scout_stack, tmp
     with configured_mode(scout_stack, tmp_path/'native-close', 'headed') as run, run:
         identity = run.container
         title = 'Scout native close ' + uuid.uuid4().hex
-        probe(run, SETUP + '\nwith Browser() as browser:\n    browser.command("eval", ' +
-              repr('document.title=' + json.dumps(title)) + ')\n')
+        url = 'data:text/html,' + quote('<title>' + title + '</title><h1>Native close fixture</h1>')
+        probe(run, SETUP + '\nwith Browser() as browser:\n    browser.command("open", ' + repr(url) + ')\n')
         window = NativeWindow(title)
         assert window.inspect()['visible'] is True
         window.close()
