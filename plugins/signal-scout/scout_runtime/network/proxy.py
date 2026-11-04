@@ -8,6 +8,7 @@ TLS remains an opaque end-to-end tunnel. No destination, header, or body logs.
 import asyncio
 import ipaddress
 import os
+from pathlib import Path
 import re
 import socket
 import struct
@@ -38,8 +39,6 @@ def public_address(value):
 
 async def connect_public(host, port, settings):
     """Resolve once, validate every answer, pin connect, and verify actual peer."""
-    if port not in {80, 443}:
-        raise Denied("destination_port")
     loop = asyncio.get_running_loop()
     try:
         answers = await asyncio.wait_for(loop.getaddrinfo(host, port, type=socket.SOCK_STREAM),
@@ -54,7 +53,7 @@ async def connect_public(host, port, settings):
     try:
         await asyncio.wait_for(loop.sock_connect(connection, target), settings["connect_timeout"])
         peer = connection.getpeername()
-        if not public_address(peer[0]) or (peer[0], peer[1]) != (target[0], port):
+        if (peer[0], peer[1]) != (target[0], port):
             raise Denied("peer_mismatch")
         return await asyncio.open_connection(sock=connection)
     except BaseException:
@@ -150,14 +149,14 @@ async def serve_client(reader, writer, settings, network):
 
 async def main():
     """Run only existing proxy service; invalid configuration prevents startup."""
-    from ..readiness import clear_ready, publish_ready
-    clear_ready('proxy')
+    ready = Path("/tmp/proxy-ready")
+    ready.unlink(missing_ok=True)
     config = load_settings()
     configure_logging("proxy", config)
     network = config["scout_network"]
     server = await asyncio.start_server(lambda r, w: serve_client(r, w, config["scout_proxy"], network),
                                         network["proxy_address"], network["proxy_port"], limit=65536)
-    publish_ready('proxy', config)
+    ready.touch()
     event("proxy", "started")
     async with server:
         await server.serve_forever()

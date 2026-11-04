@@ -1,5 +1,4 @@
 from tests.signal_scout.support.mission import assert_clean, helper_state, browser_runs, receipt, wait_pending
-import importlib
 import re
 from pathlib import Path
 import signal
@@ -7,7 +6,6 @@ import subprocess
 import sys
 
 import pytest
-import yaml
 
 from tests.signal_scout.support.stack import lifecycle
 from tests.signal_scout.support.diagnostics import saved_run, writer_identity, assert_writer_stopped
@@ -47,58 +45,6 @@ print('bounded-bootstrap-alarm-verified')
     receipt(tmp_path, result)
     assert result.returncode == 0, result.stderr
     assert result.stdout.rstrip().endswith("bounded-bootstrap-alarm-verified")
-
-
-def test_MI_032_BT_006_actual_stale_scout_config_fails_before_inference(cli_images, tmp_path, monkeypatch, capsys):
-    base = lifecycle.BrowserRun((lifecycle.COMPOSE, cli_images))
-    running = set(lifecycle.checked(base.compose + ["ps", "--services", "--status", "running"]).splitlines())
-    config = lifecycle.settings.load_settings(lifecycle.CONFIG)
-    config["agent"]["api_max_retries"] = 1
-    path = tmp_path / 'wrong-config.yaml'
-    path.write_text(yaml.safe_dump(config))
-    host = importlib.import_module('mission_run')
-    real_checked, real_popen = host.checked, host.subprocess.Popen
-    waiting, attached, rejected = [], [], []
-
-    def checked(command, **kwargs):
-        if 'plugins.signal-scout.missions' in command:
-            index = command.index('--entrypoint')
-            command = command[:index] + ['--volume', str(path) + ':/opt/scout/config.yaml:ro'] + command[index:]
-            identifier = real_checked(command, **kwargs)
-            waiting.append(identifier)
-            return identifier
-        return real_checked(command, **kwargs)
-
-    def popen(command, *args, **kwargs):
-        if command[:2] == ['docker', 'attach']:
-            attached.append(command)
-            raise AssertionError('Wrong waiting Scout reached request stdin')
-        return real_popen(command, *args, **kwargs)
-
-    monkeypatch.setattr(host, 'checked', checked)
-    monkeypatch.setattr(host.subprocess, 'Popen', popen)
-    owner = host.MissionRun(host.MissionRequest('CLI fixture success'), compose_files=(lifecycle.COMPOSE, cli_images))
-    real_verify = owner.browser.verify_configuration
-
-    def verify(info, service):
-        if service != 'scout':
-            return real_verify(info, service)
-        mounts = [m for m in info['Mounts'] if m['Destination'] == '/opt/scout/config.yaml']
-        assert len(mounts) == 1 and mounts[0]['Source'] == str(path) and mounts[0]['RW'] is False
-        try:
-            real_verify(info, service)
-        except RuntimeError as error:
-            rejected.append(str(error))
-            raise
-
-    monkeypatch.setattr(owner.browser, 'verify_configuration', verify)
-    assert owner.run() == 1
-    output = capsys.readouterr()
-    assert output.out == '' and 'model working' not in output.err and 'mission started' not in output.err
-    assert len(waiting) == 1 and owner.child is None and attached == []
-    assert rejected == ['Scout configuration delivery mismatch.']
-    assert_clean(None)
-    assert set(lifecycle.checked(base.compose + ['ps', '--services', '--status', 'running']).splitlines()) == running
 
 
 def test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose(cli_stack, tmp_path):

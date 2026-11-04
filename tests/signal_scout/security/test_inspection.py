@@ -6,6 +6,8 @@ import pytest
 SETUP = r'''
 import importlib,json,time
 Browser=importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
+config = importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings()
+importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging').configure_logging('scout', config)
 e=importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
 def ref(snapshot,label):
     rows=[row for row in snapshot.splitlines() if json.dumps(label) in row and '[@s' in row]
@@ -22,7 +24,7 @@ def open_fixture(browser,path='/evidence'):
 def test_AE_001_AE_002_compact_refs_scroll_current_point_and_no_effect(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     open_fixture(browser)
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     snapshot=adapter._inspect_snapshot(tab)
@@ -51,7 +53,7 @@ with Browser() as browser:
 def test_AE_001_AE_002_AE_004_AE_005_same_cross_origin_points_and_focus(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     open_fixture(browser)
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     snapshot=adapter._inspect_snapshot(tab)

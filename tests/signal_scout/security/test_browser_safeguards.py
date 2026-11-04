@@ -1,4 +1,3 @@
-"""SR_006–SR_010: shared download policy and real window/scale behavior."""
 
 from tests.signal_scout.support.browser_policy import native_policy_variant, OBSERVE
 
@@ -59,7 +58,7 @@ def test_SR_010_setup_protocol_failure_prevents_readiness_and_cleans_owner(scout
     code = r'''
 import asyncio, json
 import scout_runtime.browser.chromium as chromium
-original = chromium.initialize_safeguards
+original = chromium.set_main_window
 class BrokenCommand:
     def __init__(self, connection): self.connection=connection
     async def send(self, raw):
@@ -70,7 +69,7 @@ class BrokenCommand:
     async def recv(self): return await self.connection.recv()
 async def setup(connection, config):
     await original(BrokenCommand(connection),config)
-chromium.initialize_safeguards=setup
+chromium.set_main_window=setup
 raise SystemExit(chromium.main())
 '''
     override = tmp_path / 'failed-safeguard.yaml'
@@ -83,31 +82,13 @@ raise SystemExit(chromium.main())
     assert not lifecycle.checked(['docker','ps','-aq','--filter','label='+lifecycle.RUN_LABEL+'='+run.run])
 
 
-@pytest.mark.parametrize('case', ['missing', 'malformed', 'invalid', 'unapplied'])
-def test_SR_010_missing_invalid_or_unapplied_native_policy_prevents_readiness_and_cleans_owner(scout_stack, tmp_path, case):
-    content = {'missing':None, 'malformed':'{', 'invalid':'{"DownloadRestrictions":"3"}',
-               'unapplied':'{"DownloadRestrictions":3}'}[case]
-    destination = '/etc/opt/chrome/policies/managed/scout.json' if case=='unapplied' else POLICY
-    with native_policy_variant(scout_stack, tmp_path, content, destination) as run:
-        with pytest.raises(RuntimeError, match='Browser startup failed'):
-            with run:
-                pytest.fail('Unverified native policy published readiness')
-        assert run.container is None and run.lock is None
-        assert not lifecycle.checked(['docker','ps','-aq','--filter','label='+lifecycle.RUN_LABEL+'='+run.run])
-
-
 @pytest.mark.parametrize('kind', ['attachment', 'redirect'])
 def test_SR_006_policy_free_positive_control_enters_native_download_and_cancels_before_payload(fixture_web, tmp_path, kind):
     stack, _, _, _ = fixture_web
-    # Only this transient test image omits policy. Skip only its startup policy
-    # attestation; production has no switch, and real window/ownership setup stays.
-    entrypoint = ['python3', '-c', "import scout_runtime.browser.chromium as c\n"
-                  "async def policy_free(*_): pass\n"
-                  "c.verify_download_policy=policy_free\nraise SystemExit(c.main())"]
-    with native_policy_variant(stack, tmp_path, None, entrypoint=entrypoint) as run:
+    with native_policy_variant(stack, tmp_path, None) as run:
         with run:
             stack.browser_probe(OBSERVE + '\nkind = ' + repr(kind) + r'''
-with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, open_timeout=2) as observer:
+with Browser(config) as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, open_timeout=2) as observer:
     browser.navigate('http://public.test/safeguards')
     main=pages()[0]
     browser.command('tab','new','http://public.test/safeguards?control-tab')

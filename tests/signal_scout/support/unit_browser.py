@@ -5,6 +5,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+owner_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner')
 from tools.interrupt import set_interrupt
 
 cdp_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser._cdp')
@@ -15,7 +17,7 @@ CONFIG = Path(__file__).resolve().parents[3] / 'docker/signal-scout/config.yaml'
 
 @pytest.fixture
 def boundary(monkeypatch):
-    browser = session_module.Browser.__new__(session_module.Browser)
+    browser = owner_module.Browser.__new__(owner_module.Browser)
     browser.settings = settings.load_settings(CONFIG)
     browser.ready, browser.failed, browser.endpoint = True, False, 'ws://trusted-owned-browser'
     monkeypatch.setenv('BROWSER_CDP_URL', browser.endpoint)

@@ -13,7 +13,7 @@ def test_SR_007_SR_008_SR_009_changed_configuration_reaches_real_window_and_scal
     path.write_text(yaml.safe_dump(config))
     with scout_stack.browser_run(config_path=path, restore_helpers=True) as run:
             code = OBSERVE + r'''
-with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, open_timeout=2) as observer:
+with Browser(config) as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, open_timeout=2) as observer:
     expected = {'width':960, 'height':600, 'device_scale_factor':2}
     initial = pages()[0]
     main_window = cdp('Browser.getWindowForTarget', {'targetId':initial['targetId']})['windowId']

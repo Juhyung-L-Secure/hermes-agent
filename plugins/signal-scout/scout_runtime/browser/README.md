@@ -12,11 +12,11 @@
 | `_errors.py` | Ordinary rejection and required inspection-failure classes |
 | `_geometry.py` | Pure polygon clipping and coordinate projection |
 | `_cdp.py` | Private CDP transport, command acknowledgment, document observation |
-| `chromium.py` | Owned Chromium child/profile/listener, native policy attestation, initial window sizing, relay |
+| `chromium.py` | Owned Chromium child/profile/listener, initial window sizing, relay |
 | `control.py` | Exact host/port/browser UUID endpoint validation and non-redirecting discovery |
 | `wayland.py` | Validated local WSLg socket grant, fixed container endpoint and private child display environment |
 | `../actions.py` | Ordered `ACTION_FIELDS` vocabulary and allowed/blocked modes, shared by schema, settings, and request parser |
-| `../settings.py` and `../readiness.py` | Validated operating-file values, consistency digest, and consumed helper settings |
+| `../settings.py` | Raw operating-file parsing at process entry |
 | `../process_output.py` and `../runtime_logging.py` | Bounded child-record assembly, nonblocking delivery, component logging, and proxy-side browser writer |
 
 ## Native owner and action session
@@ -27,7 +27,7 @@ Trusted host `BrowserRun` creates and verifies exact run-owned browser container
 
 Session resolves complete operations within its own frame/ref/CDP state. Click and type retain exact original-node binding through reveal, current visibility, iframe owners, coordinate projection, and hit testing. Typing checks editability and exact focus before replacement and insertion. Keypress resolves actual focus through cross-origin frames and closed author shadow roots, reveals it, and verifies focus again. Page-level keys invent no target. Known unrelated frame loss stays an explicit partial observation.
 
-Every dispatch retains existing interruption, readiness, exact environment endpoint, owner discovery, and same-private-connection checks. Native effect checks stay within each operation. `execution_started` marks entry into execution, including read-only operations and close. [Browser outcomes](../../browser_tools/README.md#requests-and-outcomes) define observable rejection and fatal boundaries.
+Every dispatch retains existing interruption, readiness, owner discovery, and same-private-connection checks. Native effect checks stay within each operation. `execution_started` marks entry into execution, including read-only operations and close. [Browser outcomes](../../browser_tools/README.md#requests-and-outcomes) define observable rejection and fatal boundaries.
 
 Session close first latches terminal, then closes `Browser`. Owner marks unavailable, disconnects session transport, and cleans native helper in `finally`. Private disconnect never calls owner close. Repeated outer owner cleanup retains native cleanup behavior. Old captured session stays terminal after native adapter unbind and cannot use another run. Host `BrowserRun` separately removes exact container/profile and restores helper state.
 
@@ -53,7 +53,7 @@ Configured record and pending-payload caps, continuous source drain, nonblocking
 
 ## Native headed debugging
 
-Headless production has no display dependency or mount. Explicit headed mode uses native Wayland to open the owned container's Chromium window through local WSLg. Host `BrowserRun` captures one immutable socket grant with the run configuration. Declared and actual mount checks allow only that browser-only read-only socket. `wayland.py` supplies the shared endpoint and a private runtime directory for Chromium's reconstructed environment. No X11, VNC, remote viewer, display server or separate host Chrome is started.
+Headless production has no display dependency or mount. Explicit headed mode uses native Wayland to open the owned container's Chromium window through local WSLg. Host `BrowserRun` captures one immutable socket grant with the run configuration. The host resolves external display input once and supplies that browser-only read-only socket. `wayland.py` supplies the shared endpoint and a private runtime directory for Chromium's reconstructed environment. No X11, VNC, remote viewer, display server or separate host Chrome is started.
 
 Native input reaches the actual browser and can stale Scout's original references. Closing the native window closes Chromium and follows existing browser-loss handling. Policy, viewport, sandbox, CDP and cleanup remain owned by their existing code.
 

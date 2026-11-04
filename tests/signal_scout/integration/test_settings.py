@@ -1,4 +1,3 @@
-"""BT_004: file-owned validated operating settings, without protection toggles."""
 
 import copy
 import importlib
@@ -124,16 +123,13 @@ def test_BT_004_SR_005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_path)
     run._helper_state = None
     run._config_override = None
     run._base_compose = run.compose[:]
-    run._run_config = None
     run._verbose = False
     run.restore_helpers = False
     run._diagnostics = Mock()
     monkeypatch.setattr(lifecycle, 'BrowserDiagnostics', lambda *_: run._diagnostics)
-    monkeypatch.setattr(run, '_fix_configuration', lambda: None)
-    monkeypatch.setattr(run, 'verify_configuration', lambda *_: None)
+    monkeypatch.setattr(run, '_capture_configuration', lambda: None)
     monkeypatch.setattr(run, 'inspect_owned', lambda: {'State': {'Running': True}})
-    assert run.scout_environment() == {'SCOUT_BROWSER_RUN': run.run,
-                                      'SCOUT_BROWSER_CONTAINER': run.container, 'BROWSER_CDP_URL': endpoint}
+    assert run.scout_environment() == {'BROWSER_CDP_URL': endpoint}
     calls = []
     def checked(command, timeout=60):
         calls.append((command, timeout))
@@ -148,7 +144,6 @@ def test_BT_004_SR_005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_path)
     run.close()
     assert (['docker', 'stop', '-t', '3', 'a' * 64], 3 + lifecycle.DOCKER_COMMAND_TIMEOUT) in calls
 
-    # Advance only this module's clock beyond configured startup bound.
     ticks = iter((0, 0, 8))
     monkeypatch.setattr(lifecycle, 'time', SimpleNamespace(monotonic=lambda: next(ticks), sleep=lambda _: None))
     monkeypatch.setattr(lifecycle, 'tempfile', SimpleNamespace(gettempdir=lambda: str(tmp_path)))
@@ -161,7 +156,7 @@ def test_BT_004_SR_005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_path)
     with pytest.raises(RuntimeError, match='Browser startup timeout'):
         with run:
             pytest.fail('Startup bound ignored')
-    assert attempts == [2]  # Local control 1s + bounded Docker-exec overhead 1s.
+    assert attempts == [2]
     assert run.container is None and run.lock is None
 
 
@@ -210,3 +205,30 @@ def test_AG_008_interaction_interval_cannot_exceed_document_allowance(tmp_path):
     config['browser'].update(observation_timeout=.5,interaction_observation_timeout=.125)
     target.write_text(yaml.safe_dump(config))
     assert settings.load_settings(target)['browser']['observation_timeout']==.5
+
+
+@pytest.mark.parametrize('source', ['valid', 'missing', 'malformed'])
+def test_BT_004_BT_006_runtime_input_parsing_rejects_missing_and_malformed_settings(scout_stack, tmp_path, source):
+    import subprocess
+
+    config = settings.load_settings(CONFIG)
+    config['browser']['command_timeout'] = 19
+    path = tmp_path / 'runtime.yaml'
+    path.write_text('secret-poison: [' if source == 'malformed' else yaml.safe_dump(config))
+    command = scout_stack.compose_command
+    options = ['run', '--rm', '--no-deps', '-T']
+    if source == 'missing':
+        override = tmp_path / 'missing.yaml'
+        override.write_text('services:\n  scout:\n    configs: !reset []\n')
+        command = command + ['-f', str(override)]
+    else:
+        options += ['-v', str(path) + ':/opt/scout/config.yaml:ro']
+    code = "import importlib; s=importlib.import_module('plugins.signal-scout.scout_runtime.settings'); print('PARSED:'+str(s.load_settings()['browser']['command_timeout']))"
+    result = subprocess.run(command + options + ['--entrypoint', 'python', 'scout', '-c', code],
+                            text=True, capture_output=True, timeout=30)
+    if source == 'valid':
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == 'PARSED:19'
+    else:
+        assert result.returncode != 0 and 'PARSED:' not in result.stdout
+        assert 'Invalid Scout operating settings.' in result.stderr and 'secret-poison' not in result.stderr

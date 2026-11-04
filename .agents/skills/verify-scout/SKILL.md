@@ -59,7 +59,7 @@ docker compose -f docker/signal-scout/compose.yaml config --quiet
 docker compose -f docker/signal-scout/compose.yaml build
 ```
 
-There is no persistent mission server to launch for the primary smoke. `verify.py smoke` invokes `.venv/bin/python docker/signal-scout/browser_run.py https://example.com`. That public CLI starts healthy helpers, creates a fresh browser/profile, validates native Chrome policy and actual sizing, attaches Scout, verifies the actual sandbox, navigates, snapshots, then removes the owned browser. All readiness steps must succeed; container existence alone is insufficient.
+There is no persistent mission server to launch for the primary smoke. `verify.py smoke` invokes `.venv/bin/python docker/signal-scout/browser_run.py https://example.com`. That public CLI starts healthy helpers, creates a fresh browser/profile, sets main-window contents, attaches Scout, verifies the actual sandbox, navigates, snapshots, then removes the owned browser. All readiness steps must succeed; container existence alone is insufficient.
 
 An empty Docker auth volume is initialized by the image's existing entrypoint, including its canonical operating-file symlink. Anonymous smoke needs neither login nor seeded application data. `https://example.com` is its public page. Readiness is the successful JSON result plus verified teardown, not an assumed delay. Mapped integration tests create their own controlled pages and data through existing fixtures.
 
@@ -71,9 +71,9 @@ The helper records initially running/stopped helpers and stops only exact helper
 .venv/bin/python .agents/skills/verify-scout/scripts/verify.py doctor
 ```
 
-Require exit zero. Doctor validates resolved Compose/settings delivery, availability of all three image targets, helper image identity and actual read-only file mounts, running helper health and startup-consumed settings, absence of host-published Scout ports, and absence of active or leftover Scout/browser containers. Missing or stopped helpers are reported as needing startup, not healthy. Owned launchers recreate both helpers from the fixed run file before browsing. Constructor-only doctor allocates no snapshot and mutates no helpers. An existing run or test lock must be free.
+Require exit zero. Doctor inventories declared images and containers, checks running helper health, and refuses active or leftover Scout/browser containers. Missing or stopped helpers are reported as needing startup, not healthy. Owned launchers recreate both helpers from the fixed run file before browsing. Constructor-only doctor allocates no snapshot and mutates no helpers. An existing run or test lock must be free.
 
-Doctor never reads credentials or claims provider auth is valid. Its selected anonymous/offline paths do not require auth. Image IDs identify artifacts, not proof that their source matches the working tree; rebuild after relevant changes. Browser readiness and policy application remain launch-time checks, not doctor claims.
+Doctor never reads credentials or claims provider auth is valid. Its selected anonymous/offline paths do not require auth. Image IDs identify artifacts, not proof that their source matches the working tree; rebuild after relevant changes. Browser readiness and actual sandbox availability remain launch-time checks. Policy and viewport behavior have controlled integration tests.
 
 ### Drive
 
@@ -110,7 +110,7 @@ The executable [scripts/verify.py](scripts/verify.py) supports `doctor`, `status
 
 ## Pitfalls
 
-- Runtime YAML edits affect the next owned run. Raw Compose helpers retain startup settings and need explicit recreation. Doctor refuses mismatched consumed settings without repairing them.
+- Runtime YAML edits affect the next owned run. Raw Compose helpers retain startup settings and need explicit recreation. Doctor reports actual running helper health without changing configuration.
 - A persistent private project file backs retained helpers after cleanup. Do not delete it while a helper still references it. Only disposable overrides are removed by normal cleanup.
 - Status still returns `research` and `research_security` as `not_implemented`. Do not interpret `status: ready` as mission readiness.
 - Live subscription `chat` is status-only and consumes usage; none of these baseline checks starts it.

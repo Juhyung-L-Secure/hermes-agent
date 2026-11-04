@@ -9,7 +9,7 @@ from tests.signal_scout.support.browser_policy import OBSERVE
 def test_AG_008_stalled_image_returns_ready_before_image_completion(fixture_web, retries):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + '\nretries='+repr(retries)+'\n' + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     browser.settings['browser']['navigation_retries']=retries
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
@@ -46,7 +46,7 @@ with Browser() as browser:
 def test_AG_008_failed_load_retries_original_url_with_current_observation(fixture_web, mode, status, last):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + '\nmode,status,last='+repr((mode,status,last))+'\n' + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     browser.settings['browser']['navigation_retries']=4
     evidence=browser.session();tab=evidence._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
@@ -76,7 +76,7 @@ with Browser() as browser:
 def test_AG_008_native_error_page_remains_observable(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     evidence=browser.session();tab=evidence._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
     connection=evidence._cdp;connection.timeout=2
@@ -97,7 +97,7 @@ with Browser() as browser:
 def test_AG_008_loaded_404_and_same_cross_origin_redirects_complete_once(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     evidence=browser.session();tab=evidence._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
     evidence._cdp.timeout=2
@@ -116,7 +116,7 @@ def test_AG_001_AG_002_AG_005_allowed_actions_and_fresh_compact_feedback(fixture
     """AG_009"""
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
     captures=[];native=adapter._command
@@ -157,7 +157,7 @@ def test_AG_002_AG_003_rejection_never_executes_proposal_and_browser_continues(f
     """AE_001 AE_002 AE_004 AE_005 AE_006"""
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + '\nchange=' + repr(change) + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     open_fixture(browser)
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
@@ -186,7 +186,7 @@ def test_AG_002_AG_003_same_and_cross_origin_exact_nodes_focus_and_movement(fixt
     """AE_001 AE_002 AE_004 AE_005"""
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     open_fixture(browser)
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
@@ -222,7 +222,7 @@ with Browser() as browser:
 def test_AG_004_AG_005_observations_selection_scroll_back_close_and_media(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     open_fixture(browser)
     browser.settings['browser']['scroll_pixels']=321
     adapter=browser.session();main=adapter._tabs()[0]['target_id']
@@ -296,7 +296,7 @@ with Browser() as browser:
 def test_AG_001_AG_004_AG_007_modes_and_privacy_reach_real_gate(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     open_fixture(browser)
     policy=browser.settings['browser']['action_permissions']
     policy['click']='blocked';policy['type']='allowed';policy['snapshot']='blocked'
@@ -342,7 +342,7 @@ settings=importlib.import_module('plugins.signal-scout.scout_runtime.settings').
 runtime.configure_logging('scout',settings)
 tag='diagnostic-browser-'+uuid.uuid4().hex
 hermes_logging.set_session_context(tag)
-with Browser() as browser:
+with Browser(config) as browser:
     open_fixture(browser)
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
@@ -390,7 +390,7 @@ def test_AG_002_AG_005_SR_005_SR_006_SR_010_native_download_navigation_keeps_bro
     stack, _, _, _ = fixture_web
     with stack.browser_run() as run:
         stack.browser_probe(SETUP + OBSERVE + '\nkind=' + repr(kind) + r'''
-with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, open_timeout=2) as observer:
+with Browser(config) as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, open_timeout=2) as observer:
     open_fixture(browser)
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
@@ -439,7 +439,7 @@ with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, op
 def test_AG_008_parser_stall_returns_partial_current_ax_then_healthy_next_action(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
     connection=adapter._cdp;connection.observation_timeout=.4
@@ -467,7 +467,7 @@ with Browser() as browser:
 def test_AG_008_dropdown_link_enter_history_and_pending_old_document(fixture_web):
     stack, _, _, _ = fixture_web
     proof=stack.browser_probe(SETUP + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
     connection=adapter._cdp;connection.observation_timeout=.6

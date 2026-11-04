@@ -53,6 +53,8 @@ OBSERVE = r'''
 import base64, importlib, json, os, struct, time
 from websockets.sync.client import connect
 Browser = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
+config = importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings()
+importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging').configure_logging('scout', config)
 sequence, events = 0, []
 def cdp(method, params=None, session=None):
     global sequence
@@ -95,7 +97,7 @@ def assert_SR_006_SR_010_native_download_attempts_cancel_after_startup_disconnec
     with stack.browser_run() as run:
         assert_startup_disconnected(run)
         result = stack.browser_probe(OBSERVE + '\nkind = ' + repr(kind) + r'''
-with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, open_timeout=2) as observer:
+with Browser(config) as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, open_timeout=2) as observer:
     browser.navigate('http://public.test/safeguards')
     main = pages()[0]
     main_session = attach(main)
@@ -168,7 +170,7 @@ with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, op
 
 def assert_SR_008_SR_009_main_window_tabs_share_contents_and_popup_stays_separate(scout_stack):
     scout_stack.browser_probe(OBSERVE + r'''
-with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, open_timeout=2) as observer:
+with Browser(config) as browser, connect(os.environ['BROWSER_CDP_URL'], proxy=None, open_timeout=2) as observer:
     viewport = browser.settings['browser']['viewport']
     initial = pages()[0]
     main_window = cdp('Browser.getWindowForTarget', {'targetId':initial['targetId']})['windowId']

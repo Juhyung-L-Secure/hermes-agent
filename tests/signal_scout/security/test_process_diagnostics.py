@@ -70,11 +70,13 @@ with socket.create_connection(('172.30.242.4',9223),timeout=2) as peer:
         assert '"direction": "' in live and '"connection": 1' in live
         assert 'event=child_exit' not in live
         assert run.inspect_owned()['State']['Running']
-        assert run.scout_environment()['SCOUT_BROWSER_RUN'] == run_id
+        assert run.scout_environment()['BROWSER_CDP_URL'] == run.endpoint
         scout_stack.browser_probe("""
 import importlib
 Browser=importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
-with Browser() as browser:
+config = importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings()
+importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging').configure_logging('scout', config)
+with Browser(config) as browser:
     assert browser.command('eval','40+2')['result'] == 42
 """, run=run)
     saved = saved_run(scout_stack, run_id)
@@ -100,7 +102,9 @@ def test_SR_023_broken_proxy_writer_preserves_browser_and_reaps_real_remote_proc
         scout_stack.browser_probe("""
 import importlib
 Browser=importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
-with Browser() as browser:
+config = importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings()
+importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging').configure_logging('scout', config)
+with Browser(config) as browser:
     assert browser.command('eval','6*7')['result'] == 42
 print('real-browser-result-preserved')
 """, run=run)
@@ -191,7 +195,9 @@ def test_SR_023_SR_024_diagnostic_inspection_failure_keeps_actual_browser_outcom
         scout_stack.browser_probe("""
 import importlib
 Browser=importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
-with Browser() as browser:
+config = importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings()
+importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging').configure_logging('scout', config)
+with Browser(config) as browser:
     assert browser.command('eval','7*6')['result'] == 42
 """, run=run)
     saved = saved_run(scout_stack, run_id)

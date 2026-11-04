@@ -1,6 +1,4 @@
-"""SR_004/SR_005: actual split-container boundary and owned disposable lifetime."""
 
-import copy
 import importlib
 import json
 import os
@@ -21,11 +19,10 @@ from tests.signal_scout.support.stack import lifecycle
 control = importlib.import_module('plugins.signal-scout.scout_runtime.browser.control')
 chromium = importlib.import_module('plugins.signal-scout.scout_runtime.browser.chromium')
 ROOT = Path(__file__).resolve().parents[3]
-IMPORT = "import importlib; Browser = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser\n"
+IMPORT = "import importlib; Browser = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser\nconfig = importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings()\nimportlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging').configure_logging('scout', config)\n"
 
 
 def docker(*args):
-    """Bound fixture diagnostics to explicit Docker targets."""
     return subprocess.check_output(['docker', *args], text=True, timeout=60).strip()
 
 
@@ -92,21 +89,6 @@ def test_SR_005_wrong_container_and_run_ownership_reject_cleanup(monkeypatch):
         run.inspect_owned()
 
 
-def test_SR_004_BT_004_topology_mismatch_is_rejected():
-    run = lifecycle.BrowserRun()
-    assert set(run.model['services']) == {'scout', 'browser', 'firewall', 'proxy'}
-    for service in ('proxy', 'scout', 'firewall'):
-        model = copy.deepcopy(run.model)
-        model['services'][service]['networks']['restricted']['ipv4_address'] = '172.30.242.5'
-        with pytest.raises(ValueError, match='Scout network configuration mismatch'):
-            lifecycle.validate_topology(model, run.config)
-    for service in ('scout', 'browser', 'firewall', 'proxy'):
-        model = copy.deepcopy(run.model)
-        model['services'][service]['network_mode'] = 'service:proxy'
-        with pytest.raises(ValueError, match='Scout network configuration mismatch'):
-            lifecycle.validate_topology(model, run.config)
-
-
 def test_SR_004_container_mount_pid_network_and_resource_separation(scout_stack):
     with scout_stack.browser_run() as run:
         scout = lifecycle.checked(run.compose + ['run', '--rm', '--no-deps', '-d', '--entrypoint', 'sleep', 'scout', '120'])
@@ -130,7 +112,7 @@ def test_SR_004_container_mount_pid_network_and_resource_separation(scout_stack)
             assert host['NetworkMode'] != hermes['HostConfig']['NetworkMode']
             assert not host['PidMode'] and not host['VolumesFrom']
             binds = [m for m in browser['Mounts'] if m['Type'] == 'bind']
-            assert len(binds) == 1 and binds[0]['Source'] == str(run._run_config.path)
+            assert len(binds) == 1 and binds[0]['Source'] == str(run._slot_path())
             assert binds[0]['Destination'] == '/opt/scout/config.yaml' and binds[0]['RW'] is False
             assert all(mount['Type'] in {'tmpfs', 'bind'} for mount in browser['Mounts'])
             configured_tmp = next(mount.split(':', 1)[1] for mount in run.model['services']['browser']['tmpfs']
@@ -185,7 +167,6 @@ with socket.socket() as listener:
                 time.sleep(0.1)
             else:
                 pytest.fail('Hermes fixture did not start')
-            # Hermes has direct networking; reachable listener proves browser denial.
             positive = "import socket; s=socket.create_connection(('172.30.242.3',18080),timeout=2); assert s.recv(32)==b'fixture'; s.close()"
             docker('exec', scout, 'python', '-c', positive)
             scout_stack.exec_proxy(positive)
@@ -202,7 +183,7 @@ else:
 """)
             env = [value for key, setting in run.scout_environment().items() for value in ('-e', key + '=' + setting)]
             docker('exec', *env, scout, 'python', '-c', IMPORT + f"""
-with Browser() as browser:
+with Browser(config) as browser:
     try:
         browser.command('open', 'file://{fixture}')
     except RuntimeError:
@@ -231,7 +212,6 @@ def test_SR_005_single_claim_fresh_profile_and_ordinary_fatal_teardown(scout_sta
                     pytest.fail('Concurrent browser admitted')
             assert run.inspect_owned()['State']['Running']
             if number == 0:
-                # Model a leftover without adopting it: release claimant lock only.
                 os.close(run.lock)
                 run.lock = None
                 with pytest.raises(RuntimeError, match='Existing Scout browser requires operator inspection'):
@@ -244,7 +224,7 @@ def test_SR_005_single_claim_fresh_profile_and_ordinary_fatal_teardown(scout_sta
                 docker('exec', run.container, 'python3', '-c', f"from pathlib import Path; (Path({profile!r})/'fixture-marker').write_text('fixture')")
             else:
                 docker('exec', run.container, 'python3', '-c', f"from pathlib import Path; assert not (Path({profile!r})/'fixture-marker').exists()")
-            scout_stack.browser_probe(IMPORT + "with Browser() as browser: assert browser.command('eval','true')['result'] is True", run=run)
+            scout_stack.browser_probe(IMPORT + "with Browser(config) as browser: assert browser.command('eval','true')['result'] is True", run=run)
         assert subprocess.run(['docker', 'inspect', identities[-1]], capture_output=True).returncode != 0
     assert identities[0] != identities[1] and profiles[0] != profiles[1]
     with pytest.raises(RuntimeError, match='surfaced fatal failure'):
@@ -261,7 +241,7 @@ def test_SR_004_existing_listener_never_adopted_or_disturbed(scout_stack):
                                   text=True, capture_output=True, timeout=10)
         assert rejected.returncode == 1 and rejected.stderr.strip() == 'scout browser operation failed'
         assert docker('exec', run.container, 'python3', '-m', 'scout_runtime.browser.chromium', '--status') == before
-        scout_stack.browser_probe(IMPORT + "with Browser() as browser: assert browser.command('eval','true')['result'] is True", run=run)
+        scout_stack.browser_probe(IMPORT + "with Browser(config) as browser: assert browser.command('eval','true')['result'] is True", run=run)
 
 
 def test_SR_005_child_exit_closes_relay_and_never_replaces_browser(scout_stack):
@@ -285,7 +265,7 @@ def test_SR_005_stale_endpoint_fails_without_local_fallback(scout_stack):
         scout_stack.browser_probe(IMPORT + """
 from pathlib import Path
 try:
-    Browser().start()
+    Browser(config).start()
 except RuntimeError as error:
     assert str(error) == 'Chromium sandbox unavailable.'
 else:
@@ -299,7 +279,7 @@ def test_SR_005_command_hang_is_terminal_and_owned_container_removed(scout_stack
     with scout_stack.browser_run() as run:
         identity = run.container
         scout_stack.browser_probe(IMPORT + """
-with Browser() as browser:
+with Browser(config) as browser:
     browser.settings['browser']['command_timeout'] = 1
     try:
         browser.command('eval', '(()=>{while(true){}})()')

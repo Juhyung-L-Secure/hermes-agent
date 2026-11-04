@@ -84,12 +84,6 @@ def bind_browser(session, *, on_fatal, action_reference):
     Binding overlap fails explicitly.
     """
     global _binding
-    if not callable(on_fatal):
-        raise TypeError("Scout fatal stop callback is required.")
-    if not isinstance(action_reference, str) or not action_reference.strip():
-        raise TypeError("Scout browser action reference is required.")
-    if not callable(getattr(session, "dispatch", None)) or not callable(getattr(session, "close", None)):
-        raise TypeError("Scout browser action gate is required.")
     binding = _Binding(session, on_fatal, action_reference)
     with _binding_lock:
         if _binding is not None:
@@ -136,7 +130,6 @@ def _handle(args, **_context):
             return _unavailable("rejected", "Scout browser is not bound to a run.")
         if binding.stopped:
             return _unavailable("fatal", "Scout browser run has stopped.")
-    # Capture before dispatch: a late worker must never borrow the next run.
     result = binding.session.dispatch(args)
     if result["data"].get("error", {}).get("kind") == "request_format":
         result = {**result, "data": {**result["data"], "action_reference": binding.action_reference}}

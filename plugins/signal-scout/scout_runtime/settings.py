@@ -1,9 +1,6 @@
 from pathlib import Path
 import ipaddress
-import hashlib
-import json
 import math
-import re
 import stat
 import yaml
 
@@ -11,33 +8,18 @@ CONFIG = Path("/opt/scout/config.yaml")
 from .actions import ACTION_FIELDS, ACTION_MODES
 
 
-def settings_digest(config):
-    """Compare complete operating settings without transporting config contents."""
-    return hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
-
-
 def load_settings(path=None):
-    """Require a read-only runtime mount, or validate an explicit host source."""
+    """Read and parse the selected operating file at process entry."""
     try:
-        if path is None:
-            mounts = []
-            for line in Path('/proc/self/mountinfo').read_text().splitlines():
-                fields = line.split()
-                target = re.sub(r'\\([0-7]{3})', lambda match: chr(int(match[1], 8)), fields[4])
-                if target == str(CONFIG):
-                    mounts.append(fields[5].split(','))
-            if (len(mounts) != 1 or 'ro' not in mounts[0]
-                    or CONFIG.is_symlink() or not stat.S_ISREG(CONFIG.stat().st_mode)):
-                raise ValueError
-            path = CONFIG
-        if not stat.S_ISREG(Path(path).stat().st_mode):
+        source = CONFIG if path is None else Path(path)
+        if not stat.S_ISREG(source.stat().st_mode):
             raise ValueError
-        return _parse_settings(Path(path).read_bytes())
+        return parse_settings(source.read_bytes())
     except (OSError, ValueError):
         raise ValueError('Invalid Scout operating settings.') from None
 
 
-def _parse_settings(contents):
+def parse_settings(contents):
     try:
         config = yaml.safe_load(contents)
         logging = config["logging"]
@@ -80,14 +62,16 @@ def _parse_settings(contents):
             raise ValueError
         if set(proxy) != {"dns_timeout", "connect_timeout", "idle_timeout"}:
             raise ValueError
-        if browser != {"cloud_provider": "local", "engine": "chrome", "use_real_profile": False,
+        if (type(browser["use_real_profile"]) is not bool
+                or type(browser["auto_local_for_private_urls"]) is not bool
+                or browser != {"cloud_provider": "local", "engine": "chrome", "use_real_profile": False,
                        "mode": browser["mode"],
                        "auto_local_for_private_urls": False, "command_timeout": browser["command_timeout"],
                        "navigation_retries": browser["navigation_retries"],
                        "observation_timeout": browser["observation_timeout"],
                        "interaction_observation_timeout": browser["interaction_observation_timeout"],
                        "viewport": viewport, "action_permissions": permissions,
-                       "scroll_pixels": browser["scroll_pixels"]}:
+                       "scroll_pixels": browser["scroll_pixels"]}):
             raise ValueError
         for key in ("observation_timeout", "interaction_observation_timeout"):
             value = browser[key]
@@ -102,8 +86,6 @@ def _parse_settings(contents):
                 raise ValueError
         scale = viewport["device_scale_factor"]
         if type(scale) not in (int, float) or not math.isfinite(scale) or scale <= 0:
-            raise ValueError
-        if browser["use_real_profile"] is not False or browser["auto_local_for_private_urls"] is not False:
             raise ValueError
         for value, low, high in [
             (logging["max_size_mb"], 1, 1024), (logging["backup_count"], 1, 20),

@@ -1,6 +1,5 @@
 import importlib
 import json
-import subprocess
 import time
 import uuid
 
@@ -32,19 +31,18 @@ def runtime_logs(scout_stack, tmp_path):
 
 
 def consumers(stack, run, config, *, native=True):
-    expected = settings.settings_digest(config)
+    expected = config
     helpers = {}
     for service in ('proxy', 'firewall'):
         info = run.inspect_helper(service)
-        run.verify_configuration(info, service)
         helpers[service] = info['Id']
-    run.verify_configuration(run.inspect_owned(), 'browser')
     code = r'''
 import errno, importlib, json, os
 from pathlib import Path
 s=importlib.import_module('plugins.signal-scout.scout_runtime.settings')
 config=s.load_settings()
-assert s.settings_digest(config)==EXPECTED
+importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging').configure_logging('scout',config)
+assert config==EXPECTED
 from hermes_cli.config import load_config
 native=load_config()
 assert native['model']['default']==config['model']['default']
@@ -61,7 +59,7 @@ if CHECK_NATIVE_CONSUMERS:
     finally:
         agent.close()
     Browser=importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
-    with Browser() as browser:
+    with Browser(config) as browser:
         assert browser.settings==config
         assert browser.command('eval','window.innerWidth')['result']==config['browser']['viewport']['width']
     import hermes_logging
@@ -84,9 +82,9 @@ print('all-consumers-fixed-and-readonly')
     for service, identifier in (*helpers.items(), ('browser', run.container)):
         mounts = json.loads(lifecycle.checked(['docker', 'inspect', identifier]))[0]['Mounts']
         binds = [m for m in mounts if m['Type'] == 'bind']
-        expected_binds={'/opt/scout/config.yaml':str(run._run_config.path)}
-        if service=='browser' and run._run_config.wayland is not None:
-            expected_binds[str(lifecycle.wayland.SOCKET)]=str(run._run_config.wayland.source)
+        expected_binds={'/opt/scout/config.yaml':str(run._slot_path())}
+        if service=='browser' and config['browser']['mode']=='headed':
+            expected_binds[str(lifecycle.wayland.SOCKET)]=json.loads(run._config_override.read_text())['services']['browser']['volumes'][0]['source']
         assert {m['Destination']:m['Source'] for m in binds}==expected_binds
         assert all(m['RW'] is False for m in binds)
         assert lifecycle.checked(['docker', 'exec', '-u', '10000:10000', identifier, 'python3', '-c',
@@ -135,7 +133,7 @@ def test_BT_006_selected_file_reaches_real_browser_without_build(scout_stack, tm
         replacement.write_text(yaml.safe_dump(later))
         replacement.replace(path)
         consumers(scout_stack, run, config, native=False)
-        backing = run._run_config.path
+        backing = run._slot_path()
         override = run._config_override
     assert backing.is_file() and not override.exists()
     for service, identifier in first_helpers.items():
@@ -144,7 +142,7 @@ def test_BT_006_selected_file_reaches_real_browser_without_build(scout_stack, tm
         while run.inspect_helper(service)['State']['Health']['Status'] != 'healthy':
             assert time.monotonic() < deadline
             time.sleep(.1)
-        run.verify_configuration(run.inspect_helper(service), service)
+        assert run.inspect_helper(service)['State']['Health']['Status'] == 'healthy'
     with scout_stack.browser_run(compose_files=files, config_path=path, restore_helpers=True) as second:
         assert second.config == later
         next_helpers = consumers(scout_stack, second, later)
@@ -152,27 +150,6 @@ def test_BT_006_selected_file_reaches_real_browser_without_build(scout_stack, tm
     assert {name: lifecycle.checked(['docker', 'image', 'inspect', definition['image'],
                                     '--format', '{{.Id}}'])
             for name, definition in lifecycle.BrowserRun().model['services'].items()} == images
-
-
-@pytest.mark.parametrize('delivery', ['missing', 'writable', 'wrong-file'])
-def test_BT_006_runtime_loader_refuses_noncanonical_delivery_before_work(scout_stack, tmp_path, delivery):
-    path = tmp_path / 'wrong.yaml'
-    path.write_text('secret-poison: [')
-    options = ['run', '--rm', '--no-deps', '-T']
-    if delivery == 'writable':
-        options += ['-v', str(lifecycle.CONFIG) + ':/opt/scout/config.yaml:rw']
-    elif delivery == 'wrong-file':
-        options += ['-v', str(path) + ':/opt/scout/config.yaml:ro']
-    else:
-        override = tmp_path / 'missing.yaml'
-        override.write_text('services:\n  scout:\n    configs: !reset []\n')
-        command = scout_stack.compose_command + ['-f', str(override)]
-    result = subprocess.run((command if delivery == 'missing' else scout_stack.compose_command) + options + [
-        '--entrypoint', 'python', 'scout', '-c',
-        "import importlib; importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings(); print('WORK-REACHED')"],
-        capture_output=True, text=True, timeout=30)
-    assert result.returncode != 0 and 'WORK-REACHED' not in result.stdout
-    assert 'Invalid Scout operating settings.' in result.stderr and 'secret-poison' not in result.stderr
 
 
 @pytest.mark.parametrize('state', ['proxy-stopped', 'firewall-stopped', 'proxy-absent'])
@@ -193,48 +170,24 @@ def test_BT_006_actual_mixed_or_absent_helper_state_restores(scout_stack, state)
         scout_stack.compose('up', '-d', '--wait', '--no-build', '--pull', 'never', '--force-recreate', 'proxy', 'firewall')
 
 
-def test_BT_006_raw_helper_consumption_cannot_be_forged_by_fresh_file_read(scout_stack, tmp_path):
-    path = tmp_path / 'raw.yaml'
-    config = settings.load_settings(lifecycle.CONFIG)
-    config['scout_proxy']['idle_timeout'] = 37
-    path.write_text(yaml.safe_dump(config))
-    override = tmp_path / 'raw-compose.yaml'
-    override.write_text(yaml.safe_dump({'configs': {'scout-operating': {'file': str(path)}}}))
-    files = (*scout_stack.browser_compose_files, override)
-    run = lifecycle.BrowserRun(files, path)
-    try:
-        lifecycle.checked(run.compose + ['up', '-d', '--wait', '--no-build', '--pull', 'never',
-                                        '--force-recreate', 'proxy', 'firewall'])
-        for service in ('proxy', 'firewall'):
-            run.verify_configuration(run.inspect_helper(service), service)
-        config['scout_proxy']['idle_timeout'] = 39
-        path.write_text(yaml.safe_dump(config))
-        changed = lifecycle.BrowserRun(files, path)
-        for service in ('proxy', 'firewall'):
-            info = changed.inspect_helper(service)
-            actual = lifecycle.checked(['docker', 'exec', '-u', '10000:10000', info['Id'], 'python3', '-c',
-                'from scout_runtime.settings import load_settings,settings_digest; print(settings_digest(load_settings()))'])
-            assert actual == settings.settings_digest(config)
-            with pytest.raises(RuntimeError, match='helper consumed configuration mismatch'):
-                changed.verify_configuration(info, service)
-    finally:
-        scout_stack.compose('up', '-d', '--wait', '--no-build', '--pull', 'never', '--force-recreate', 'proxy', 'firewall')
-
-
 def test_BT_006_SR_012_headed_display_and_configuration_are_fixed(scout_stack, tmp_path, native_display, monkeypatch):
     config=settings.load_settings(lifecycle.CONFIG)
     config['browser']['mode']='headed'
     path=tmp_path/'native.yaml'
     path.write_text(yaml.safe_dump(config))
     with scout_stack.browser_run(config_path=path,restore_helpers=True) as run:
-        source=run._run_config.wayland.source
+        source=lifecycle.wayland.resolve_wayland().source
+        original_mounts=run.inspect_owned()['Mounts']
         consumers(scout_stack,run,config)
         monkeypatch.setenv('WAYLAND_DISPLAY','/var/run/docker.sock')
         config['browser']['mode']='headless'
         path.write_text(yaml.safe_dump(config))
-        fixed=settings.load_settings(run._run_config.path)
-        assert fixed['browser']['mode']=='headed' and run._run_config.wayland.source==source
+        fixed=settings.load_settings(run._slot_path())
+        assert fixed['browser']['mode']=='headed'
+        assert run.inspect_owned()['Mounts']==original_mounts
+        assert any(m['Source']==str(source) for m in original_mounts)
         consumers(scout_stack,run,fixed,native=False)
     with scout_stack.browser_run(config_path=path,restore_helpers=True) as run:
-        assert run.config['browser']['mode']=='headless' and run._run_config.wayland is None
+        assert run.config['browser']['mode']=='headless'
+        assert not any(m['Destination']==str(lifecycle.wayland.SOCKET) for m in run.inspect_owned()['Mounts'])
         consumers(scout_stack,run,config,native=False)

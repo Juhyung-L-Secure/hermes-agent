@@ -72,15 +72,12 @@ def drop_privileges():
     os.setgroups([])
     os.setgid(10000)
     os.setuid(10000)
-    state = dict(line.split(":", 1) for line in Path("/proc/self/status").read_text().splitlines())
-    if any(int(state[key].strip(), 16) for key in ("CapEff", "CapBnd", "CapPrm", "CapAmb")):
-        raise RuntimeError("Firewall privilege drop failed.")
 
 
 def main():
     """Start enforcement and best-effort rejection logging in existing helper."""
-    from ..readiness import clear_ready, publish_ready
-    clear_ready('firewall')
+    ready = Path("/tmp/firewall-ready")
+    ready.unlink(missing_ok=True)
     os.umask(0o077)
     config = load_settings()
     if len(sys.argv) != 1:
@@ -89,7 +86,7 @@ def main():
     install_rules(config["scout_network"])
     drop_privileges()
     configure_logging("firewall", config)
-    publish_ready('firewall', config)
+    ready.touch()
     event("firewall", "started")
     while True:
         try:

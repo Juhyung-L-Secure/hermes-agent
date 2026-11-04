@@ -15,7 +15,7 @@ PUBLIC4 = '11.203.247.2'
 PUBLIC6 = '2606:4700:ffff:fffe::2'
 NETWORK = 'signal-scout-protection-fixture'
 BASE = '/tmp/scout-network-fixture'
-IMPORT = "import importlib; Browser = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser\n"
+IMPORT = "import importlib; Browser = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser\nconfig = importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings()\nimportlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging').configure_logging('scout', config)\n"
 
 
 def docker(*args):
@@ -111,6 +111,8 @@ def fixture_web(scout_stack, tmp_path_factory):
 SETUP = r'''
 import importlib,json,struct,time
 Browser=importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
+config = importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings()
+importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging').configure_logging('scout', config)
 g=importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
 e=importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
 def reference(snapshot,label):
@@ -139,7 +141,7 @@ def successful(gate,action,args=None):
 def assert_SR_002_background_http_websocket_cannot_control_cdp(fixture_web):
     stack, _, counts, baseline = fixture_web
     code = IMPORT + """
-with Browser() as browser:
+with Browser(config) as browser:
     import http.client, json, time
     from pathlib import Path
     from websockets.sync.client import connect
@@ -273,7 +275,7 @@ with Browser() as browser:
 def assert_SR_019_public_http_https_tls_and_forbidden_main_redirects(fixture_web):
     stack, _, counts, baseline = fixture_web
     stack.browser_probe(IMPORT + f"""
-with Browser() as browser:
+with Browser(config) as browser:
     for invalid in ('https://user:password@public.test/', 'file:///etc/passwd', 'http://public.test/ '):
         try:
             browser.navigate(invalid)
@@ -316,7 +318,7 @@ assert chromium
 assert all(b'--no-sandbox' not in (p / 'cmdline').read_bytes().split(b'\\0') for p in chromium)
 """)
         result = json.loads(stack.browser_probe(IMPORT + r"""
-with Browser() as browser:
+with Browser(config) as browser:
     import json
     status = browser.sandbox_status
     assert 'You are adequately sandboxed.' in status
@@ -329,7 +331,7 @@ with Browser() as browser:
 
 def assert_SR_004_SR_019_browser_direct_egress_and_unauthorized_control_denied(scout_stack):
     with scout_stack.browser_run() as run:
-        scout_stack.browser_probe(IMPORT + "with Browser() as browser: assert browser.command('eval','true')['result'] is True", run=run)
+        scout_stack.browser_probe(IMPORT + "with Browser(config) as browser: assert browser.command('eval','true')['result'] is True", run=run)
         scout_stack.exec_proxy("""
 import socket
 for target in [('172.30.242.4',9222), ('172.30.242.4',9223)]:

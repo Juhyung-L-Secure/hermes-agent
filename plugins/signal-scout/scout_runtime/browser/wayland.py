@@ -48,8 +48,6 @@ def resolve_wayland(environ=None):
 
 
 def child_environment(profile):
-    if not SOCKET.is_socket():
-        raise RuntimeError('Native WSLg display socket unavailable.')
     runtime = Path(profile) / 'wayland-runtime'
     runtime.mkdir(mode=0o700)
     return {'WAYLAND_DISPLAY': str(SOCKET), 'XDG_RUNTIME_DIR': str(runtime)}

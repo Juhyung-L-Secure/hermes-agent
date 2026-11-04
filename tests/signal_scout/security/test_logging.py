@@ -72,7 +72,7 @@ def test_SR_003_native_diagnostics_redact_rotate_and_honor_settings(tmp_path):
     assert 'Provider request https://example.test/research?q=bacon count=7 credential=' in result.stderr
     assert 'ValueError: native-error-context' in result.stderr and 'native-stack-context' in result.stderr
     assert 'Zx9AbCdEfGhIjKlMnOpQ' not in output
-    assert 'connection_allowed' not in output  # INFO suppresses DEBUG.
+    assert 'connection_allowed' not in output
 
 
 def test_SR_003_native_write_failure_has_fixed_diagnostic_and_keeps_events_safe(tmp_path):
@@ -158,7 +158,8 @@ def test_SR_022_browser_failure_uses_saved_native_logs_redaction_and_best_effort
                 value['result'] = {}
             return json.dumps(value)
         cdp.connection = SimpleNamespace(send=lambda value: sent.append(json.loads(value)), recv=receive)
-        browser = gate_module.Browser.__new__(gate_module.Browser)
+        Browser = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
+        browser = Browser.__new__(Browser)
         browser.settings, browser.ready, browser.failed = config, True, False
         browser.endpoint = 'ws://owned-fixture'
         os.environ['BROWSER_CDP_URL'] = browser.endpoint

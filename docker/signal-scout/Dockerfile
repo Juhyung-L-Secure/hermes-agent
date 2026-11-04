@@ -74,7 +74,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/* && \
     useradd --uid 10000 --no-create-home scout && \
     install -d -o scout -g scout -m 0700 /var/log/scout
-COPY plugins/signal-scout/scout_runtime/__init__.py plugins/signal-scout/scout_runtime/actions.py plugins/signal-scout/scout_runtime/settings.py plugins/signal-scout/scout_runtime/runtime_logging.py plugins/signal-scout/scout_runtime/readiness.py plugins/signal-scout/scout_runtime/process_output.py /opt/scout/scout_runtime/
+COPY plugins/signal-scout/scout_runtime/__init__.py plugins/signal-scout/scout_runtime/actions.py plugins/signal-scout/scout_runtime/settings.py plugins/signal-scout/scout_runtime/runtime_logging.py plugins/signal-scout/scout_runtime/process_output.py /opt/scout/scout_runtime/
 COPY plugins/signal-scout/scout_runtime/network/__init__.py plugins/signal-scout/scout_runtime/network/firewall.py plugins/signal-scout/scout_runtime/network/proxy.py plugins/signal-scout/scout_runtime/network/urls.py /opt/scout/scout_runtime/network/
 ENV PYTHONPATH=/opt/scout PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 USER 10000:10000

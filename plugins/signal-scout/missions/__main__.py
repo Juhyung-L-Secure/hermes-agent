@@ -5,7 +5,6 @@ from contextlib import redirect_stdout
 from functools import partial
 import json
 import os
-from pathlib import Path
 import signal
 import sys
 
@@ -23,15 +22,13 @@ def research(request, config, console):
     from ..scout_runtime.browser.owner import Browser
 
     discover_plugins()
-    guidance, loaded, missing = build_preloaded_skills_prompt(["signal-scout:browser-research"])
-    if missing or loaded != ["signal-scout:browser-research"] or not guidance.strip():
+    guidance, _, missing = build_preloaded_skills_prompt(["signal-scout:browser-research"])
+    if missing or not guidance.strip():
         raise RuntimeError("Scout browser-research skill unavailable or disabled.")
     adapter = get_plugin_manager()._plugins["signal-scout"].module.browser_tools
     action_reference = adapter.load_action_reference()
     provider, model = config["model"]["provider"], config["model"]["default"]
     runtime = resolve_runtime_provider(requested=provider, target_model=model)
-    if runtime["provider"] != provider:
-        raise RuntimeError("Scout configured provider unavailable.")
     agent = AIAgent(model=model, provider=provider, requested_provider=provider,
         api_mode=runtime["api_mode"], base_url=runtime["base_url"], api_key=runtime["api_key"],
         credential_pool=runtime.get("credential_pool"), enabled_toolsets=["signal_scout_browser"],
@@ -43,12 +40,8 @@ def research(request, config, console):
         tool_complete_callback=console.tool_complete)
     try:
         agent.suppress_status_output = True
-        if agent.valid_tool_names != {"browser_scout"}:
-            raise RuntimeError("Scout research tool exposure invalid.")
-        if agent.run_budget_seconds is not None:
-            raise RuntimeError("Scout research budget must be disabled in operating config.")
         console.progress("Scout mission started. Model %s. Research skill loaded.", model)
-        with Browser() as browser:
+        with Browser(config) as browser:
             session = browser.session()
             with adapter.bind_browser(session, on_fatal=partial(agent.interrupt, hard_cancel=True),
                                       action_reference=action_reference):
@@ -66,10 +59,6 @@ def main(argv=None):
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
     os.umask(0o077)
-    from hermes_constants import get_hermes_home
-
-    if (get_hermes_home() / "config.yaml").resolve(strict=True) != Path("/opt/scout/config.yaml"):
-        raise RuntimeError("Scout config must resolve to the read-only operating file.")
     data = json.load(sys.stdin)
     if not isinstance(data, dict) or set(data) != {"text"}:
         raise ValueError("Invalid Scout research request.")

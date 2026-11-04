@@ -1,4 +1,3 @@
-"""BR_001–BR_003/BR_005: native registry routing with contract-shaped gates."""
 
 from tests.signal_scout.support.model import FakeSession, dispatch
 
@@ -103,20 +102,6 @@ def test_BR_006_nonformat_outcomes_keep_existing_feedback(native_plugin, result)
     assert stops == ([True] if result["status"] == "fatal" else [])
 
 
-@pytest.mark.parametrize("guide", [None, 1, b"rules", "", " \n\t"])
-def test_BR_003_BR_006_binding_requires_complete_reference(native_plugin, guide):
-    gate = FakeSession()
-    with pytest.raises(TypeError, match="^Scout browser action reference is required\\.$"):
-        with native_plugin.bind_browser(gate, on_fatal=lambda: None, action_reference=guide):
-            pytest.fail("Invalid reference binding accepted")
-    assert json.loads(dispatch({"action":"snapshot","args":{}})) == {
-        "status":"rejected","reason":"Scout browser is not bound to a run.","execution_started":False,"data":{}}
-    with pytest.raises(TypeError, match="action_reference"):
-        with native_plugin.bind_browser(gate, on_fatal=lambda: None):
-            pytest.fail("Missing reference binding accepted")
-    assert gate.requests == [] and not gate.closed
-
-
 def test_BR_001_native_discovery_keeps_status_and_browser_separate(native_plugin):
     from model_tools import get_tool_definitions, handle_function_call
 
@@ -180,9 +165,6 @@ def test_BR_003_runtime_binding_is_mandatory_and_scoped(native_plugin, monkeypat
     with pytest.raises(TypeError):
         with native_plugin.bind_browser(gate):
             pytest.fail("Missing stop callback accepted")
-    with pytest.raises(TypeError, match="Scout fatal stop callback is required"):
-        with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(), on_fatal=None):
-            pytest.fail("Invalid stop callback accepted")
     with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(), on_fatal=lambda: None):
         with pytest.raises(RuntimeError, match="already bound"):
             with native_plugin.bind_browser(FakeSession(), action_reference=native_plugin.load_action_reference(), on_fatal=lambda: None):
@@ -199,7 +181,6 @@ def test_BR_003_fatal_calls_stop_before_return_and_never_redispatches(native_plu
     gate = FakeSession(result)
     stopped = []
     with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(), on_fatal=lambda: stopped.append(len(gate.requests))):
-        # Exercise registry's exception-catching boundary, not only a direct handler.
         assert json.loads(registry.dispatch("browser_scout", {"action": "click", "args": {"ref": "@s1"}})) == result
         assert stopped == [1]
         assert json.loads(dispatch({"action": "snapshot", "args": {}}))["status"] == "fatal"
@@ -382,7 +363,7 @@ def test_BR_005_native_model_frames_actual_tool_defangs_delimiters_and_preserves
     with namespace["fake_main"](plan) as (agent, requests):
         with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(), on_fatal=partial(agent.interrupt, hard_cancel=True)):
             raw = dispatch({"action": "snapshot", "args": {}})
-            assert json.loads(raw) == observed  # Adapter does not wrap or neutralize.
+            assert json.loads(raw) == observed
             outcome = agent.run_conversation("Inspect controlled external observations.")
         assert outcome.get("completed") and not outcome.get("interrupted")
         assert len(requests) == 3 and len(gate.requests) == 3

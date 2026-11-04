@@ -1,4 +1,3 @@
-"""SR_005: failed creation/start, action-driver loss and configured stop bounds."""
 
 import importlib
 import json
@@ -48,7 +47,7 @@ def test_SR_005_create_then_start_failure_removes_only_attempted_owner(scout_sta
             assert observed == []
         else:
             assert observed and observed[0]['State']['Status'] == 'created'
-            assert observed[0]['State']['Error']  # Docker created it, then real OCI start failed.
+            assert observed[0]['State']['Error']
             assert observed[0]['Config']['Labels'][lifecycle.RUN_LABEL] == run.run
             assert subprocess.run(['docker', 'inspect', observed[0]['Id']], capture_output=True).returncode != 0
             saved = saved_run(scout_stack, run.run)
@@ -56,7 +55,6 @@ def test_SR_005_create_then_start_failure_removes_only_attempted_owner(scout_sta
             assert '"Status": "created"' in saved and 'missing-start-fixture' in saved
             assert 'event=child_start' not in saved and 'event=child_exit' not in saved
     finally:
-        # Fixture cleanup also handles the intentionally failing pre-fix test.
         attempted = docker('ps', '-aq', '--no-trunc', '--filter', 'label=' + lifecycle.RUN_LABEL + '=' + run.run)
         if attempted:
             info = json.loads(docker('inspect', attempted))[0]
@@ -106,7 +104,9 @@ from tools import browser_tool
 from websockets.sync.client import connect
 signal.alarm(60)
 Browser = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
-with Browser() as browser:
+config = importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings()
+importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging').configure_logging('scout', config)
+with Browser(config) as browser:
     assert browser.command('eval','true')['result'] is True
     session = browser_tool._active_sessions[browser.task]
     directory = Path(browser_tool._socket_safe_tmpdir()) / ('agent-browser-' + session['session_name'])
@@ -227,7 +227,6 @@ def test_SR_005_configured_long_shutdown_removes_stopped_launcher(scout_stack, t
         path = tmp_path / 'long-shutdown.yaml'
         path.write_text(yaml.safe_dump(config))
         run.config = lifecycle.settings.load_settings(path)
-        # Pause the owned launcher so Docker must honor configured stop grace.
         docker('exec', identity, 'python3', '-c', "import json,os,signal; from pathlib import Path; r=json.loads(Path('/tmp/browser-ready.json').read_text()); parent=int(next(row.split()[1] for row in Path(f\"/proc/{r['pid']}/status\").read_text().splitlines() if row.startswith('PPid:'))); os.kill(parent,signal.SIGSTOP)")
         started = time.monotonic()
         try:

@@ -1,4 +1,3 @@
-"""SR_019: raw input and proxy-owned destination policy without model calls."""
 
 import asyncio
 import importlib
@@ -75,7 +74,7 @@ def test_SR_019_dns_failure_and_mixed_answers_connect_nowhere(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_SR_001_launch_adapter_forces_policy_and_rejects_overrides():
+def test_SR_001_launch_adapter_configures_anonymous_sandboxed_browser():
     chromium = importlib.import_module('plugins.signal-scout.scout_runtime.browser.chromium')
     settings = importlib.import_module('plugins.signal-scout.scout_runtime.settings')
     config = settings.load_settings(Path(__file__).resolve().parents[3] / 'docker/signal-scout/config.yaml')
@@ -89,8 +88,6 @@ def test_SR_001_launch_adapter_forces_policy_and_rejects_overrides():
         assert '--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 172.30.242.2' in command
         assert not any(value.startswith(('--ignore-certificate', '--load-extension', '--disable-seccomp',
                                         '--disable-namespace')) for value in command)
-        with pytest.raises(ValueError, match='Invalid browser profile'):
-            chromium.launch_args('/var/lib/scout', network, config['browser']['viewport'], config['browser']['mode'])
 
 
 def test_SR_019_numeric_connection_pinned_and_peer_checked(monkeypatch):

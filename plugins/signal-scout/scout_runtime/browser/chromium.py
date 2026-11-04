@@ -3,7 +3,6 @@ import asyncio
 import json
 import os
 from pathlib import Path
-import re
 import signal
 import socket
 import subprocess
@@ -14,8 +13,8 @@ import traceback
 
 from websockets.asyncio.client import connect
 
-from .control import discover, validate_endpoint
-from ..settings import load_settings, settings_digest
+from .control import discover
+from ..settings import load_settings
 from .wayland import child_environment
 from ..process_output import Lines, ProcessOutput
 
@@ -25,12 +24,6 @@ READY = Path("/tmp/browser-ready.json")
 
 def launch_args(profile, network, viewport, mode):
     """Build a sandboxed launch with anonymous storage and mandatory proxy policy."""
-    profile = Path(profile)
-    if (profile.parent != Path("/tmp") or not profile.name.startswith("scout-chrome-")
-            or profile.is_symlink() or not profile.is_dir() or profile.stat().st_uid != os.getuid()):
-        raise ValueError("Invalid browser profile.")
-    if mode not in {"headless", "headed"}:
-        raise ValueError("Invalid browser mode.")
     return [CHROME, f"--user-data-dir={profile}", *(["--headless=new"] if mode == "headless" else ["--ozone-platform=wayland", "--window-position=0,0"]), "--no-first-run",
             "--no-default-browser-check", "--disable-background-networking",
             "--disable-component-update", "--disable-default-apps", "--disable-sync",
@@ -64,90 +57,39 @@ def readiness(config):
     """Recheck current child/listener/path before returning ephemeral launch metadata."""
     record = json.loads(READY.read_text())
     network = config["scout_network"]
-    if (record["run"] != os.environ["SCOUT_BROWSER_RUN"] or record["settings"] != settings_digest(config)
-            or not owns_control_socket(record["pid"], network["control_port"])):
+    if not owns_control_socket(record["pid"], network["control_port"]):
         raise RuntimeError("Browser ownership verification failed.")
     endpoint = discover("127.0.0.1", network["control_port"], config["scout_lifecycle"]["control_connect_timeout"])
     expected = endpoint.replace(f"127.0.0.1:{network['control_port']}", f"{network['browser_address']}:{network['relay_port']}", 1)
     if record["endpoint"] != expected:
         raise RuntimeError("Browser ownership verification failed.")
-    validate_endpoint(expected, network["browser_address"], network["relay_port"])
     return record
 
 
-async def verify_download_policy(command, session, bounds):
-    """Require Chrome's validated mandatory machine/platform download policy.
-
-    The pinned chrome://policy model comes from PolicyService and policy-handler
-    validation. Disk JSON alone does not establish that Chrome applied policy.
-    Restore the initial blank page after this bounded in-memory observation.
-    """
-    await command("Page.navigate", {"url": "chrome://policy"}, session)
-    deadline = time.monotonic() + bounds["startup_timeout"]
-    while True:
-        observed = await command("Runtime.evaluate", {"expression": """(() => {
-            const groups = document.querySelector('policy-app')?.policyGroups_;
-            if (!groups?.length) return null;
-            return groups.find(group => group.id === 'chrome')?.policies
-                .find(policy => policy.name === 'DownloadRestrictions') ?? {};
-        })()""", "returnByValue": True}, session)
-        policy = observed["result"].get("value")
-        if policy is not None:
-            if (policy.get("value") != 3 or policy.get("level") != "mandatory"
-                    or policy.get("scope") != "machine" or policy.get("source") != "platform"
-                    or any(policy.get(key) for key in ("error", "ignored", "warning", "conflicts", "superseded"))):
-                raise RuntimeError("Native browser download policy unavailable.")
-            break
-        if time.monotonic() >= deadline:
-            raise RuntimeError("Native browser download policy verification failed.")
-        await asyncio.sleep(0.05)
-    await command("Page.navigate", {"url": "about:blank"}, session)
-
-
-async def initialize_safeguards(connection, config):
-    """Verify native policy and actual main-window contents before startup CDP closes."""
+async def set_main_window(connection, config):
+    """Set the initial page window to the configured content size."""
     sequence = 0
 
-    async def command(method, params=None, session=None):
+    async def command(method, params=None):
         nonlocal sequence
         sequence += 1
         message = {"id": sequence, "method": method, "params": params or {}}
-        if session is not None:
-            message["sessionId"] = session
         async with asyncio.timeout(config["scout_lifecycle"]["control_connect_timeout"]):
             await connection.send(json.dumps(message))
             while True:
                 response = json.loads(await connection.recv())
                 if response.get("id") == sequence:
                     if "error" in response:
-                        raise RuntimeError("Browser safeguard setup failed.")
+                        raise RuntimeError("Browser window setup failed.")
                     return response["result"]
 
-    if (await command("Target.getBrowserContexts"))["browserContextIds"]:
-        raise RuntimeError("Unexpected browser context.")
     pages = [target for target in (await command("Target.getTargets"))["targetInfos"]
              if target["type"] == "page"]
-    if len(pages) != 1 or pages[0]["url"] != "about:blank":
-        raise RuntimeError("Unexpected initial browser target.")
     target = pages[0]["targetId"]
-    session = (await command("Target.attachToTarget", {"targetId": target, "flatten": True}))["sessionId"]
-    await verify_download_policy(command, session, config["scout_lifecycle"])
     window = await command("Browser.getWindowForTarget", {"targetId": target})
     viewport = config["browser"]["viewport"]
     await command("Browser.setContentsSize", {"windowId": window["windowId"],
                   "width": viewport["width"], "height": viewport["height"]})
-    # Window resizing is asynchronous; readiness requires the resulting contents.
-    deadline = time.monotonic() + config["scout_lifecycle"]["startup_timeout"]
-    while True:
-        observed = await command("Runtime.evaluate", {"expression":
-            "(location.href==='about:blank' ? {width:innerWidth,height:innerHeight,device_scale_factor:devicePixelRatio} : null)",
-            "returnByValue": True}, session)
-        if observed["result"].get("value") == viewport:
-            break
-        if time.monotonic() >= deadline:
-            raise RuntimeError("Browser window sizing failed.")
-        await asyncio.sleep(0.05)
-    await command("Target.detachFromTarget", {"sessionId": session})
 
 
 async def _relay_copy(reader, writer, output, identifier, direction, cancellation):
@@ -170,7 +112,7 @@ async def _finish_relay(copies):
     await asyncio.gather(*copies, return_exceptions=True)
 
 
-async def run_child(config, run):
+async def run_child(config):
     """Publish only verified owned Chromium; child exit closes its relay."""
     network, bounds = config["scout_network"], config["scout_lifecycle"]
     child, server = None, None
@@ -235,7 +177,7 @@ async def run_child(config, run):
             endpoint = discover("127.0.0.1", network["control_port"], bounds["control_connect_timeout"])
             async with connect(endpoint, proxy=None, open_timeout=bounds["control_connect_timeout"],
                                close_timeout=bounds["control_connect_timeout"], ping_interval=None) as startup:
-                await initialize_safeguards(startup, config)
+                await set_main_window(startup, config)
 
             async def accept(reader, writer):
                 nonlocal connection_id
@@ -271,7 +213,7 @@ async def run_child(config, run):
             server = await asyncio.start_server(accept, network["browser_address"], network["relay_port"])
             if child.poll() is not None:
                 raise RuntimeError("Chromium startup failed.")
-            READY.write_text(json.dumps({"run": run, "pid": child.pid, "settings": settings_digest(config), "endpoint": endpoint.replace(
+            READY.write_text(json.dumps({"pid": child.pid, "endpoint": endpoint.replace(
                 f"127.0.0.1:{network['control_port']}", f"{network['browser_address']}:{network['relay_port']}", 1)}))
             published = True
             output.emit('launcher', 'launcher_ready', pid=child.pid)
@@ -314,18 +256,15 @@ async def run_child(config, run):
 
 
 def main():
-    """Start exactly one child, or attest that child's readiness for the host launcher."""
+    """Start one child, or report its current control endpoint to the host."""
     os.umask(0o077)
     config = load_settings()
-    run = os.environ.get("SCOUT_BROWSER_RUN", "")
-    if not re.fullmatch("[0-9a-f]{32}", run):
-        raise ValueError("Missing browser run ownership.")
     if sys.argv[1:] == ["--status"]:
         print(json.dumps(readiness(config)))
         return 0
     if sys.argv[1:]:
         raise ValueError("Invalid browser command.")
-    return asyncio.run(run_child(config, run))
+    return asyncio.run(run_child(config))
 
 
 if __name__ == "__main__":

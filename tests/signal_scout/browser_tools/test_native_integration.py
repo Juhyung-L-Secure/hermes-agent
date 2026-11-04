@@ -1,4 +1,3 @@
-"""BR_001–BR_005: real gate/owned Chromium through native Hermes dispatch."""
 
 import subprocess
 
@@ -14,6 +13,8 @@ from hermes_cli.plugins import discover_plugins, get_plugin_manager
 from model_tools import get_tool_definitions, handle_function_call
 from tools.registry import registry
 Browser=importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser
+config = importlib.import_module('plugins.signal-scout.scout_runtime.settings').load_settings()
+importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging').configure_logging('scout', config)
 g=importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
 settings=importlib.import_module('plugins.signal-scout.scout_runtime.settings')
 discover_plugins()
@@ -128,7 +129,7 @@ def test_BR_006_native_identical_format_failures_keep_full_guide_and_corrected_e
 from agent.display import _detect_tool_failure
 mission='Research controlled rice and inspect one observed button.'
 bad={'action':'click','args':{'ref':'css=#private-fixture-poison'},'activity':'Inspect controlled button'}
-with Browser() as browser:
+with Browser(config) as browser:
     tab=open_fixture(browser)
     gate=browser.session(target_id=tab)
     evidence=browser.session()
@@ -218,7 +219,7 @@ def test_AG_008_BR_002_native_incomplete_navigation_continues_same_browser_and_p
     with stack.browser_run() as run:
         owned=run.container
         stack.browser_probe(SETUP + FAKE_MAIN + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     evidence=browser.session();tab=evidence._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
     connection=evidence._cdp;connection.timeout=1
@@ -267,7 +268,7 @@ def test_BT_005_native_model_retry_does_not_repeat_browser_effect(fixture_web, f
         owned = run.container
         stack.browser_probe(SETUP + FAKE_MAIN + '\nfailures=' + repr(failures) + '\n' + r'''
 import httpx
-with Browser() as browser:
+with Browser(config) as browser:
     tab=open_fixture(browser)
     gate=browser.session(target_id=tab)
     def plan(index,kwargs):
@@ -306,7 +307,7 @@ def test_BR_001_BR_002_BR_004_BR_005_native_model_allowed_effects_images_and_no_
     stack, _, _, _ = fixture_web
     with stack.browser_run() as run:
         stack.browser_probe(SETUP + FAKE_MAIN + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     tab=open_fixture(browser)
     captures=[];native_command=browser.session()._command
     def command(method,params=None,session=None):
@@ -392,7 +393,7 @@ with Browser() as browser:
 def test_BR_002_BR_005_native_model_type_keeps_exact_value_and_compact_feedback(fixture_web):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + FAKE_MAIN + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     tab=open_fixture(browser)
     gate=browser.session(target_id=tab)
     text='exact typed fixture-secret 雪'
@@ -424,7 +425,7 @@ with Browser() as browser:
 def test_BR_002_BR_004_native_model_rejection_leaves_healthy_browser(fixture_web, case):
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + FAKE_MAIN + f"\ncase={case!r}\n" + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     tab=open_fixture(browser)
     gate=browser.session(target_id=tab)
     outcomes=[]
@@ -460,7 +461,7 @@ def test_AG_009_BR_003_BR_004_native_required_failure_stops_agent_and_host_clean
     with stack.browser_run() as run:
         owned = run.container
         stack.browser_probe(SETUP + FAKE_MAIN + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     tab=open_fixture(browser)
     gate=browser.session(target_id=tab)
     evidence=browser.session();effects=[]
@@ -504,7 +505,7 @@ def test_AE_007_native_partial_frames_preserve_exact_effect_and_mission_continua
     with stack.browser_run() as run:
         owned = run.container
         stack.browser_probe(SETUP + FAKE_MAIN + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     tab=open_fixture(browser)
     inspector=browser.session()
     initial=inspector._inspect_snapshot(tab)

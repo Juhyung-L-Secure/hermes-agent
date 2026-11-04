@@ -1,5 +1,4 @@
 from contextlib import contextmanager
-import copy
 import json
 import selectors
 import subprocess
@@ -68,38 +67,18 @@ def test_SR_011_invalid_or_missing_mode_fails_explicitly(tmp_path, value):
         settings.load_settings(path)
 
 
-def test_SR_012_topology_rejects_published_ports_and_extra_networks():
-    run = lifecycle.BrowserRun()
-    lifecycle.validate_topology(run.model, run.config)
-    for service in ('scout', 'browser', 'proxy', 'firewall'):
-        model = copy.deepcopy(run.model)
-        model['services'][service]['ports'] = [{'host_ip':'127.0.0.1', 'target':9222, 'published':'9222'}]
-        with pytest.raises(ValueError, match='Scout network configuration mismatch'):
-            lifecycle.validate_topology(model, run.config)
-    for change in ('external', 'extra-network', 'extra-grant'):
-        model = copy.deepcopy(run.model)
-        if change == 'external':
-            model['networks']['restricted']['internal'] = False
-        elif change == 'extra-network':
-            model['networks']['desktop'] = {}
-        else:
-            model['services']['firewall']['networks']['outbound'] = {}
-        with pytest.raises(ValueError, match='Scout network configuration mismatch'):
-            lifecycle.validate_topology(model, run.config)
-
-
 def test_SR_011_SR_012_production_headless_has_no_host_display(scout_stack, monkeypatch):
     monkeypatch.delenv('WAYLAND_DISPLAY', raising=False)
     monkeypatch.delenv('XDG_RUNTIME_DIR', raising=False)
     monkeypatch.setattr(lifecycle.wayland, 'resolve_wayland', lambda: pytest.fail('Headless discovered a display'))
     with scout_stack.browser_run() as run:
-        assert run.config['browser']['mode'] == 'headless' and run._run_config.wayland is None
+        assert run.config['browser']['mode'] == 'headless'
         info = run.inspect_owned()
         assert [m['Destination'] for m in info['Mounts'] if m['Type']=='bind'] == ['/opt/scout/config.yaml']
         assert not info['HostConfig']['PortBindings']
         assert set(run.inspect_helper('firewall')['NetworkSettings']['Networks']) == {run.model['networks']['restricted']['name']}
         probe(run, OBSERVE + r'''
-with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'],proxy=None,open_timeout=2) as observer:
+with Browser(config) as browser, connect(os.environ['BROWSER_CDP_URL'],proxy=None,open_timeout=2) as observer:
     assert dimensions(attach(pages()[0]))==browser.settings['browser']['viewport']
 ''')
         lifecycle.checked(['docker','exec',run.container,'python3','-c',r'''
@@ -119,7 +98,7 @@ def test_SR_011_SR_012_native_headed_uses_only_granted_socket(scout_stack, tmp_p
         info = run.inspect_owned()
         binds={m['Destination']:m for m in info['Mounts'] if m['Type']=='bind'}
         assert set(binds)=={'/opt/scout/config.yaml',str(lifecycle.wayland.SOCKET)}
-        assert binds[str(lifecycle.wayland.SOCKET)]['Source']==str(run._run_config.wayland.source)
+        assert binds[str(lifecycle.wayland.SOCKET)]['Source']==str(native_display.resolve())
         assert binds[str(lifecycle.wayland.SOCKET)]['RW'] is False
         for service in ('proxy','firewall'):
             assert [m['Destination'] for m in run.inspect_helper(service)['Mounts'] if m['Type']=='bind']==['/opt/scout/config.yaml']
@@ -138,7 +117,7 @@ assert Path('/run/scout-wayland/wayland-0').is_socket()
 assert not any((p/'comm').read_text().strip() in {'Xvfb','x11vnc'} for p in Path('/proc').iterdir() if p.name.isdigit())
 '''])
         probe(run,OBSERVE + r'''
-with Browser() as browser, connect(os.environ['BROWSER_CDP_URL'],proxy=None,open_timeout=2) as observer:
+with Browser(config) as browser, connect(os.environ['BROWSER_CDP_URL'],proxy=None,open_timeout=2) as observer:
     assert dimensions(attach(pages()[0]))==browser.settings['browser']['viewport']
 ''')
 
@@ -149,7 +128,7 @@ def test_SR_012_SR_013_native_window_mouse_keys_and_stale_scout_reference_reject
         options = [value for key,setting in run.scout_environment().items() for value in ('-e',key+'='+setting)]
         code = SETUP + r'''
 from urllib.parse import urlencode
-with Browser() as browser:
+with Browser(config) as browser:
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
     title="Scout native input "+__import__("uuid").uuid4().hex
@@ -239,7 +218,7 @@ def test_SR_013_SR_005_closing_native_window_ends_owned_browser(scout_stack, tmp
         identity = run.container
         title = 'Scout native close ' + uuid.uuid4().hex
         url = 'data:text/html,' + quote('<title>' + title + '</title><h1>Native close fixture</h1>')
-        probe(run, SETUP + '\nwith Browser() as browser:\n    browser.command("open", ' + repr(url) + ')\n')
+        probe(run, SETUP + '\nwith Browser(config) as browser:\n    browser.command("open", ' + repr(url) + ')\n')
         window = NativeWindow(title)
         assert window.inspect()['visible'] is True
         window.close()

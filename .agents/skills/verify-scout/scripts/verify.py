@@ -59,22 +59,15 @@ def doctor(*, own_test_lock=False):
     containers = inventory(run.project)
     if any(item["service"] in {"scout", "browser"} for item in containers):
         raise RuntimeError("Existing Scout/browser run requires owner inspection.")
-    digest = lifecycle.settings.settings_digest(run.config)
     for service in ("proxy", "firewall"):
         matches = [item for item in containers if item["service"] == service]
         if len(matches) > 1:
             raise RuntimeError("Multiple shared helper containers require owner inspection.")
         for item in matches:
-            if item["image"] != images[service]:
-                raise RuntimeError("Helper image differs from current image tag; recreate explicitly.")
             if item["running"]:
                 if item["health"] != "healthy":
                     raise RuntimeError("Running helper is not healthy.")
-            run.verify_configuration(json.loads(command(['docker', 'inspect', item['id']]))[0], service)
-            if item["ports"]:
-                raise RuntimeError("Unexpected published Scout helper port.")
-    return {"ok": True, "project": run.project, "settings_digest": digest,
-            "mode": run.config["browser"]["mode"],
+    return {"ok": True, "project": run.project,
             "images": images, "containers": containers,
             "helpers_needing_start": [service for service in ("proxy", "firewall")
                                       if not any(item["service"] == service and item["running"] for item in containers)],
@@ -109,6 +102,7 @@ def prove(args):
         preflight = doctor(own_test_lock=True)
         save(directory / "doctor.json", preflight)
         run = lifecycle.BrowserRun()
+        config = lifecycle.settings.load_settings(lifecycle.CONFIG)
         before = preflight["containers"]
         original_volumes = volumes(run.project)
         python = next((ROOT / name for name in (".venv/bin/python", "venv/bin/python")
@@ -148,7 +142,7 @@ def prove(args):
                 stopped = []
                 for item in after:
                     if item["service"] in {"proxy", "firewall"} and item["service"] not in running_before and item["running"]:
-                        grace = run.config["scout_lifecycle"]["shutdown_timeout"]
+                        grace = config["scout_lifecycle"]["shutdown_timeout"]
                         command(["docker", "stop", "-t", str(grace), item["id"]],
                                 timeout=grace + lifecycle.DOCKER_COMMAND_TIMEOUT)
                         stopped.append(item["id"])

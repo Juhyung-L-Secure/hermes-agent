@@ -1,6 +1,5 @@
-"""SR_019, SR_001, SR_002: real native Chromium and controlled network peers."""
 
-from tests.signal_scout.support.browser import docker
+from tests.signal_scout.support.browser import docker, IMPORT
 
 from pathlib import Path
 
@@ -10,7 +9,6 @@ PUBLIC4 = '11.203.247.2'
 PUBLIC6 = '2606:4700:ffff:fffe::2'
 NETWORK = 'signal-scout-protection-fixture'
 BASE = '/tmp/scout-network-fixture'
-IMPORT = "import importlib; Browser = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner').Browser\n"
 
 
 def test_SR_001_native_chromium_sandbox_and_anonymous_identity(fixture_web):
@@ -37,7 +35,7 @@ def test_SR_019_public_http_https_tls_and_forbidden_main_redirects(fixture_web):
 def test_SR_019_dns_rebinding_rechecks_new_connections(fixture_web):
     stack, _, counts, baseline = fixture_web
     stack.browser_probe(IMPORT + """
-with Browser() as browser:
+with Browser(config) as browser:
     # Response changes DNS answer while this same browser remains alive.
     browser.navigate('http://rebind.test/rebind')
     assert browser.command('eval', 'window.fixtureReady')['result'] is True

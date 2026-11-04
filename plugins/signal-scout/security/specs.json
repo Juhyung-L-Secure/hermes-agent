@@ -7,7 +7,7 @@
       "id": "SR_011",
       "subfeature": "browser-modes",
       "title": "Explicit headless and native headed browser modes",
-      "contract": "Trusted startup browser.mode requires headless or headed, with headless as production default. Missing or invalid mode fails without fallback. Headed is local debugging through a native WSLg Wayland window from the same owned Chromium container; there is no virtual display, noVNC transport or separate host viewer browser. Headless starts no display or viewer process and requires no host display environment, socket mount or WSLg installation. Both modes preserve owned disposable browser lifecycle, actual Chromium sandbox, managed native download denial, sole anonymous default context, private CDP and verified configured main-window contents and global scale.",
+      "contract": "Trusted startup browser.mode requires headless or headed, with headless as production default. Missing or invalid mode fails without fallback. Headed is local debugging through a native WSLg Wayland window from the same owned Chromium container; there is no virtual display, noVNC transport or separate host viewer browser. Headless starts no display or viewer process and requires no host display environment, socket mount or WSLg installation. Both modes preserve owned disposable browser lifecycle, actual Chromium sandbox, managed native download denial, sole anonymous default context, private CDP and configured main-window contents and global scale.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -56,17 +56,12 @@
       "id": "SR_012",
       "subfeature": "browser-modes",
       "title": "Narrow local headed display access",
-      "contract": "Only an explicitly headed browser may receive one validated local Wayland display socket through a narrow read-only bind mount. The trusted host resolves and fixes this display grant for that run, and validates both declared configuration and actual container mounts against it. Headless browser and every other service receive no display grant. Missing, invalid or unavailable native display fails clearly without falling back to X11, noVNC or headless. Do not mount host X11, an entire host runtime directory, all WSLg services, PulseAudio, GPU devices, Docker socket, personal folders or credentials. No privileged mode, host networking, viewer TCP listener, viewer bridge, published viewer port or viewer credentials remain. This intentional local-debug display connection changes the prior container-local-display boundary; no equivalent host-display isolation is claimed.",
+      "contract": "Only an explicitly headed browser may receive one validated local Wayland display socket through a narrow read-only bind mount. The trusted host validates the raw operator display input once, fixes that grant for the run and supplies the narrow mount without a second check of its declared or actual Docker mount wiring. Headless browser and every other service receive no display grant. Missing, invalid or unavailable native display fails clearly without falling back to X11, noVNC or headless. Do not mount host X11, an entire host runtime directory, all WSLg services, PulseAudio, GPU devices, Docker socket, personal folders or credentials. No privileged mode, host networking, viewer TCP listener, viewer bridge, published viewer port or viewer credentials remain. This intentional local-debug display connection changes the prior container-local-display boundary; no equivalent host-display isolation is claimed.",
       "requiredCoverage": [
         "unit",
         "e2e"
       ],
       "coverage": [
-        {
-          "layer": "unit",
-          "file": "tests/signal_scout/security/test_browser_modes.py",
-          "test": "test_SR_012_topology_rejects_published_ports_and_extra_networks"
-        },
         {
           "layer": "unit",
           "file": "tests/signal_scout/security/test_wayland.py",
@@ -80,7 +75,7 @@
         {
           "layer": "unit",
           "file": "tests/signal_scout/security/test_wayland.py",
-          "test": "test_SR_011_SR_012_BT_006_frozen_mode_and_socket_drive_both_mount_guards"
+          "test": "test_SR_011_SR_012_BT_006_capture_fixes_selected_mode_and_socket"
         },
         {
           "layer": "unit",
@@ -255,7 +250,7 @@
         {
           "layer": "unit",
           "file": "tests/signal_scout/security/test_policy.py",
-          "test": "test_SR_001_launch_adapter_forces_policy_and_rejects_overrides"
+          "test": "test_SR_001_launch_adapter_configures_anonymous_sandboxed_browser"
         },
         {
           "layer": "e2e",
@@ -480,7 +475,7 @@
       "id": "SR_006",
       "subfeature": "browser-security",
       "title": "Persistent native browser download denial",
-      "contract": "Pinned Chrome for Testing loads root-owned/read-only /etc/opt/chrome_for_testing/policies/managed/scout.json with mandatory DownloadRestrictions: 3. Before readiness launcher verifies Chrome's validated native policy model reports value 3, mandatory/machine/platform and no error, ignored, warning, conflict or superseded policy. Native policy persists after bounded startup CDP closes, without a download override or policy-only run-lived connection. Real attachment, redirected attachment and generated-blob attempts in initial/new tabs and separate popups emit attempted-download and canceled-progress events and save no file after startup disconnect. Controlled transient policy-free images prove real attachment/redirect downloads enter native progress, then native UI cancels before payload. Ordinary HTML, image, audio and video loading remains available. Native policy blocks ordinary webpage downloads, not Save Page or print-to-PDF. No allow toggle, custom download filter or download destination is introduced. Sole fresh anonymous default context remains supported; arbitrary trusted CDP remains trusted outside the model-facing gate under AG_001\u2013AG_007.",
+      "contract": "Pinned Chrome for Testing loads root-owned/read-only /etc/opt/chrome_for_testing/policies/managed/scout.json with mandatory DownloadRestrictions: 3. The launcher supplies the installed policy without a startup policy-page readback. Native policy persists after bounded startup CDP closes, without a download override or policy-only run-lived connection. Real attachment, redirected attachment and generated-blob attempts in initial/new tabs and separate popups emit attempted-download and canceled-progress events and save no file after startup disconnect. Controlled transient policy-free images prove real attachment/redirect downloads enter native progress, then native UI cancels before payload. Ordinary HTML, image, audio and video loading remains available. Native policy blocks ordinary webpage downloads, not Save Page or print-to-PDF. No allow toggle, custom download filter or download destination is introduced. Sole fresh anonymous default context remains supported; arbitrary trusted CDP remains trusted outside the model-facing gate under AG_001–AG_007.",
       "requiredCoverage": [
         "e2e"
       ],
@@ -508,7 +503,7 @@
       "id": "SR_007",
       "subfeature": "browser-security",
       "title": "Required canonical window and scale configuration",
-      "contract": "Existing trusted startup browser.viewport is the sole source for width, height and device_scale_factor; supplied configuration is 1280 by 720 CSS pixels and scale 1. Width and height must be positive CDP signed integers; scale must be finite, positive and numeric, never boolean. Missing values, invalid values and unknown viewport keys fail explicitly without alternate defaults. Changing startup configuration and its consistency digest reaches actual Chromium main-window contents and browser-wide device scale, not only launch arguments.",
+      "contract": "Existing trusted startup browser.viewport is the sole source for width, height and device_scale_factor; supplied configuration is 1280 by 720 CSS pixels and scale 1. Width and height must be positive CDP signed integers; scale must be finite, positive and numeric, never boolean. Missing values, invalid values and unknown viewport keys fail explicitly without alternate defaults. Changing startup configuration reaches Chromium main-window contents and browser-wide device scale through the actual sizing operation and launch arguments. Startup does not read those configured values back for an equality check.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -532,7 +527,7 @@
       "id": "SR_008",
       "subfeature": "browser-security",
       "title": "Verified main-window contents and browser-wide scale",
-      "contract": "Launcher sets initial normal main-window contents with Browser.setContentsSize and browser-wide --force-device-scale-factor. Before readiness actual innerWidth, innerHeight and devicePixelRatio must match validated configuration; --window-size alone is not proof. Real viewport-only PNG captures match configured CSS dimensions multiplied by device scale. No per-tab emulation, debugger pause, screenshot cropping/full-page sizing or continuous geometry guard is implemented; unsupported actual sizing fails startup instead of falling back.",
+      "contract": "Launcher sets initial normal main-window contents with Browser.setContentsSize and browser-wide --force-device-scale-factor. Startup sends the contents-sizing operation and handles its actual command result without context-count, initial-URL or viewport equality assertions. Real viewport-only PNG captures match configured CSS dimensions multiplied by device scale. No per-tab emulation, debugger pause, screenshot cropping/full-page sizing or continuous geometry guard is implemented. Actual window-setting command failure follows startup failure and owned cleanup.",
       "requiredCoverage": [
         "e2e"
       ],
@@ -578,7 +573,7 @@
       "id": "SR_010",
       "subfeature": "browser-security",
       "title": "Startup safeguard failures and owned cleanup",
-      "contract": "Missing, malformed, invalid or unapplied native download policy and main-window setup failure prevent readiness and clean the exact owned browser through existing lifecycle. Validated control_connect_timeout bounds startup CDP opening, commands and closing; startup_timeout bounds native policy observation and actual window-size verification. Launcher restores sole initial about:blank page and closes startup CDP before readiness; native policy remains effective, with no policy-only run-lived connection, keepalive or policy-disconnect watcher. A canceled download is successful enforcement and leaves healthy browser usable, not a machinery failure. Ordinary driver transport-loss, child-exit and fatal-cleanup contracts remain unchanged; no reconnect, replacement or watchdog is added. Owned cleanup retains helper state, auth/log volumes and existing ownership checks.",
+      "contract": "Actual Chromium child, control-connection or main-window setting failure prevents readiness and cleans the exact owned browser through the existing lifecycle. Validated control_connect_timeout bounds startup CDP opening, commands and closing. The launcher closes its startup CDP connection after setting main-window contents and publishes readiness without re-reading the supplied download policy, viewport or initial context declarations. Managed native policy remains effective after that connection closes, without a policy-only run-lived connection, keepalive or disconnect watcher. A canceled download is successful enforcement and leaves a healthy browser usable. Ordinary driver transport loss, child exit and fatal cleanup remain unchanged; no reconnect, replacement or watchdog is added. Owned cleanup retains helper state, auth/log volumes and actual ownership checks.",
       "requiredCoverage": [
         "e2e"
       ],
@@ -587,11 +582,6 @@
           "layer": "e2e",
           "file": "tests/signal_scout/security/test_browser_safeguards.py",
           "test": "test_SR_010_setup_protocol_failure_prevents_readiness_and_cleans_owner"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_browser_safeguards.py",
-          "test": "test_SR_010_missing_invalid_or_unapplied_native_policy_prevents_readiness_and_cleans_owner"
         },
         {
           "layer": "e2e",

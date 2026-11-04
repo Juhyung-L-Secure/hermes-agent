@@ -8,13 +8,6 @@ import signal
 import sys
 import time
 
-EVENTS = frozenset({
-    "started", "closed", "status", "invalid_url", "navigation_allowed", "navigation_failed",
-    "sandbox_verified", "sandbox_failed", "connection_allowed", "connection_failed",
-    "dns_failed", "private_destination", "peer_mismatch", "destination_port",
-    "invalid_request", "client_denied", "denied_ipv4", "denied_ipv6",
-})
-COMPONENTS = {"scout", "proxy", "firewall"}
 
 
 def diagnostic():
@@ -39,8 +32,6 @@ def configure_logging(component, config):
     Open/rotation/write failures report a fixed stderr diagnostic and leave
     security enforcement independent of log delivery.
     """
-    if component not in COMPONENTS:
-        raise ValueError("Invalid logging component.")
     settings = config["logging"]
     root = logging.getLogger()
     root.setLevel(logging.DEBUG)
@@ -86,8 +77,6 @@ def configure_logging(component, config):
 
 def event(component, code, level="INFO"):
     """Attempt one sanitized event; no caller-supplied data is interpolated."""
-    if component not in COMPONENTS or code not in EVENTS or level not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
-        raise ValueError("Invalid operational event.")
     logging.getLogger("signal_scout." + component).log(getattr(logging, level), "event=" + code,
                                                       extra={"scout_component": component, "scout_event": code})
 

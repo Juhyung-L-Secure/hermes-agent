@@ -2,15 +2,12 @@ import base64
 from dataclasses import dataclass
 import json
 import logging
-import os
 import struct
 import time
 
-from ..actions import ACTION_FIELDS, ACTION_MODES
 from ._cdp import _CDP, _DocumentKey, _NavigationOutcome, _ObservedEffect, _Page, _ProtocolError
 from ._errors import ActionRejected, BrowserFailure, _RequiredFrameUnavailable
 from ._geometry import _clip, _project
-from .owner import Browser
 from .request import _FormatRejected, copy_request
 
 
@@ -154,16 +151,10 @@ class BrowserSession:
         browser = self._browser
         if target_id is None:
             target_id = self._tabs()[0]["target_id"]
-        if (not isinstance(browser, Browser) or not browser.ready or browser.failed
-                or not isinstance(target_id, str) or not target_id):
+        if not browser.ready or browser.failed:
             raise ValueError("Invalid trusted browser gate binding.")
         policy = browser.settings["browser"]
         permissions = policy["action_permissions"]
-        if (not isinstance(permissions, dict) or set(permissions) - ACTION_FIELDS.keys()
-                or any(not isinstance(mode, str) or mode not in ACTION_MODES for mode in permissions.values())
-                or type(policy["scroll_pixels"]) is not int or policy["scroll_pixels"] <= 0
-                or type(policy["navigation_retries"]) is not int or policy["navigation_retries"] < 0):
-            raise ValueError("Invalid Scout operating settings.")
         self._permissions = dict(permissions)
         self._scroll_pixels = policy["scroll_pixels"]
         self._navigation_retries = policy["navigation_retries"]
@@ -177,7 +168,7 @@ class BrowserSession:
 
         if self._terminal:
             raise _Stopped(self._fatal_reason)
-        if not self._browser.ready or self._browser.failed or os.environ.get("BROWSER_CDP_URL") != self._browser.endpoint:
+        if not self._browser.ready or self._browser.failed:
             raise _Stopped("Browser control unavailable.")
         if is_interrupted():
             raise _Stopped("Browser action interrupted.")
@@ -368,6 +359,8 @@ class BrowserSession:
         started, action, phase, began = False, "unknown", "preparation", time.monotonic()
         def invoke(operation, *, phase_name="execution"):
             nonlocal started, phase
+            if self._permissions.get(action, "blocked") == "blocked":
+                raise ActionRejected("Browser action is blocked.")
             phase = phase_name
             self._live()
             if self._cdp is not connection:
@@ -406,8 +399,7 @@ class BrowserSession:
             for attempt in range(attempts):
                 phase = "preparation"
                 try:
-                    current = copy_request(request, self._permissions)
-                    args = current["args"]
+                    args = request["args"]
                     self._browser.verify_control()
                     if connection is None or self._cdp is not connection:
                         raise BrowserFailure("Browser control unavailable.")

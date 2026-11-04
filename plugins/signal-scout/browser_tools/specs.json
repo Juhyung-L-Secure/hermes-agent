@@ -85,7 +85,7 @@
       "id": "BR_003",
       "subfeature": "native-browser-routing",
       "title": "Scoped binding and mandatory enclosing-run stop",
-      "contract": "Trusted bind_browser(gate, *, on_fatal, action_reference) requires a callable stop callback and a complete nonempty action-reference string and supports one binding at a time. Runtime handler enforces the binding on every call, independently of cached discovery checks; unbound calls cannot create or attach a Browser or select a fallback. Scope exit closes the captured gate and releases the binding. Fatal invokes the original bound callback before returning and prevents subsequent dispatch through that binding. Real Hermes wiring calls AIAgent.interrupt(hard_cancel=True), skips remaining tool effects and additional main-model turns, then permits normal owner teardown to remove the exact owned browser. A delayed old call retains its old gate/callback and cannot execute through a new run.",
+      "contract": "Trusted bind_browser(gate, *, on_fatal, action_reference) receives its already constructed gate, stop callback and fully loaded action reference directly and supports one binding at a time. Required guidance is checked when loaded; internal binding does not repeat argument type or content validation. Runtime handler enforces the binding on every call, independently of cached discovery checks; unbound calls cannot create or attach a Browser or select a fallback. Scope exit closes the captured gate and releases the binding. Fatal invokes the original bound callback before returning and prevents subsequent dispatch through that binding. Real Hermes wiring calls AIAgent.interrupt(hard_cancel=True), skips remaining tool effects and additional main-model turns, then permits normal owner teardown to remove the exact owned browser. A delayed old call retains its old gate/callback and cannot execute through a new run.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -221,11 +221,6 @@
           "layer": "unit",
           "file": "tests/signal_scout/browser_tools/test_adapter.py",
           "test": "test_BR_006_nonformat_outcomes_keep_existing_feedback"
-        },
-        {
-          "layer": "unit",
-          "file": "tests/signal_scout/browser_tools/test_adapter.py",
-          "test": "test_BR_003_BR_006_binding_requires_complete_reference"
         },
         {
           "layer": "unit",
@@ -693,7 +688,7 @@
       "id": "AG_007",
       "subfeature": "browser-action-gate",
       "title": "Trusted operating policy and private execution state",
-      "contract": "Trusted startup action_permissions supports only implemented actions with allowed or blocked values; missing permissions remain blocked. Required positive integer scroll_pixels supplies native scrolling. Gate copies trusted permissions at construction and copies external requests before work; model inputs cannot alter operating policy. Private target bindings, frame scans and copied request payloads are not copied into returned results or separate archives. Ordinary observed AX values, including typed text, intentionally reach main context; native diagnostics retain their existing redaction and retention behavior. No review packet, safety-model configuration, review mode or policy-file dependency remains.",
+      "contract": "Trusted startup action_permissions supports only implemented actions with allowed or blocked values; missing permissions remain blocked. Required positive integer scroll_pixels supplies native scrolling. The process entrypoint validates raw operating policy once. The gate copies those trusted permissions at construction without revalidating them and copies external requests before work; model inputs cannot alter operating policy. Private target bindings, frame scans and copied request payloads are not copied into returned results or separate archives. Ordinary observed AX values, including typed text, intentionally reach main context; native diagnostics retain their existing redaction and retention behavior. No review packet, safety-model configuration, review mode or policy-file dependency remains.",
       "requiredCoverage": [
         "unit",
         "e2e"

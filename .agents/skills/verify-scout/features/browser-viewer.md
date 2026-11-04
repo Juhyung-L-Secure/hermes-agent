@@ -5,7 +5,7 @@ A trusted operator watches and interacts with the actual Chromium window through
 ## Sub-features
 
 - `headed-window` opens a real native window using only the granted Wayland socket and a container-owned private runtime directory.
-- `headed-grant` validates exact display source, target, read-only access and browser-only ownership at both declared and actual mount boundaries.
+- `headed-grant` resolves the external display input once and checks delivered read-only browser-only access through real containers.
 - `headless` starts no display or viewer process and needs no host display environment, mount or WSLg installation.
 - `native-input` verifies actual native mouse and keyboard effects on a controlled page. Manual changes can stale an original reference, which Scout must reject before execution.
 - `window-lifetime` treats closing native Chromium as actual browser closure and retains exact owned cleanup.

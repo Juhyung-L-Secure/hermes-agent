@@ -117,7 +117,7 @@ def test_headed_google_baseline():
                     for k in ('Memory','MemorySwap','PidsLimit','ShmSize','Tmpfs','ReadonlyRootfs','CapDrop','SecurityOpt','CpuQuota','NanoCpus')},
                     'mounts':info['Mounts']},indent=2)+'\n')
                 probe = SETUP + '\nurl='+repr(CASE['url'])+'\n' + r'''
-with Browser() as browser:
+with Browser(config) as browser:
     print('REPRO_SANDBOX_VERIFIED',flush=True)
     evidence=browser.session()
     tab=evidence._tabs()[0]['target_id']
@@ -166,9 +166,8 @@ with Browser() as browser:
             command(directory,original.compose+['up','-d','--wait','--no-build','--pull','never','--force-recreate','proxy','firewall'])
             for service in ('firewall','proxy'):
                 helper = original.inspect_helper(service)
-                original.verify_configuration(helper,service)
                 if service not in running and helper['State']['Running']:
-                    command(directory,['docker','stop','-t',str(original.config['scout_lifecycle']['shutdown_timeout']),helper['Id']])
+                    command(directory,['docker','stop','-t',str(config['scout_lifecycle']['shutdown_timeout']),helper['Id']])
             volume = original.project+'_'+logs
             if command(directory,['docker','volume','ls','-q','--filter','name=^'+volume+'$']):
                 command(directory,['docker','volume','rm',volume])

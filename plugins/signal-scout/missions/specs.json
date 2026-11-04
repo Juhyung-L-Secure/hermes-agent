@@ -13,9 +13,7 @@
         {"layer":"unit","file":"tests/signal_scout/missions/test_cli.py","test":"test_MI_032_invalid_request_fails_before_docker"},
         {"layer":"unit","file":"tests/signal_scout/missions/test_cli.py","test":"test_MI_032_full_native_skill_preload_and_disabled_failure"},
         {"layer":"unit","file":"tests/signal_scout/missions/test_cli.py","test":"test_MI_032_bootstrap_retains_explicit_native_bounds"},
-        {"layer":"unit","file":"tests/signal_scout/missions/test_cli.py","test":"test_MI_032_stale_scout_refuses_before_attach_or_inference"},
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_032_actual_bootstrap_status_retains_bounded_alarm"},
-        {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_032_BT_006_actual_stale_scout_config_fails_before_inference"},
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_integration.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_cli_native_success_retry_and_verbose"},
         {"layer":"e2e","file":"tests/signal_scout/missions/test_cli_headed.py","test":"test_MI_032_MI_033_MI_034_MI_035_actual_native_headed_error_logs_and_rotation"}
       ],

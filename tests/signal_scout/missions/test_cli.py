@@ -110,7 +110,7 @@ def test_MI_032_BR_006_startup_uses_registered_adapter_and_one_reference_copy(na
     captured = {}
     monkeypatch.setattr(hermes_cli.runtime_provider, "resolve_runtime_provider", lambda **_: {
         "provider":config["model"]["provider"], "api_mode":"chat_completions", "base_url":"https://offline.test", "api_key":"offline"})
-    monkeypatch.setattr(browser_module, "Browser", lambda: nullcontext(SimpleNamespace(
+    monkeypatch.setattr(browser_module, "Browser", lambda config: nullcontext(SimpleNamespace(
         session=lambda: gate)))
     class Agent:
         valid_tool_names = {"browser_scout"}
@@ -209,9 +209,9 @@ def bare_run(monkeypatch):
     run.container = run.endpoint = run.lock = run._helper_state = None
     run.restore_helpers = True
     run._diagnostics = Mock()
-    run._verbose, run._config_override, run._run_config = False, None, None
+    run._verbose, run._config_override = False, None
     run._base_compose = run.compose[:]
-    run._fix_configuration = Mock()
+    run._capture_configuration = Mock()
     monkeypatch.setattr(lifecycle, 'BrowserDiagnostics', lambda *_: run._diagnostics)
     return run
 
@@ -287,7 +287,7 @@ def test_MI_035_attach_status_cannot_override_native_exit_or_cleanup(monkeypatch
 
     browser = SimpleNamespace(project="test", run="owned", compose=["compose"],
         config={"browser": {"mode": "headless"}, "scout_lifecycle": {"shutdown_timeout": 5}},
-        scout_environment=lambda: {}, verify_configuration=lambda *_: None, __enter__=lambda: None, close=lambda: None)
+        scout_environment=lambda: {}, __enter__=lambda: None, close=lambda: None)
     monkeypatch.setattr(host, "BrowserRun", lambda *_args, **_kwargs: browser)
     owner = host.MissionRun(mission.MissionRequest("Research rice."))
     info = {"Id": "a" * 64, "State": {"Running": True, "ExitCode": 0}}
@@ -298,8 +298,6 @@ def test_MI_035_attach_status_cannot_override_native_exit_or_cleanup(monkeypatch
 
     def checked(command, **_kwargs):
         operations.append(command)
-        if command[:2] == ["docker", "exec"]:
-            return lifecycle.settings.settings_digest(browser.config)
         if cleanup_failed and command[:2] == ["docker", "rm"]:
             raise RuntimeError("Injected cleanup failure")
         return ""
@@ -425,30 +423,6 @@ def test_MI_035_browser_create_then_start_failure_removes_only_exact_attempt(mon
     assert removed == [own] and foreign not in removed
     assert state == {"firewall": False, "proxy": False}
     assert run.container is None and run.lock is None
-
-
-def test_MI_032_stale_scout_refuses_before_attach_or_inference(monkeypatch, capsys):
-    from types import SimpleNamespace
-
-    browser = SimpleNamespace(project="test", run="owned", compose=["compose"],
-        config={"browser": {"mode": "headless"}, "scout_lifecycle": {"shutdown_timeout": 5}},
-        scout_environment=lambda: {}, verify_configuration=Mock(side_effect=RuntimeError('Scout configuration delivery mismatch.')),
-        __enter__=lambda: None, close=lambda: None)
-    monkeypatch.setattr(host, "BrowserRun", lambda *_args, **_kwargs: browser)
-    owner = host.MissionRun(mission.MissionRequest("Research rice."))
-    monkeypatch.setattr(owner, "_scout", lambda: {"Id": "a" * 64, "State": {"Running": True, "ExitCode": 0}})
-    monkeypatch.setattr(host.subprocess, "Popen", lambda *_args, **_kwargs: pytest.fail("Stale Scout reached attach"))
-    operations = []
-
-    def checked(command, **_kwargs):
-        operations.append(command)
-        return "stale-scout-config" if command[:2] == ["docker", "exec"] else ""
-
-    monkeypatch.setattr(host, "checked", checked)
-    assert owner.run() == 1
-    assert "Scout mission failed during startup or execution." in capsys.readouterr().err
-    browser.verify_configuration.assert_called_once_with({'Id': 'a' * 64, 'State': {'Running': True, 'ExitCode': 0}}, 'scout')
-    assert ["docker", "rm", "a" * 64] in operations and owner.child is None
 
 
 def test_MI_034_file_observer_failure_is_visible_and_stops_without_changing_actions(monkeypatch, tmp_path):

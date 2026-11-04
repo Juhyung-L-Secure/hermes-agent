@@ -15,6 +15,10 @@ The primary assistant acts as the software development manager. It owns research
 - These role restrictions apply to the primary coordinating assistant. Delegated coding agents may implement within their assigned scope.
 - Explicit stop, undo, and hold instructions take precedence. Do not resume implementation merely because a workflow skill is supplied with such an instruction.
 
+### Trust configured startup values
+
+Validate raw operator, model and network input at its entrypoint. Trusted internal callers use the parsed values directly. Do not add production checks that read back Docker declarations, mounts, settings digests, configured browser policy or viewport, or constructed agent options merely to verify values our code supplied. Configure the operation and handle its actual failure. Verify configured behavior in tests. Keep checks of changing external state, including live resource ownership, connection health, browser sandbox availability and actual action or network policy enforcement.
+
 ## What Hermes Is
 
 Hermes is a personal AI agent that runs the same agent core across a CLI, a

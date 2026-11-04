@@ -65,7 +65,7 @@ async def connection(*_,**__):
     yield None
 c.connect=connection
 async def safeguards(*_): pass
-c.initialize_safeguards=safeguards
+c.set_main_window=safeguards
 class Server:
     def close(self): pass
     async def wait_closed(self): pass
@@ -79,7 +79,7 @@ async def run():
             await asyncio.sleep(.01)
         os.kill(os.getpid(),signal.SIGINT)
     sender=asyncio.create_task(signal_ready_child())
-    result=await c.run_child(config,'a'*32)
+    result=await c.run_child(config)
     await sender
     return result
 assert asyncio.run(run()) == -signal.SIGTERM
@@ -137,15 +137,15 @@ async def test_SR_023_late_launcher_signal_keeps_observed_unexpected_child_exit(
     async def server(*_args, **_kwargs):
         return SimpleNamespace(close=lambda: None, wait_closed=closed)
     monkeypatch.setattr(chromium, 'connect', connection)
-    monkeypatch.setattr(chromium, 'initialize_safeguards', safeguards)
+    monkeypatch.setattr(chromium, 'set_main_window', safeguards)
     monkeypatch.setattr(chromium.asyncio, 'start_server', server)
     monkeypatch.setattr(chromium, 'READY', tmp_path / 'ready.json')
     try:
         if moment == 'before_ready':
             with pytest.raises(RuntimeError, match='Chromium startup failed'):
-                await chromium.run_child(lifecycle.settings.load_settings(lifecycle.CONFIG), 'a' * 32)
+                await chromium.run_child(lifecycle.settings.load_settings(lifecycle.CONFIG))
         else:
-            assert await chromium.run_child(lifecycle.settings.load_settings(lifecycle.CONFIG), 'a' * 32) == 23
+            assert await chromium.run_child(lifecycle.settings.load_settings(lifecycle.CONFIG)) == 23
     finally:
         for pipe in pipes:
             pipe.close()

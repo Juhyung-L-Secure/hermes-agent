@@ -4,36 +4,21 @@ from pathlib import Path
 import re
 import uuid
 
-from ..settings import load_settings
-from .control import discover, validate_endpoint
-from ..runtime_logging import configure_logging, event
+from .control import discover
+from ..runtime_logging import event
 from ..network.urls import validate_url
 
 
 class Browser:
     """Use native Hermes CDP against the host-owned disposable browser only."""
 
-    def __init__(self):
-        self.settings = load_settings()
-        if (os.environ.get("HERMES_HOME") != "/var/lib/scout"
-                or Path("/var/lib/scout/config.yaml").resolve() != Path("/opt/scout/config.yaml")):
-            raise RuntimeError("Required read-only browser configuration missing.")
-        configure_logging("scout", self.settings)
+    def __init__(self, config):
+        self.settings = config
         self.task = "scout-" + uuid.uuid4().hex
         self.ready = False
         self.failed = False
         self._session = None
         self.endpoint = os.environ.get("BROWSER_CDP_URL", "")
-        network = self.settings["scout_network"]
-        validate_endpoint(self.endpoint, network["browser_address"], network["relay_port"])
-        if (not re.fullmatch("[0-9a-f]{32}", os.environ.get("SCOUT_BROWSER_RUN", ""))
-                or not re.fullmatch("[0-9a-f]{64}", os.environ.get("SCOUT_BROWSER_CONTAINER", ""))):
-            raise RuntimeError("Missing browser run ownership.")
-        if any(key.startswith("AGENT_BROWSER_")
-               or (key.startswith(("BROWSER_", "BROWSERBASE_")) and key != "BROWSER_CDP_URL")
-               for key in os.environ):
-            raise RuntimeError("Unexpected browser environment.")
-
     def verify_control(self):
         """Reject unavailable or stale discovery before any sandbox/navigation work."""
         network = self.settings["scout_network"]
@@ -46,10 +31,8 @@ class Browser:
         """Invoke native automation without model calls; discard native temporary output."""
         from tools import browser_tool
 
-        if self.failed or os.environ.get("BROWSER_CDP_URL") != self.endpoint:
+        if self.failed:
             raise RuntimeError("Browser control unavailable.")
-        if browser_tool._find_agent_browser() != "/usr/local/bin/agent-browser":
-            raise RuntimeError("Required native browser driver unavailable.")
         try:
             result = browser_tool._run_browser_command(self.task, name, list(args),
                                                        timeout=self.settings["browser"]["command_timeout"])

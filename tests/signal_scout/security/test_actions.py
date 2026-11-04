@@ -4,6 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+
+owner_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner')
 import yaml
 
 from tools.interrupt import set_interrupt
@@ -259,7 +261,7 @@ def test_AG_009_startup_without_reviewer_settings_executes_and_keeps_default_den
     config['browser']['action_permissions'] = {'navigate': 'allowed', 'click': 'blocked'}
     path = tmp_path / 'config.yaml'
     path.write_text(yaml.safe_dump(config))
-    browser = session_module.Browser.__new__(session_module.Browser)
+    browser = owner_module.Browser.__new__(owner_module.Browser)
     browser.settings = settings.load_settings(path)
     browser.ready, browser.failed, browser.endpoint = True, False, 'ws://owned-offline'
     monkeypatch.setenv('BROWSER_CDP_URL', browser.endpoint)
@@ -286,7 +288,7 @@ def test_AG_009_startup_without_reviewer_settings_executes_and_keeps_default_den
 
 
 def test_AG_001_AG_006_cached_session_discovers_then_copies_policy_then_checks_target(monkeypatch):
-    browser = session_module.Browser.__new__(session_module.Browser)
+    browser = owner_module.Browser.__new__(owner_module.Browser)
     browser.settings = settings.load_settings(CONFIG)
     browser.ready, browser.failed, browser.endpoint, browser._session = True, False, 'ws://owned-offline', None
     events = []
@@ -311,19 +313,9 @@ def test_AG_001_AG_006_cached_session_discovers_then_copies_policy_then_checks_t
     assert events == [False, True] and list(session._refs) == ['@s1'] and session._selected == 'original'
 
 
-@pytest.mark.parametrize('target', ['', 3])
-def test_AG_001_explicit_invalid_session_target_precedes_discovery(monkeypatch, target):
-    browser = session_module.Browser.__new__(session_module.Browser)
-    browser.ready, browser.failed, browser._session = True, False, None
-    monkeypatch.setattr(session_module.BrowserSession, '_command', lambda *args, **kwargs: pytest.fail('Invalid binding performed CDP I/O'))
-    with pytest.raises(ValueError, match='^Invalid trusted browser gate binding\.$'):
-        browser.session(target)
-    assert browser._session._cdp is None and not browser.failed
-
-
 @pytest.mark.parametrize('missing', [True, False])
 def test_AG_006_failed_session_discovery_stays_attached_for_owner_cleanup(monkeypatch, missing):
-    browser = session_module.Browser.__new__(session_module.Browser)
+    browser = owner_module.Browser.__new__(owner_module.Browser)
     browser.ready, browser.failed, browser._session = True, False, None
     connection = SimpleNamespace(close=lambda: pytest.fail('Discovery failure disconnected eagerly'))
     def command(session, *args, **kwargs):

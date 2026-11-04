@@ -85,7 +85,6 @@ class MissionRun:
             info = self._scout()
             if info is None or not info["State"]["Running"]:
                 raise RuntimeError("Scout mission startup failed.")
-            self.browser.verify_configuration(info, 'scout')
             self.child = subprocess.Popen(["docker", "attach", "--sig-proxy=false", info["Id"]],
                 stdin=subprocess.PIPE, text=True, start_new_session=True)
             self.child.stdin.write(json.dumps({"text": self.request.text}))
