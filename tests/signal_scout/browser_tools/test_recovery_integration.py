@@ -187,7 +187,7 @@ with Browser(config) as browser:
             assert release.wait(20)
             self._selected='abandoned-selected-target'
             self._refs.clear()
-            self._browser.close()
+            self._disconnect()
             return self._result('fatal','Abandoned failure must not stop current mission.')
         return result
     def plan(index,kwargs):

@@ -793,7 +793,7 @@
         {
           "layer": "unit",
           "file": "tests/signal_scout/security/test_navigation_recovery.py",
-          "test": "test_AG_008_unacknowledged_or_malformed_navigation_remains_fatal"
+          "test": "test_AG_008_unacknowledged_or_malformed_navigation_has_no_completed_effect"
         },
         {
           "layer": "unit",
@@ -813,7 +813,7 @@
         {
           "layer": "unit",
           "file": "tests/signal_scout/security/test_navigation_recovery.py",
-          "test": "test_AG_008_timeout_observation_failure_remains_terminal"
+          "test": "test_AG_008_timeout_observation_distinguishes_control_loss_and_terminal_identity"
         },
         {
           "layer": "unit",
@@ -823,7 +823,7 @@
         {
           "layer": "unit",
           "file": "tests/signal_scout/security/test_navigation_recovery.py",
-          "test": "test_AG_008_retry_rejection_is_incomplete_technical_failure_fatal"
+          "test": "test_AG_008_retry_rejection_and_control_loss_return_facts_terminal_identity_stops"
         },
         {
           "layer": "unit",

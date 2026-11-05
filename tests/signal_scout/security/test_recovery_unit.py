@@ -152,3 +152,118 @@ def test_AG_006_first_half_acknowledgment_does_not_certify_compound_action(bound
     assert result['data']['failure']['kind'] == 'control_lost'
     assert result['data']['failure']['action_acknowledged'] is False
     assert result['data']['failure']['remote_effects'] == 'unknown'
+
+
+@pytest.mark.parametrize('kind', ['stale', 'frame', 'protocol_stale'])
+def test_AG_005_AG_006_acknowledged_action_with_changed_observation_is_nonfatal(boundary, monkeypatch, kind):
+    session = importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
+    gate = boundary.session
+    errors = {
+        'stale': session.ActionRejected('Original browser target is stale.'),
+        'frame': session._RequiredFrameUnavailable(),
+        'protocol_stale': session._ProtocolError({'code': -32000, 'message': 'Cannot find context with specified id'}),
+    }
+    def execute(_action, _args, invoke):
+        invoke(lambda: boundary.effects.append('one acknowledged action'))
+        gate._action_acknowledged = True
+        return invoke(lambda: (_ for _ in ()).throw(errors[kind]), phase_name='observation')
+    monkeypatch.setattr(gate, '_execute', execute)
+    monkeypatch.setattr(gate, '_inspect_snapshot', lambda _: '- heading "Fresh changed context"')
+    result = gate.dispatch({'action': 'keypress', 'args': {'key': 'Enter'}})
+    assert result['status'] == 'incomplete'
+    assert result['execution_started'] is True
+    assert result['data']['failure']['phase'] == 'observation'
+    assert result['data']['failure']['action_acknowledged'] is True
+    assert result['data']['snapshot'] == '- heading "Fresh changed context"'
+    assert boundary.effects == ['one acknowledged action']
+    assert not boundary.closed and boundary.browser.ready and not boundary.browser.failed
+
+
+def test_AG_006_AG_010_expired_reconnect_worker_cleans_only_its_attempt(boundary, monkeypatch):
+    import threading
+    import time
+    lifetime = importlib.import_module('plugins.signal-scout.scout_runtime.browser.lifetime')
+    session = importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
+    gate = boundary.session
+    gate._cdp = None
+    policy = boundary.browser.settings['scout_recovery']
+    policy.update(strategy='reconnect', reconnect_attempts=2, attempt_timeout=2)
+    parked, release = threading.Event(), threading.Event()
+    old, cleaned, effects = [], [], []
+    def connect(self, timeout=None):
+        token = self._authority
+        label = token.call_id
+        raw = SimpleNamespace(shutdown=lambda *_: None)
+        self._cdp = SimpleNamespace(connection=SimpleNamespace(socket=raw), capture_deadline=None,
+                                    close=lambda: cleaned.append(label))
+        token.attach(self._cdp)
+        self._refs = {'@s999': 'accepted reference'}
+        if label.endswith('-0'):
+            old.append(token)
+            parked.set()
+            assert release.wait(15)
+            self._selected = 'abandoned target'
+            token.check()
+            effects.append('old command')
+    monkeypatch.setattr(session.BrowserSession, '_connect', connect)
+    monkeypatch.setattr(gate, '_inspect_snapshot', lambda _: '- heading "Accepted repair"')
+    manager = lifetime.BrowserRequests(gate)
+    authority = lifetime.RequestAuthority('request')
+    failed = gate._result('incomplete', 'Original control lost.', started=True,
+                          data={'failure': {'kind': 'control_lost'}})
+    try:
+        began = time.monotonic()
+        result = manager._repair(gate, authority, failed)
+        assert time.monotonic() - began < 8
+        assert parked.is_set() and old[0].revoked.is_set()
+        assert result['data']['recovery']['reconnect_attempts'] == 2
+        assert result['data']['capture']['state'] == 'fresh'
+        assert gate._selected == 'owned-page' and gate._refs == {'@s999': 'accepted reference'}
+        accepted = dict(gate._refs)
+        release.set()
+        assert old[0].done.wait(5)
+        assert gate._refs == accepted and gate._selected == 'owned-page'
+        assert cleaned == ['request-reconnect-1', 'request-reconnect-0']
+        assert effects == []
+    finally:
+        release.set()
+
+
+def test_AG_010_stalled_capture_after_reconnect_never_causes_restart(boundary, monkeypatch):
+    import threading
+    import time
+    lifetime = importlib.import_module('plugins.signal-scout.scout_runtime.browser.lifetime')
+    session = importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
+    gate = boundary.session
+    gate._cdp = None
+    boundary.browser.settings['scout_recovery'].update(reconnect_attempts=1, attempt_timeout=2)
+    release, parked = threading.Event(), threading.Event()
+    old = []
+    def connect(self, timeout=None):
+        self._cdp = SimpleNamespace(capture_deadline=None, connection=SimpleNamespace(
+            socket=SimpleNamespace(shutdown=lambda *_: None)), close=lambda: None)
+        self._authority.attach(self._cdp)
+    def snapshot(self, target):
+        old.append(self._authority)
+        parked.set()
+        assert release.wait(15)
+        self._refs['@s888'] = 'late discarded reference'
+        return '- heading "Late discarded observation"'
+    monkeypatch.setattr(session.BrowserSession, '_connect', connect)
+    monkeypatch.setattr(session.BrowserSession, '_inspect_snapshot', snapshot)
+    manager = lifetime.BrowserRequests(gate)
+    failed = gate._result('incomplete', 'Control lost.', started=True, data={'failure': {'kind': 'control_lost'}})
+    try:
+        began = time.monotonic()
+        result = manager._repair(gate, lifetime.RequestAuthority('request'), failed)
+        assert time.monotonic() - began < 8 and parked.is_set()
+        assert result['status'] == 'incomplete'
+        assert result['data']['recovery']['kind'] == 'reconnected'
+        assert result['data']['recovery']['restart_attempts'] == 0
+        assert result['data']['capture']['state'] == 'unavailable'
+        assert 'snapshot' not in result['data'] and gate._refs == {}
+        release.set()
+        assert old[0].done.wait(5)
+        assert gate._refs == {} and gate._selected == 'owned-page'
+    finally:
+        release.set()

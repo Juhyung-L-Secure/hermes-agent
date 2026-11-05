@@ -113,6 +113,7 @@ def test_MI_032_BR_006_startup_uses_registered_adapter_and_one_reference_copy(na
     monkeypatch.setattr(browser_module, "Browser", lambda config: nullcontext(SimpleNamespace(
         session=lambda: gate)))
     class Agent:
+        session_id = 'fixture-agent'
         valid_tool_names = {"browser_scout"}
         run_budget_seconds = None
         def __init__(self, **kwargs):

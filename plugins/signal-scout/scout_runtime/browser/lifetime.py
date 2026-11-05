@@ -20,6 +20,9 @@ class RequestAuthority:
     call_id: str
     parent_tid: int = field(default_factory=threading.get_ident)
     worker_tid: int | None = None
+    parent: object = None
+    children: list = field(default_factory=list)
+    active_child: object = None
     transport: object = None
     revoked: threading.Event = field(default_factory=threading.Event)
     done: threading.Event = field(default_factory=threading.Event)
@@ -33,14 +36,18 @@ class RequestAuthority:
     lifecycle_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def check(self):
+        if self.parent is not None:
+            self.parent.check()
         if self.revoked.is_set() or is_thread_interrupted(self.parent_tid):
             raise RequestRevoked('Browser request authority revoked.')
 
     def attach(self, transport):
         self.transport = transport
-        if self.revoked.is_set():
-            self._shutdown()
+        try:
             self.check()
+        except RequestRevoked:
+            self._shutdown()
+            raise
 
     def _shutdown(self):
         if self.transport is not None:
@@ -54,8 +61,9 @@ class RequestAuthority:
         if self.revoked.is_set():
             return
         self.abandoned_started = self.started
-        self.notice = {'kind': 'worker_timeout', 'phase': self.phase,
-                       'command': dict(self.last_command),
+        source = self.active_child or self
+        self.notice = {'kind': 'worker_timeout', 'phase': source.phase,
+                       'command': dict(source.last_command),
                        'remote_effects': 'unknown' if self.started else 'not_started'}
         self.reason = reason
         self.revoked.set()
@@ -63,6 +71,8 @@ class RequestAuthority:
             if self.worker_tid is not None and not self.done.is_set():
                 set_interrupt(True, self.worker_tid, reason='Scout request abandoned')
         self._shutdown()
+        for child in tuple(self.children):
+            child.revoke('parent_abandoned')
 
     def feedback(self):
         worker = {'cancel_requested': True, 'access_revoked': True, 'termination_confirmed': False}
@@ -81,7 +91,6 @@ class _RequestBrowser:
         self.settings, self.endpoint = browser.settings, browser.endpoint
         self.ready, self.failed = browser.ready, browser.failed
         self.authority = authority
-        self._session = None
 
     def verify_control(self):
         from .control import discover
@@ -94,12 +103,6 @@ class _RequestBrowser:
         self.authority.check()
         if endpoint != self.endpoint:
             raise OwnershipFailure('Browser ownership verification failed.')
-
-    def close(self):
-        self.ready, self.failed = False, True
-        if self._session is not None:
-            self._session._disconnect()
-
 
 class BrowserRequests:
     def __init__(self, session):
@@ -133,14 +136,7 @@ class BrowserRequests:
                 if not self.active.revoked.is_set():
                     return root._result('rejected', 'Another browser request is active.')
             self.active = authority
-        private = copy(root)
-        private._browser = _RequestBrowser(root._browser, authority)
-        private._browser._session = private
-        private._authority = authority
-        private._cdp = None
-        private._sessions = {}
-        private._refs = dict(root._refs)
-        private._terminal = False
+        private = self._fork(root, authority)
 
         def work():
             result = None
@@ -212,39 +208,89 @@ class BrowserRequests:
                 if self.active is authority:
                     self.active = None
 
+    @staticmethod
+    def _fork(root, authority, *, keep_refs=True):
+        private = copy(root)
+        private._browser = _RequestBrowser(root._browser, authority)
+        private._authority = authority
+        private._requests = None
+        private._cdp = None
+        private._sessions = {}
+        private._refs = dict(root._refs) if keep_refs else {}
+        private._permissions = dict(root._permissions)
+        private._terminal = False
+        return private
+
     def _repair(self, private, authority, failed):
         policy = private._browser.settings['scout_recovery']
         diagnostics = []
+        if private._cdp is not None:
+            private._cdp.abort()
+            private._cdp = None
+        private._sessions = {}
         if policy['strategy'] != 'restart':
             for attempt in range(policy['reconnect_attempts']):
                 authority.check()
                 authority.phase = 'reconnect'
-                deadline = time.monotonic() + policy['attempt_timeout']
-                try:
-                    private._disconnect()
-                    private._sessions = {}
-                    private._connect(timeout=policy['attempt_timeout'])
-                    private._cdp.capture_deadline = deadline
-                    tabs = private._tabs()
-                    private._refs = {}
-                    data = {**failed['data'], 'tabs': tabs,
-                            'recovery': {'kind': 'reconnected', 'reconnect_attempts': attempt + 1,
-                                         'restart_attempts': 0, 'refs_invalidated': True,
-                                         'session_state_lost': False, 'action_replayed': False}}
-                    data['capture'] = {'state': 'unavailable'}
-                    if any(tab['target_id'] == private._selected for tab in tabs):
-                        authority.phase = 'recovery_observation'
-                        private._cdp.capture_deadline = min(deadline, time.monotonic() +
-                            private._browser.settings['browser']['capture_timeout'])
+                child = RequestAuthority(authority.call_id + '-reconnect-' + str(attempt), parent=authority)
+                authority.children.append(child)
+                authority.active_child = child
+                candidate = self._fork(private, child, keep_refs=False)
+                proof = {}
+
+                def reconnect(child=child, candidate=candidate, proof=proof, attempt=attempt):
+                    with child.lifecycle_lock:
+                        child.worker_tid = threading.get_ident()
+                    try:
+                        child.phase = 'reconnect'
+                        child.check()
+                        candidate._connect(timeout=policy['attempt_timeout'])
+                        tabs = candidate._tabs()
+                        child.check()
+                        data = {**failed['data'], 'tabs': [dict(tab) for tab in tabs],
+                                'recovery': {'kind': 'reconnected', 'reconnect_attempts': attempt + 1,
+                                             'restart_attempts': 0, 'refs_invalidated': True,
+                                             'session_state_lost': False, 'action_replayed': False},
+                                'capture': {'state': 'unavailable'}}
+                        proof['data'] = data
+                        if any(tab['target_id'] == candidate._selected for tab in tabs):
+                            child.phase = 'recovery_observation'
+                            candidate._cdp.capture_deadline = time.monotonic() + \
+                                candidate._browser.settings['browser']['capture_timeout']
+                            try:
+                                snapshot = candidate._inspect_snapshot(candidate._selected)
+                                data = {**data, 'snapshot': snapshot, 'target_id': candidate._selected,
+                                        'capture': {'state': 'fresh'}}
+                            except (RequestRevoked, OwnershipFailure):
+                                raise
+                            except Exception:
+                                logger.exception('Browser reconnected but capture unavailable')
+                        child.check()
+                        return data, dict(candidate._refs), candidate._selected
+                    finally:
+                        child.phase = 'cleanup'
                         try:
-                            data['snapshot'] = private._inspect_snapshot(private._selected)
-                            data['target_id'] = private._selected
-                            data['capture'] = {'state': 'fresh'}
-                        except (RequestRevoked, OwnershipFailure):
-                            raise
-                        except Exception:
-                            logger.exception('Browser reconnected but capture unavailable')
+                            candidate._disconnect()
+                        finally:
+                            with child.lifecycle_lock:
+                                set_interrupt(False)
+                                child.done.set()
+
+                try:
+                    outcome = run_bounded_sync(reconnect, policy['attempt_timeout'], label='scout-browser-reconnect',
+                                               on_timeout=lambda child=child: child.revoke('repair_timeout'))
                     authority.check()
+                    if outcome.timed_out:
+                        diagnostics.append('TimeoutError')
+                        logger.error('Browser reconnect attempt deadline attempt=%s cancel_requested=True access_revoked=True', attempt + 1)
+                        if 'data' not in proof:
+                            continue
+                        data, refs, selected = proof['data'], {}, private._selected
+                        data = {**data, 'recovery_worker': {'cancel_requested': True, 'access_revoked': True,
+                                                          'termination_confirmed': False}}
+                    else:
+                        data, refs, selected = outcome.value
+                    private._refs, private._selected = refs, selected
                     logger.warning('Browser control repaired reconnect_attempts=%s restart_attempts=0', attempt + 1)
                     return private._result('incomplete', 'Browser control reconnected; original action was not replayed.',
                                            started=failed['execution_started'], data=data)
@@ -257,6 +303,13 @@ class BrowserRequests:
                 except Exception as error:
                     logger.exception('Browser reconnect failed attempt=%s', attempt + 1)
                     diagnostics.append(type(error).__name__)
+                    if 'data' in proof:
+                        private._refs = {}
+                        return private._result('incomplete', 'Browser control reconnected; capture unavailable.',
+                                               started=failed['execution_started'], data=proof['data'])
+                finally:
+                    if authority.active_child is child:
+                        authority.active_child = None
         return private._result('fatal', 'Browser infrastructure repair exhausted.',
                                started=failed['execution_started'], data={**failed['data'],
                                    'recovery': {'kind': 'exhausted', 'reconnect_failures': diagnostics,

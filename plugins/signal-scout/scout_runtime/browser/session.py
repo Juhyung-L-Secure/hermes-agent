@@ -256,12 +256,12 @@ class BrowserSession:
     def _navigation_page(self, connection):
         self._live()
         if connection is None or self._cdp is not connection:
-            raise BrowserFailure("Browser control unavailable.")
+            raise OwnershipFailure("Browser control connection changed unexpectedly.")
         self._browser.verify_control()
         page = self._page(self._selected)
         self._live()
         if self._cdp is not connection:
-            raise BrowserFailure("Browser control unavailable.")
+            raise OwnershipFailure("Browser control connection changed unexpectedly.")
         return page
 
 
@@ -390,9 +390,6 @@ class BrowserSession:
         """
         started, action, phase, began = False, "unknown", "preparation", time.monotonic()
         self._action_acknowledged = False
-        if self._cdp is not None:
-            self._cdp.effect_acknowledged = False
-            self._cdp.effect_sent = self._cdp.effect_replies = 0
         def invoke(operation, *, phase_name="execution"):
             nonlocal started, phase
             if self._permissions.get(action, "blocked") == "blocked":
@@ -402,7 +399,7 @@ class BrowserSession:
                 self._authority.phase = phase
             self._live()
             if self._cdp is not connection:
-                raise BrowserFailure("Browser control unavailable.")
+                raise OwnershipFailure("Browser control connection changed unexpectedly.")
             started = True
             if self._authority is not None:
                 self._authority.started = True
@@ -424,6 +421,9 @@ class BrowserSession:
                 data=self._effect_data(current, action, request["args"]))
         try:
             self._live()
+            if self._cdp is not None:
+                self._cdp.effect_acknowledged = False
+                self._cdp.effect_sent = self._cdp.effect_replies = 0
             try:
                 request = copy_request(request, self._permissions)
             except _FormatRejected as error:
@@ -448,7 +448,7 @@ class BrowserSession:
                     args = request["args"]
                     self._browser.verify_control()
                     if connection is None or self._cdp is not connection:
-                        raise BrowserFailure("Browser control unavailable.")
+                        raise OwnershipFailure("Browser control connection changed unexpectedly.")
                     self._live()
                     data = self._execute(action, args, invoke)
                 except (ActionRejected, _ProtocolError) as error:
@@ -496,19 +496,24 @@ class BrowserSession:
             if not started:
                 return self._result("rejected", str(error))
             diagnostic()
-            return self._fatal("Browser action failed.", True)
+            return self._failure('frame_unavailable', phase, True)
         except ActionRejected:
             if not started:
                 return self._result("rejected", "Browser context changed.")
             diagnostic()
-            return self._fatal("Browser action failed.", True)
+            return self._failure('context_changed', phase, True)
         except _ProtocolError as error:
             if error.frame_unavailable and not error.stale and not started:
                 return self._result("rejected", "Required browser target or frame is unavailable.")
             if (error.stale or error.frame_unavailable) and not started:
                 return self._result("rejected", "Browser context changed.")
             diagnostic()
+            if error.stale or error.frame_unavailable:
+                return self._failure('context_changed' if error.stale else 'frame_unavailable', phase, started)
             return self._fatal("Browser action failed.", started)
+        except OwnershipFailure:
+            diagnostic()
+            return self._fatal('Browser ownership verification failed.', started)
         except Exception:
             diagnostic()
             return self._fatal("Browser action failed.", started)
@@ -540,7 +545,9 @@ class BrowserSession:
         reason = ('Browser observation command reply deadline reached after action acknowledgment.'
                   if phase == 'observation' and action_ack else 'Browser command reply deadline reached.')
         if kind != 'command_timeout':
-            reason = 'Browser inspection unavailable.'
+            reason = {'context_changed': 'Browser context changed; action completion is uncertain.',
+                      'frame_unavailable': 'Browser frame unavailable; action completion is uncertain.'}.get(
+                          kind, 'Browser inspection unavailable.')
         return self._result('incomplete', reason, started=started, data=data)
 
 

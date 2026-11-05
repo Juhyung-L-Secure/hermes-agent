@@ -75,7 +75,7 @@ def test_AG_008_native_navigation_facts(result, expected):
     ([reply(loaderId='new'),load(loaderId=None)],ValueError),
     ([reply(loaderId='new'),reply(loaderId='different')],ValueError),
     ([{'id':1,'sessionId':'owned','error':{'code':-32601,'message':'unsupported'}}],cdp_module._ProtocolError)])
-def test_AG_008_unacknowledged_or_malformed_navigation_remains_fatal(messages, error):
+def test_AG_008_unacknowledged_or_malformed_navigation_has_no_completed_effect(messages, error):
     cdp, _ = transport(messages)
     with pytest.raises(error):
         navigation(cdp, 'http://public.test/', 'owned', 'root')
@@ -100,7 +100,7 @@ def observed(outcome, page):
 
 def recovery_boundary(boundary, monkeypatch, outcomes, retries=1):
     boundary.session._navigation_retries = retries
-    boundary.session._cdp = object()
+    boundary.session._cdp = transport()[0]
     boundary.browser.verify_control = lambda: None
     boundary.session._frames = lambda _: session_module._FrameScan({'root':SimpleNamespace(parent=None,session='owned')})
     boundary.session._inspect_snapshot = lambda _: '- heading "Current incomplete observation"'
@@ -114,6 +114,7 @@ def recovery_boundary(boundary, monkeypatch, outcomes, retries=1):
             value = next(pending)
             if isinstance(value,Exception):
                 raise value
+            boundary.session._cdp.effect_acknowledged = True
             return observed(cdp_module._NavigationOutcome(value), boundary.session._navigation_page(boundary.session._cdp))
         value = invoke(effect)
         if boundary.session._cdp is None:
@@ -176,7 +177,7 @@ def test_AG_008_load_error_then_timeout_returns_timeout_observation(boundary, mo
 
 @pytest.mark.parametrize('failure', ['snapshot','frames','control','missing_connection','changed_connection',
     'interrupt_before','interrupt_after','connection_after','browser_after'])
-def test_AG_008_timeout_observation_failure_remains_terminal(boundary, monkeypatch, failure):
+def test_AG_008_timeout_observation_distinguishes_control_loss_and_terminal_identity(boundary, monkeypatch, failure):
     from tools.interrupt import set_interrupt
     request=recovery_boundary(boundary,monkeypatch,['observation_timeout','ready'],4)
     native_execute=boundary.session._execute
@@ -200,12 +201,28 @@ def test_AG_008_timeout_observation_failure_remains_terminal(boundary, monkeypat
     connection=boundary.session._cdp
     monkeypatch.setattr(boundary.session,'_execute',execute)
     result=boundary.session.dispatch(request)
-    assert result['status']=='fatal' and result['execution_started'] is True and result['data']=={}
-    assert 'private' not in repr(result)
-    assert boundary.effects==[('navigate',{'url':'http://public.test/original'})]
-    assert boundary.closed==[True]
-    assert boundary.session.dispatch(request)=={**result,'execution_started':False}
-    assert boundary.effects==[('navigate',{'url':'http://public.test/original'})] and boundary.closed==[True]
+    recoverable = failure in {'snapshot', 'frames', 'control'}
+    assert result['status'] == ('incomplete' if recoverable else 'fatal')
+    assert result['execution_started'] is True and 'private' not in repr(result)
+    assert boundary.effects == [('navigate', {'url':'http://public.test/original'})]
+    if recoverable:
+        assert result['data']['failure']['kind'] == 'control_lost'
+        assert result['data']['capture']['state'] == 'unavailable'
+        assert not boundary.closed and boundary.browser.ready
+        boundary.browser.verify_control = lambda: None
+        boundary.session._inspect_snapshot = lambda _: '- heading "Fresh after control feedback"'
+        boundary.session._page = lambda _: cdp_module._Page(
+            cdp_module._DocumentKey('owned','root','current',2),
+            '- heading "Fresh after control feedback"', 'http://public.test/current', 'complete')
+        boundary.session._execute = native_execute
+        continued = boundary.session.dispatch(request)
+        assert continued['status'] == 'success'
+        assert continued['data']['snapshot'] == '- heading "Fresh after control feedback"'
+        assert len(boundary.effects) == 2
+    else:
+        assert result['data'] == {} and boundary.closed == [True]
+        assert boundary.session.dispatch(request) == {**result, 'execution_started':False}
+        assert len(boundary.effects) == 1 and boundary.closed == [True]
 
 
 @pytest.mark.parametrize('action,args', [('click',{'ref':'@s1'}),('type',{'ref':'@s1','text':'hello'}),
@@ -214,8 +231,9 @@ def test_AG_008_other_action_errors_never_retry(boundary, monkeypatch, action, a
     request=recovery_boundary(boundary,monkeypatch,[TimeoutError('native deadline')])
     request.update(action=action,args=args)
     result=boundary.session.dispatch(request)
-    assert result['status']=='fatal' and result['execution_started'] is True
-    assert boundary.effects==[(action,args)] and boundary.closed==[True]
+    assert result['status']=='incomplete' and result['execution_started'] is True
+    assert result['data']['failure']['kind']=='command_timeout'
+    assert boundary.effects==[(action,args)] and not boundary.closed
 
 
 @pytest.mark.parametrize('outcome', ['ready','same_document','download_denied'])
@@ -231,8 +249,9 @@ def test_AG_008_first_complete_attempt_returns_without_retry(boundary, monkeypat
 def test_AG_008_later_execution_failure_preserves_aggregate_started(boundary,monkeypatch):
     request=recovery_boundary(boundary,monkeypatch,['loading_error',OSError('private transport')])
     result=boundary.session.dispatch(request)
-    assert result=={'status':'fatal','reason':'Browser action failed.','execution_started':True,'data':{}}
-    assert len(boundary.effects)==2 and boundary.closed==[True]
+    assert result['status']=='incomplete' and result['execution_started'] is True
+    assert result['data']['failure']['kind']=='control_lost'
+    assert len(boundary.effects)==2 and not boundary.closed
 
 
 def test_AG_008_required_retry_setting_has_no_missing_key_default(tmp_path):
@@ -364,7 +383,7 @@ def test_AG_008_page_capture_binds_ax_url_readiness_to_one_document(changed):
     if changed:
         with pytest.raises(session_module.BrowserFailure,match='Required browser evidence check failed.'):
             adapter._page('tab')
-        assert browser.failed
+        assert not browser.failed
     else:
         page=adapter._page('tab')
         assert page.snapshot=='- heading "Coherent AX"' and page.url=='http://public.test/current'
@@ -507,7 +526,7 @@ def test_AG_008_gate_observes_ready_root_without_child_inspection(boundary):
 
 
 @pytest.mark.parametrize('change', ['blocked', 'control', 'connection', 'interrupt'])
-def test_AG_008_retry_rejection_is_incomplete_technical_failure_fatal(boundary, monkeypatch, change):
+def test_AG_008_retry_rejection_and_control_loss_return_facts_terminal_identity_stops(boundary, monkeypatch, change):
     from tools.interrupt import set_interrupt
     request = recovery_boundary(boundary, monkeypatch, ['loading_error', 'ready'])
     native = boundary.session._execute
@@ -521,9 +540,9 @@ def test_AG_008_retry_rejection_is_incomplete_technical_failure_fatal(boundary, 
         return result
     monkeypatch.setattr(boundary.session, '_execute', execute)
     result = boundary.session.dispatch(request)
-    assert result['status'] == ('incomplete' if change == 'blocked' else 'fatal')
+    assert result['status'] == ('incomplete' if change in {'blocked','control'} else 'fatal')
     assert result['execution_started'] is True
     assert boundary.effects == [('navigate', {'url':'http://public.test/original'})]
-    assert bool(boundary.closed) is (change != 'blocked')
+    assert bool(boundary.closed) is (change in {'connection','interrupt'})
     if change == 'blocked':
         assert result['data']['snapshot'] == '- heading "Current incomplete observation"'

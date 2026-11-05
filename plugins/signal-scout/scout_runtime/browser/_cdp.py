@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 import json
 import logging
+import socket
 import time
 
 from websockets.sync.client import connect
@@ -352,6 +353,13 @@ class _CDP:
             return _ObservedEffect(outcome, baseline, page, self.observation_timeout, elapsed)
         finally:
             self._observation = None
+
+    def abort(self):
+        try:
+            self.connection.socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.connection.socket.close()
 
     def close(self):
         self.connection.close()
