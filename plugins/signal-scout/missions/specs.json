@@ -223,7 +223,48 @@
         "unit",
         "e2e"
       ],
-      "coverage": [],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_recovery_model_retries.py",
+          "test": "test_MI_036_sixth_attempt_success_preserves_history_and_new_request_budget"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_recovery_model_retries.py",
+          "test": "test_MI_036_sixth_failure_stops_before_primary_reset_and_returns_failure"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_recovery_model_retries.py",
+          "test": "test_MI_036_operator_total_attempt_setting_reaches_native_loop_and_guard"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_recovery_model_retries.py",
+          "test": "test_MI_036_permanent_auth_or_model_configuration_failure_keeps_native_terminal_result"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_recovery_model_retries.py",
+          "test": "test_MI_036_unbound_or_unmatched_call_keeps_downstream_error_and_does_not_stop"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_recovery_model_retries.py",
+          "test": "test_MI_036_expired_callback_cannot_interrupt_replacement_binding_with_same_identity"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_recovery_model_retries.py",
+          "test": "test_MI_036_overlap_rejected_and_context_failure_releases_binding"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_recovery_model_retries.py",
+          "test": "test_MI_036_research_uses_guard_from_actual_registered_plugin"
+        }
+      ],
       "otherCoverage": [],
       "blocker": ""
     }

@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 from . import browser_tools
+from .scout_runtime import model_requests
 
 
 def register(ctx):
@@ -37,4 +38,5 @@ def register(ctx):
         handler=status,
     )
     browser_tools.register(ctx)
+    model_requests.register(ctx)
     ctx.register_skill("browser-research", Path(__file__).parent / "skills/browser-research/SKILL.md")
