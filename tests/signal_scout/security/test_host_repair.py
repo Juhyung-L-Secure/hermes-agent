@@ -412,27 +412,73 @@ def test_SR_005_server_shutdown_joins_cancelled_operation_before_browser_close(o
     assert run.container is None and run.endpoint is None and not docker.records
 
 
+def test_SR_005_mission_cancel_revokes_repair_before_scout_stop_wait(owned, monkeypatch):
+    run, docker = owned
+    parked, release_ready = threading.Event(), threading.Event()
+    scout_stopping, release_stop = threading.Event(), threading.Event()
+
+    def park(identifier):
+        parked.set()
+        assert release_ready.wait(2)
+
+    docker.on_ready = park
+    monkeypatch.setattr(host, 'BrowserRun', lambda *_args, **_kwargs: run)
+    owner = host.MissionRun(SimpleNamespace(text='Research'))
+    owner.recovery = repair.RecoveryServer(run).start()
+    connection = connect(owner.recovery, request(owner.recovery))
+    assert parked.wait(1)
+    monkeypatch.setattr(owner, '_scout', lambda: {'Id': 'a' * 64, 'State': {'Running': True}})
+
+    def checked(command, **kwargs):
+        if command[1] == 'stop':
+            assert owner.recovery._closing.is_set()
+            scout_stopping.set()
+            assert release_stop.wait(2)
+
+    monkeypatch.setattr(host, 'checked', checked)
+    browser_closed = []
+    monkeypatch.setattr(run, 'close', lambda: browser_closed.append(True))
+    failures = []
+
+    def close():
+        try:
+            owner.close()
+        except Exception as error:
+            failures.append(error)
+
+    thread = threading.Thread(target=close)
+    thread.start()
+    assert scout_stopping.wait(1)
+    release_ready.set()
+    settled(owner.recovery)
+    assert run.endpoint is None and not docker.records and browser_closed == []
+    release_stop.set()
+    thread.join(1)
+    connection.close()
+    assert not thread.is_alive() and failures == [] and browser_closed == [True]
+
+
 @pytest.mark.parametrize('server_failure', [False, True])
 def test_SR_005_mission_closes_repair_before_browser_and_keeps_failed_cleanup_owned(monkeypatch, server_failure):
     events = []
     browser = SimpleNamespace(project='test', run='owned', close=lambda: events.append('browser'))
     monkeypatch.setattr(host, 'BrowserRun', lambda *_args, **_kwargs: browser)
     owner = host.MissionRun(SimpleNamespace(text='Research'))
-    monkeypatch.setattr(owner, '_scout', lambda: None)
+    monkeypatch.setattr(owner, '_scout', lambda: events.append('scout'))
 
     def close():
         events.append('server')
         if server_failure:
             raise RuntimeError('Unsettled repair worker')
 
-    owner.recovery = SimpleNamespace(close=close)
+    owner.recovery = SimpleNamespace(cancel=lambda: events.append('cancel'), close=close)
     if server_failure:
         with pytest.raises(RuntimeError, match='Scout cleanup failed'):
             owner.close()
-        assert events == ['server']
+        assert events == ['cancel', 'scout', 'server']
     else:
         owner.close()
-        assert events == ['server', 'browser']
+        assert events == ['cancel', 'scout', 'server', 'browser']
 
 
 def test_AG_010_mission_mounts_control_only_after_browser_ready(monkeypatch):
@@ -457,6 +503,9 @@ def test_AG_010_mission_mounts_control_only_after_browser_ready(monkeypatch):
         def close(self):
             events.append('server-close')
 
+        def cancel(self):
+            events.append('server-cancel')
+
     monkeypatch.setattr(host, 'RecoveryServer', Server)
     monkeypatch.setattr(host, 'checked', lambda command, **kwargs: commands.append(command))
     monkeypatch.setattr(host.subprocess, 'Popen', lambda *_args, **_kwargs:
@@ -465,7 +514,7 @@ def test_AG_010_mission_mounts_control_only_after_browser_ready(monkeypatch):
     monkeypatch.setattr(owner, '_scout', lambda: {'Id': 'a' * 64,
         'State': {'Running': next(states), 'ExitCode': 0}})
     assert owner.run() == 0
-    assert events == ['browser-ready', 'server-start', 'server-close', 'browser-close']
+    assert events == ['browser-ready', 'server-start', 'server-cancel', 'server-close', 'browser-close']
     creation = commands[0]
     assert creation[0:2] == ['compose', 'run']
     assert '/private/socket:/tmp/scout-recovery:ro' in creation

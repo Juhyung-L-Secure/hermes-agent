@@ -117,6 +117,11 @@ class MissionRun:
 
     def close(self):
         errors = []
+        if self.recovery is not None:
+            try:
+                self.recovery.cancel()
+            except Exception as error:
+                errors.append(error)
         try:
             info = self._scout()
             if info is not None:

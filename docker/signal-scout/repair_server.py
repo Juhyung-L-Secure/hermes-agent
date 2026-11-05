@@ -228,14 +228,13 @@ class RecoveryServer:
             self._active = None
             operation.finished.set()
 
-    def close(self):
+    def cancel(self):
         self._closing.set()
         if self._listener is not None:
             self._listener.close()
         with self._lock:
             active = self._active
             clients = tuple(self._clients)
-            handlers = tuple(self._handlers)
             if active is not None:
                 active.cancelled.set()
         for connection in clients:
@@ -243,6 +242,12 @@ class RecoveryServer:
                 connection.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
+
+    def close(self):
+        self.cancel()
+        with self._lock:
+            active = self._active
+            handlers = tuple(self._handlers)
         deadline = (time.monotonic() + self.browser.config['scout_recovery']['attempt_timeout']
                     + self.browser.repair_cleanup_timeout + 1)
         threads = [self._thread, *handlers, active.worker if active is not None else None]
