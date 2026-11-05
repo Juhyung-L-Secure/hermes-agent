@@ -45,7 +45,7 @@ Retain runner output, exit codes, selections, skips, source and image identity, 
 ## Gotchas
 
 - The headed-only socket intentionally connects browser to host display service. A read-only socket bind still permits communication. No host X11, whole WSLg directory, PulseAudio or GPU device grant exists.
-- Native window is the actual browser. Closing it differs from closing the retired independent viewer tab. No new restart, recovery or orphan policy is implied.
+- Native window is the actual browser. Closing it differs from closing the retired independent viewer tab. A running mission follows its configured owned reconnect/replacement policy; standalone window checks still use exact owned teardown. No orphan adoption or independent cleanup policy is implied.
 - Native-window fixtures put their unique title in initial HTML before visible body content. On the tested WSLg stack, changing `document.title` on an existing page can leave the Windows caption stale.
 - Headless production receives no display grant. Do not add a display mount to base Compose or require desktop discovery for headless tests.
 - Shared-stack tests run serially and can take minutes. Never run them alongside a mission. Preserve persistent volumes and initial helper state.

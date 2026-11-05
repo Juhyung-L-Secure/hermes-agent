@@ -115,7 +115,7 @@ The executable [scripts/verify.py](scripts/verify.py) supports `doctor`, `status
 - Status still returns `research` and `research_security` as `not_implemented`. Do not interpret `status: ready` as mission readiness.
 - Live subscription `chat` is status-only and consumes usage; none of these baseline checks starts it.
 - CDP screenshots and injected browser actions do not prove native WSLg input. Use the headed recipe's actual native-window checks. Missing desktop prerequisites leave that route unverified.
-- Do not settle deferred recovery, selected-tab closure, evidence caps, messaging, or reviewer-restoration choices while verifying.
+- Verify implemented command deadlines, request revocation and owned reconnect/replacement through mapped recovery checks. Do not settle unrequested auxiliary-supervisor policy, selected-tab closure, evidence caps, messaging or reviewer-restoration choices while verifying.
 
 ## Verification
 

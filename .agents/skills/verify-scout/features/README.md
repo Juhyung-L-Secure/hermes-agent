@@ -20,7 +20,7 @@ Docker and browser routes require these prerequisites.
 - Invoke the helper through `.venv/bin/python .agents/skills/verify-scout/scripts/verify.py`.
 - Run pytest through `scripts/run_tests.sh`; select exact files and `-k`, set one worker for shared Docker, and disable file retries.
 - Use existing controlled pages, accessible names, and exact snapshot references for model action tests. Do not substitute coordinates for the original element binding.
-- Fresh browser/profile per run. Preserve shared volumes/logs and existing helper running state. Fixtures may recreate helpers; do not run them concurrently with any mission.
+- Fresh browser/profile per run and owned replacement. Preserve shared volumes/logs and existing helper running state. Fixtures may recreate helpers; do not run them concurrently with any mission.
 
 ## Proof and skip reporting
 
@@ -40,6 +40,6 @@ Each feature uses `Sub-features`, `How to get to it (user POV)`, `Driving it wit
 - [Runtime operating file](runtime-config.md) checks fixed capture, all-service delivery, same-image changes, and retained helper restart sources.
 - [Public browser smoke](browser-smoke.md) checks real owned browser navigation, observation, sandbox and teardown.
 - [Browser process diagnostics](browser-diagnostics.md) checks bounded process/relay logging, selected container state, native redaction, and final collection after Scout exits.
-- [Browser actions](browser-actions.md) checks allowed effects, rejected requests, and fatal cleanup through native Hermes dispatch using offline provider boundaries.
+- [Browser actions](browser-actions.md) checks allowed effects, nonfatal failure facts, abandoned-request revocation, owned reconnect/replacement, bounded native model attempts and terminal cleanup through native Hermes dispatch using offline provider boundaries.
 - [Native headed debugging](browser-viewer.md) checks the actual WSLg window, narrow display grant, native manual input and stale original-reference rejection. Closing the actual window follows browser-loss handling.
 - [Spec traceability](spec-traceability.md) checks the external CLI, whole feature documents, and honest full-inventory gaps independently of test-body execution.
