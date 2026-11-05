@@ -1,5 +1,6 @@
 
 import argparse
+from dataclasses import dataclass
 import fcntl
 import importlib
 import json
@@ -14,17 +15,48 @@ import tempfile
 import time
 import traceback
 import uuid
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "plugins/signal-scout"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from browser_diagnostics import BrowserDiagnostics
+from repair_server import OwnershipError, RepairStopped
 settings = importlib.import_module("scout_runtime.settings")
 wayland = importlib.import_module("scout_runtime.browser.wayland")
 CONFIG = Path(__file__).with_name("config.yaml")
 COMPOSE = Path(__file__).with_name("compose.yaml")
 RUN_LABEL = "io.signal-scout.browser-run"
 DOCKER_COMMAND_TIMEOUT = 60
+
+
+@dataclass(frozen=True)
+class _DiagnosticOwner:
+    source: object
+    container: str | None
+    deadline: float | None = None
+
+    @property
+    def config(self):
+        return self.source.config
+
+    @property
+    def run(self):
+        return self.source.run
+
+    @property
+    def project(self):
+        return self.source.project
+
+    def inspect_owned(self, *, timeout=DOCKER_COMMAND_TIMEOUT):
+        if self.deadline is not None:
+            timeout = min(timeout, self.source._remaining(self.deadline, lambda: False))
+        return self.source.inspect_container(self.container, timeout=timeout)
+
+    def inspect_helper(self, service):
+        if self.deadline is None:
+            return self.source.inspect_helper(service)
+        return self.source.inspect_helper(service, deadline=self.deadline)
 
 
 def checked(command, timeout=DOCKER_COMMAND_TIMEOUT):
@@ -53,6 +85,7 @@ class BrowserRun:
         self.run = uuid.uuid4().hex
         self.container = None
         self.endpoint = None
+        self.generation = 1
         self.lock = None
         self.restore_helpers = restore_helpers
         self._helper_state = None
@@ -105,13 +138,16 @@ class BrowserRun:
             json.dump(override, handle)
         self.compose = self._base_compose + ['-f', str(self._config_override)]
 
-    def inspect_helper(self, service):
-        identifier = checked(self.compose + ["ps", "-a", "-q", service])
+    def inspect_helper(self, service, *, deadline=None):
+        def remaining():
+            return DOCKER_COMMAND_TIMEOUT if deadline is None else self._remaining(deadline, lambda: False)
+
+        identifier = checked(self.compose + ["ps", "-a", "-q", service], timeout=remaining())
         if not identifier:
             return None
         if not re.fullmatch("[0-9a-f]{64}", identifier):
             raise RuntimeError("Helper ownership verification failed.")
-        info = json.loads(checked(["docker", "inspect", identifier]))[0]
+        info = json.loads(checked(["docker", "inspect", identifier], timeout=remaining()))[0]
         labels = info["Config"]["Labels"]
         if (info["Id"] != identifier or labels.get("com.docker.compose.project") != self.project
                 or labels.get("com.docker.compose.service") != service):
@@ -158,14 +194,124 @@ class BrowserRun:
 
     def inspect_owned(self, *, timeout=DOCKER_COMMAND_TIMEOUT):
         """Bind every readiness/cleanup operation to exact Docker ID and owner labels."""
-        if not self.container or not re.fullmatch("[0-9a-f]{64}", self.container):
-            raise RuntimeError("Browser ownership verification failed.")
-        info = json.loads(checked(["docker", "inspect", self.container], timeout=timeout))[0]
-        labels = info["Config"]["Labels"]
-        if (info["Id"] != self.container or labels.get("com.docker.compose.project") != self.project
+        return self.inspect_container(self.container, timeout=timeout)
+
+    def inspect_container(self, identifier, *, timeout=DOCKER_COMMAND_TIMEOUT):
+        if not identifier or not re.fullmatch("[0-9a-f]{64}", identifier):
+            raise OwnershipError("Browser ownership verification failed.")
+        info = json.loads(checked(["docker", "inspect", identifier], timeout=timeout))[0]
+        labels = info.get("Config", {}).get("Labels") or {}
+        if (info.get("Id") != identifier or labels.get("com.docker.compose.project") != self.project
                 or labels.get("com.docker.compose.service") != "browser" or labels.get(RUN_LABEL) != self.run):
-            raise RuntimeError("Browser ownership verification failed.")
+            raise OwnershipError("Browser ownership verification failed.")
         return info
+
+    def _new_diagnostics(self, identifier, *, deadline=None):
+        return BrowserDiagnostics(_DiagnosticOwner(self, identifier, deadline), self._verbose)
+
+    @property
+    def repair_cleanup_timeout(self):
+        bounds = self.config['scout_lifecycle']
+        return bounds['shutdown_timeout'] * 2 + bounds['control_connect_timeout'] * 2 + 2
+
+    @staticmethod
+    def _remaining(deadline, cancelled):
+        remaining = deadline - time.monotonic()
+        if cancelled() or remaining <= 0:
+            raise RepairStopped('Browser repair stopped.')
+        return remaining
+
+    def recovery_status(self, deadline, cancelled):
+        remaining = self._remaining(deadline, cancelled)
+        if self.container is None:
+            return None
+        info = self.inspect_container(self.container, timeout=remaining)
+        self._remaining(deadline, cancelled)
+        return self.endpoint if info['State']['Running'] else None
+
+    def _attempted_container(self, name, timeout):
+        return checked(['docker', 'ps', '-aq', '--no-trunc',
+            '--filter', 'name=^/' + re.escape(name) + '$',
+            '--filter', 'label=com.docker.compose.project=' + self.project,
+            '--filter', 'label=com.docker.compose.service=browser',
+            '--filter', 'label=' + RUN_LABEL + '=' + self.run], timeout=timeout) or None
+
+    def _retire(self, identifier, diagnostics, deadline, cancelled):
+        reserve = min(self.config['scout_lifecycle']['shutdown_timeout'],
+                      max(0, (deadline - time.monotonic()) / 2))
+        deadline -= reserve
+        info = self.inspect_container(identifier, timeout=self._remaining(deadline, cancelled))
+        diagnostics.capture('pre_stop', info)
+        if info['State']['Running']:
+            remaining = self._remaining(deadline, cancelled)
+            grace = min(int(self.config['scout_lifecycle']['shutdown_timeout']), max(0, int(remaining - 1)))
+            checked(['docker', 'stop', '-t', str(grace), identifier], timeout=remaining)
+        info = self.inspect_container(identifier, timeout=self._remaining(deadline, cancelled))
+        diagnostics.capture('after_stop_attempt', info)
+        checked(['docker', 'rm', identifier], timeout=self._remaining(deadline, cancelled))
+        diagnostics.close()
+
+    def replace_owned(self, expected_generation, deadline, cancelled, publish):
+        if expected_generation != self.generation:
+            return 'rejected', 'stale_generation'
+        self._remaining(deadline, cancelled)
+        previous, previous_diagnostics = self.container, self._diagnostics
+        if previous is not None:
+            self.inspect_container(previous, timeout=self._remaining(deadline, cancelled))
+        self.generation += 1
+        self.endpoint = None
+        candidate = None
+        diagnostics = None
+        name = f'{self.project}-browser-{self.run}-{self.generation}'
+        try:
+            if previous is not None:
+                self._retire(previous, previous_diagnostics, deadline, cancelled)
+                self.container = None
+            else:
+                previous_diagnostics.close()
+            self._remaining(deadline, cancelled)
+            try:
+                candidate = checked(self.compose + ['run', '--no-deps', '-d', '--name', name,
+                    '--label', RUN_LABEL + '=' + self.run, 'browser'],
+                    timeout=self._remaining(deadline, cancelled))
+            except Exception:
+                candidate = self._attempted_container(name, self.config['scout_lifecycle']['control_connect_timeout'])
+                raise
+            self.inspect_container(candidate, timeout=self._remaining(deadline, cancelled))
+            self.container = candidate
+            diagnostics = self._new_diagnostics(candidate, deadline=deadline)
+            self._diagnostics = diagnostics
+            diagnostics.start()
+            while True:
+                remaining = self._remaining(deadline, cancelled)
+                info = self.inspect_container(candidate, timeout=remaining)
+                if not info['State']['Running']:
+                    raise RuntimeError('Browser replacement exited.')
+                result = subprocess.run(['docker', 'exec', candidate, 'python3', '-m',
+                    'scout_runtime.browser.chromium', '--status'], capture_output=True, text=True,
+                    timeout=min(self._remaining(deadline, cancelled),
+                                self.config['scout_lifecycle']['control_connect_timeout'] + 1))
+                if result.returncode == 0:
+                    endpoint = json.loads(result.stdout)['endpoint']
+                    parsed = urlsplit(endpoint)
+                    network = self.config['scout_network']
+                    if (parsed.scheme != 'ws' or parsed.hostname != network['browser_address']
+                            or parsed.port != network['relay_port'] or parsed.username is not None
+                            or parsed.password is not None or parsed.query or parsed.fragment
+                            or not re.fullmatch('/devtools/browser/[A-Za-z0-9-]+', parsed.path)):
+                        raise OwnershipError('Browser control ownership verification failed.')
+                    publish(endpoint)
+                    diagnostics.owner = _DiagnosticOwner(self, candidate)
+                    return 'ready', None
+                time.sleep(min(0.05, self._remaining(deadline, cancelled)))
+        except Exception:
+            if candidate is not None:
+                cleanup_deadline = time.monotonic() + self.repair_cleanup_timeout
+                diagnostics = diagnostics or self._new_diagnostics(candidate)
+                self.container, self._diagnostics = candidate, diagnostics
+                self._retire(candidate, diagnostics, cleanup_deadline, lambda: False)
+                self.container = None
+            raise
 
     def __enter__(self):
         path = Path(tempfile.gettempdir()) / (self.project + ".browser.lock")
@@ -192,7 +338,7 @@ class BrowserRun:
                     info = self.inspect_helper(service)
                     snapshot[service] = bool(info and info["State"]["Running"])
                 self._helper_state = snapshot
-            self._diagnostics = BrowserDiagnostics(self, self._verbose)
+            self._diagnostics = self._new_diagnostics(None)
             self.start_helpers()
             name = self.project + "-browser-active"
             try:
@@ -208,8 +354,10 @@ class BrowserRun:
                     "--filter", "label=com.docker.compose.service=browser",
                     "--filter", "label=" + RUN_LABEL + "=" + self.run]) or None
                 if self.container:
+                    self._diagnostics = self._new_diagnostics(self.container)
                     self._diagnostics.start()
                 raise
+            self._diagnostics = self._new_diagnostics(self.container)
             self._diagnostics.start()
             deadline = time.monotonic() + self.config["scout_lifecycle"]["startup_timeout"]
             while time.monotonic() < deadline:

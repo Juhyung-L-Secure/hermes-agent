@@ -10,6 +10,7 @@ import subprocess
 import sys
 
 from browser_run import BrowserRun, COMPOSE, CONFIG, DOCKER_COMMAND_TIMEOUT, checked
+from repair_server import RecoveryServer
 
 MissionRequest = importlib.import_module("scout_runtime.mission").MissionRequest
 MISSION_LABEL = "io.signal-scout.mission-run"
@@ -45,6 +46,7 @@ class MissionRun:
         self.request, self.verbose = request, verbose
         self.browser = BrowserRun(compose_files, config_path, restore_helpers=True, verbose=verbose)
         self.child = None
+        self.recovery = None
         self.name = self.browser.project + "-mission-" + self.browser.run
 
     def _scout(self):
@@ -73,10 +75,13 @@ class MissionRun:
             with defer_creation_cancellation():
                 self.browser.__enter__()
             print("Scout browser ready (" + self.browser.config["browser"]["mode"] + ").", file=sys.stderr, flush=True)
+            with defer_creation_cancellation():
+                self.recovery = RecoveryServer(self.browser)
+                self.recovery.start()
             environment = [part for key, value in self.browser.scout_environment().items()
                            for part in ("-e", key + "=" + value)]
             command = self.browser.compose + ["run", "--no-deps", "-d", "-T", "--name", self.name,
-                "--label", MISSION_LABEL + "=" + self.browser.run, *environment,
+                "--label", MISSION_LABEL + "=" + self.browser.run, *environment, *self.recovery.scout_options(),
                 "--entrypoint", "python", "scout", "-m", "plugins.signal-scout.missions"]
             if self.verbose:
                 command.append("--verbose")
@@ -132,10 +137,18 @@ class MissionRun:
                     self.child.kill()
                     self.child.wait(timeout=5)
                 errors.append(RuntimeError("Scout foreground client did not stop."))
-        try:
-            self.browser.close()
-        except Exception as error:
-            errors.append(error)
+        recovery_closed = True
+        if self.recovery is not None:
+            try:
+                self.recovery.close()
+            except Exception as error:
+                recovery_closed = False
+                errors.append(error)
+        if recovery_closed:
+            try:
+                self.browser.close()
+            except Exception as error:
+                errors.append(error)
         if errors:
             raise RuntimeError("Scout cleanup failed.") from None
 
