@@ -179,7 +179,7 @@ with Browser(config) as browser:
     tab=open_fixture(browser);gate=browser.session(target_id=tab)
     config['browser']['request_timeout']=2
     parked=threading.Event();release=threading.Event();old=[];armed=[True]
-    native_dispatch=g.BrowserSession.dispatch
+    native_dispatch=g.BrowserSession._dispatch
     def dispatch(self,proposal):
         result=native_dispatch(self,proposal)
         if self._authority is not None and armed[0]:
@@ -206,7 +206,7 @@ with Browser(config) as browser:
         return response()
     ref=reference(gate._inspect_snapshot(tab),'Below fold')
     try:
-        with patch.object(g.BrowserSession,'dispatch',dispatch),fake_main(plan) as (agent,requests):
+        with patch.object(g.BrowserSession,'_dispatch',dispatch),fake_main(plan) as (agent,requests):
             agent._api_max_retries=1
             with adapter.bind_browser(gate,action_reference=action_reference,on_fatal=partial(agent.interrupt,hard_cancel=True)):
                 outcome=agent.run_conversation('Continue despite late abandoned failure.')

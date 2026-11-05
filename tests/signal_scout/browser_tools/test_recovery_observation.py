@@ -49,7 +49,8 @@ def test_AG_004_AG_006_selected_crashed_renderer_reload_precedes_inspection(fixt
 with Browser(config) as browser:
     tab=open_fixture(browser);gate=browser.session(target_id=tab)
     prior=gate._frames(tab).frames
-    previous=next(frame for frame in prior.values() if frame.parent is None).document
+    root_id,root_frame=next((key,frame) for key,frame in prior.items() if frame.parent is None)
+    previous=root_frame.document
     target=gate._session(tab);gate._cdp.timeout=2
     try:
         gate._command('Page.crash',session=target)
@@ -75,8 +76,8 @@ with Browser(config) as browser:
             return response([tool({'action':'snapshot','args':{}})],content='')
         assert index==3 and result['status']=='success',result
         assert 'Below fold' in result['data']['snapshot']
-        fresh=gate._frames(tab).frames
-        assert next(frame for frame in fresh.values() if frame.parent is None).document!=previous
+        fresh_root_documents={binding.document for binding in gate._refs.values() if binding.frame==root_id}
+        assert fresh_root_documents and previous not in fresh_root_documents
         assert len(reloads)==1
         return response()
     with patch.object(g._CDP,'command',command),fake_main(plan) as (agent,requests):

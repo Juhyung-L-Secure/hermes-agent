@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import json
+import logging
 import os
 import re
 import socket
@@ -9,6 +10,9 @@ import uuid
 
 from ._errors import ControlUnavailable, OwnershipFailure
 from .control import validate_endpoint
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -35,6 +39,7 @@ class RecoveryClient:
 
     def request(self, operation, generation, authority, timeout):
         authority.check()
+        began, phase = time.monotonic(), 'connect'
         deadline = time.monotonic() + timeout
         request = {'nonce': self.nonce, 'operation': operation, 'generation': generation,
                    'request_id': uuid.uuid4().hex, 'deadline': time.time() + timeout}
@@ -63,11 +68,14 @@ class RecoveryClient:
         try:
             remaining()
             connection.connect(self.path)
+            phase = 'send'
             remaining()
             connection.sendall(struct.pack('!I', len(payload)) + payload)
+            phase = 'response_header'
             size = struct.unpack('!I', receive(4))[0]
             if not 0 < size <= 4096:
                 raise ValueError
+            phase = 'response_body'
             response = json.loads(receive(size))
             if (not isinstance(response, dict)
                     or set(response) != {'status', 'generation', 'endpoint', 'restarted', 'reason'}
@@ -89,8 +97,12 @@ class RecoveryClient:
             authority.check()
             return response
         except (ValueError, KeyError, TypeError, struct.error):
+            logger.exception('Browser owner RPC rejected operation=%s phase=%s generation=%s elapsed_ms=%s',
+                             operation, phase, generation, int((time.monotonic() - began) * 1000))
             raise OwnershipFailure('Invalid browser owner response.') from None
         except OSError:
+            logger.exception('Browser owner RPC failed operation=%s phase=%s generation=%s elapsed_ms=%s',
+                             operation, phase, generation, int((time.monotonic() - began) * 1000))
             authority.check()
             raise ControlUnavailable('Browser owner channel unavailable.') from None
         finally:

@@ -161,10 +161,11 @@ class BrowserRequests:
                 authority.worker_tid = threading.get_ident()
             try:
                 authority.check()
-                result = self._owner_status(private, authority) if private._browser.recovery is not None and \
-                    not (isinstance(proposal, dict) and proposal.get('action') == 'close') else None
+                prepared, result = private._prepare(proposal)
+                if result is None and private._browser.recovery is not None and prepared['action'] != 'close':
+                    result = self._owner_status(private, authority)
                 if result is None:
-                    result = private.dispatch(proposal)
+                    result = private._dispatch(prepared)
                 authority.check()
                 if result['data'].get('failure', {}).get('kind') == 'control_lost':
                     result = self._repair(private, authority, result)

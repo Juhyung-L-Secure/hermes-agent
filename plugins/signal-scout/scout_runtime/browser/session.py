@@ -380,8 +380,26 @@ class BrowserSession:
                 "target_id": self._selected}
 
 
+    def _prepare(self, request):
+        try:
+            self._live()
+            return copy_request(request, self._permissions), None
+        except _FormatRejected as error:
+            return None, self._result('rejected', str(error), data={'error': {
+                'kind': 'request_format', 'code': error.rule.code, 'field': error.rule.field}})
+        except ActionRejected as error:
+            return None, self._result('rejected', str(error))
+        except _Stopped as error:
+            return None, self._fatal(str(error), False)
+
+
     def dispatch(self, request):
-        """Validate/copy one proposal, resolve current target, then execute.
+        request, rejected = self._prepare(request)
+        return rejected if rejected is not None else self._dispatch(request)
+
+
+    def _dispatch(self, request):
+        """Execute one parsed proposal against the current owned target.
 
         Ordinary outcomes return status/reason/execution_started/data. Recoverable
         inspection failures return incomplete observations. Terminal ownership or
@@ -424,13 +442,6 @@ class BrowserSession:
             if self._cdp is not None:
                 self._cdp.effect_acknowledged = False
                 self._cdp.effect_sent = self._cdp.effect_replies = 0
-            try:
-                request = copy_request(request, self._permissions)
-            except _FormatRejected as error:
-                return self._result("rejected", str(error), data={"error": {
-                    "kind": "request_format", "code": error.rule.code, "field": error.rule.field}})
-            except ActionRejected as error:
-                return self._result("rejected", str(error))
             action = request["action"]
             connection = self._cdp
             if action == 'close':

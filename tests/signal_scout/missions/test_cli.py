@@ -404,7 +404,8 @@ def test_MI_035_browser_create_then_start_failure_removes_only_exact_attempt(mon
             return own if "label=" + lifecycle.RUN_LABEL + "=" + run.run in command else ""
         if command[:2] == ["docker", "inspect"]:
             assert command[-1] == own
-            return json.dumps([{"Id": own, "State": {"Running": False}, "Config": {"Labels": {
+            return json.dumps([{"Id": own, "Name": '/' + run.project + '-browser-active',
+                "State": {"Running": False}, "Config": {"Labels": {
                 "com.docker.compose.project": run.project, "com.docker.compose.service": "browser",
                 lifecycle.RUN_LABEL: run.run}}}])
         if command[:len(run.compose) + 1] == run.compose + ["run"]:

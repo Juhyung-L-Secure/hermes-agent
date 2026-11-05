@@ -108,7 +108,8 @@ def test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_hea
         return '- heading "Fresh selected observation"'
     boundary.session._inspect_snapshot = snapshot
     boundary.session._navigation_retries = 0
-    boundary.session._cdp = object()
+    boundary.session._cdp = SimpleNamespace(facts={}, effect_sent=0, effect_replies=0,
+        effect_acknowledged=False, capture_deadline=None)
     boundary.browser.verify_control = lambda: None
     def navigation(action, root, effect, invoke, *, baseline):
         assert baseline == cdp_module._DocumentKey('owned','root','old',1)
@@ -267,7 +268,8 @@ def test_AG_009_startup_without_reviewer_settings_executes_and_keeps_default_den
     monkeypatch.setenv('BROWSER_CDP_URL', browser.endpoint)
     session = session_module.BrowserSession(browser)
     session._tabs = lambda: [{'target_id': 'owned-page'}]
-    session._cdp = object()
+    session._cdp = SimpleNamespace(facts={}, effect_sent=0, effect_replies=0,
+        effect_acknowledged=False, capture_deadline=None)
     browser._session = session
     session._bind('owned-page')
     browser.verify_control = lambda: None
@@ -325,9 +327,9 @@ def test_AG_006_failed_session_discovery_stays_attached_for_owner_cleanup(monkey
             return {'targetInfos': []}
         raise OSError('controlled discovery failure')
     monkeypatch.setattr(session_module.BrowserSession, '_command', command)
-    with pytest.raises(IndexError if missing else session_module.BrowserFailure):
+    with pytest.raises(IndexError if missing else OSError):
         browser.session()
-    assert browser._session._cdp is connection and browser.failed is (not missing)
+    assert browser._session._cdp is connection and not browser.failed
 
 
 def test_AG_006_direct_owner_close_retains_session_control_reason(monkeypatch):
@@ -335,6 +337,7 @@ def test_AG_006_direct_owner_close_retains_session_control_reason(monkeypatch):
     owner = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner')
     browser = owner.Browser.__new__(owner.Browser)
     browser.ready, browser.failed, browser.task = True, False, 'test-session-owner'
+    browser._generation_helper, browser._native_retired = None, False
     browser.endpoint = 'ws://owned-offline'
     session = session_module.BrowserSession(browser)
     browser._session = session

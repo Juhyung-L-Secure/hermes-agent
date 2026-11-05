@@ -59,10 +59,9 @@ def retire_bootstrap(task, session):
     directory = Path(browser_tool._socket_safe_tmpdir()) / ('agent-browser-' + name)
     try:
         pid = int((directory / (name + '.pid')).read_text().strip())
-        if browser_tool._verify_reapable_browser_daemon(pid, str(directory), name):
-            started = get_process_start_time(pid)
-            if started is not None:
-                ProcessRegistry._terminate_host_pid(pid, started)
+        started = get_process_start_time(pid)
+        if started is not None and browser_tool._verify_reapable_browser_daemon(pid, str(directory), name):
+            ProcessRegistry._terminate_host_pid(pid, started)
     except (OSError, ValueError):
         pass
     shutil.rmtree(directory, ignore_errors=True)
