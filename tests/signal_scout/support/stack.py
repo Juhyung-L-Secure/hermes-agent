@@ -1,5 +1,6 @@
 
 import importlib.util
+import json
 from pathlib import Path
 import subprocess
 import textwrap
@@ -17,6 +18,16 @@ class ScoutStack:
     browser_compose_files = (lifecycle.COMPOSE,)
     browser_config_path = lifecycle.CONFIG
     compose_command = COMPOSE
+
+    def __init__(self, compose_files=None):
+        if compose_files is not None:
+            self.browser_compose_files = tuple(compose_files)
+            self.compose_command = ['docker', 'compose']
+            for path in self.browser_compose_files:
+                self.compose_command.extend(['-f', str(path)])
+
+    def image(self, service):
+        return json.loads(self.compose('config', '--format', 'json'))['services'][service]['image']
 
     def compose(self, *args, timeout=90, compose_command=None):
         result = subprocess.run((compose_command or self.compose_command) + list(args), capture_output=True, text=True, timeout=timeout)

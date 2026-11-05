@@ -31,6 +31,29 @@ def parse_settings(contents):
                 or not 2 * diagnostics["max_record_bytes"] <= diagnostics["max_pending_bytes"] <= 16 * 1024 ** 2):
             raise ValueError
         browser = config["browser"]
+        if not isinstance(browser, dict):
+            raise ValueError
+        browser.setdefault('request_timeout', 400)
+        browser.setdefault('capture_timeout', 3)
+        timeouts = config.setdefault('timeouts', {})
+        if not isinstance(timeouts, dict):
+            raise ValueError
+        timeouts = timeouts.setdefault('tools', {})
+        if not isinstance(timeouts, dict):
+            raise ValueError
+        timeouts.setdefault('sequential_call', 420)
+        recovery = config.setdefault('scout_recovery', {
+            'strategy': 'reconnect_then_restart', 'reconnect_attempts': 2,
+            'restart_attempts': 1, 'attempt_timeout': 30})
+        if (set(recovery) != {'strategy', 'reconnect_attempts', 'restart_attempts', 'attempt_timeout'}
+                or recovery['strategy'] not in {'reconnect', 'restart', 'reconnect_then_restart'}):
+            raise ValueError
+        for key in ('reconnect_attempts', 'restart_attempts'):
+            if type(recovery[key]) is not int or not 1 <= recovery[key] <= 10:
+                raise ValueError
+        timeout = recovery['attempt_timeout']
+        if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 300:
+            raise ValueError
         if browser["mode"] not in {"headless", "headed"}:
             raise ValueError
         permissions = browser["action_permissions"]

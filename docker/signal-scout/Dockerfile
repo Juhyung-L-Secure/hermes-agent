@@ -61,7 +61,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     useradd --uid 10000 --no-create-home scout && \
     install -d -o root -g root -m 0755 /etc/opt/chrome_for_testing/policies/managed
 COPY plugins/signal-scout/scout_runtime/__init__.py plugins/signal-scout/scout_runtime/actions.py plugins/signal-scout/scout_runtime/settings.py plugins/signal-scout/scout_runtime/process_output.py /opt/scout/scout_runtime/
-COPY plugins/signal-scout/scout_runtime/browser/__init__.py plugins/signal-scout/scout_runtime/browser/chromium.py plugins/signal-scout/scout_runtime/browser/control.py plugins/signal-scout/scout_runtime/browser/wayland.py /opt/scout/scout_runtime/browser/
+COPY plugins/signal-scout/scout_runtime/browser/__init__.py plugins/signal-scout/scout_runtime/browser/chromium.py plugins/signal-scout/scout_runtime/browser/control.py plugins/signal-scout/scout_runtime/browser/_errors.py plugins/signal-scout/scout_runtime/browser/wayland.py /opt/scout/scout_runtime/browser/
 COPY --chown=0:0 --chmod=0444 docker/signal-scout/chrome-policy.json /etc/opt/chrome_for_testing/policies/managed/scout.json
 ENV PYTHONPATH=/opt/scout PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 USER 10000:10000

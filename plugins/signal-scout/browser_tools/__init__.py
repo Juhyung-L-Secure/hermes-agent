@@ -169,6 +169,19 @@ def _format_result(result, action):
     }
 
 
+def _stop(binding, sequence, invocation, authority=None):
+    with _binding_lock:
+        if (not binding.active or binding is not _binding or binding.sequence != sequence
+                or invocation is not None and invocation.revoked
+                or authority is not None and authority.revoked.is_set()):
+            return False
+        if binding.stopped:
+            return True
+        binding.stopped = True
+    binding.on_fatal()
+    return True
+
+
 def _handle(args, **_context):
     invocation = _invocation.get()
     with _binding_lock:
@@ -179,21 +192,16 @@ def _handle(args, **_context):
             return _unavailable("fatal", "Scout browser run has stopped.")
         binding.sequence += 1
         sequence = binding.sequence
-    result = binding.session.request(args, call_id=invocation.key[-1] if invocation is not None else '')
+    result = binding.session.request(args, call_id=invocation.key[-1] if invocation is not None else '',
+        on_terminal=lambda authority: _stop(binding, sequence, invocation, authority))
     with _binding_lock:
         if not binding.active or binding.sequence != sequence or invocation is not None and invocation.revoked:
             return _unavailable('incomplete', 'Browser request authority revoked.', started=result['execution_started'])
     if result["data"].get("error", {}).get("kind") == "request_format":
         result = {**result, "data": {**result["data"], "action_reference": binding.action_reference}}
     if result["status"] == "fatal":
-        with _binding_lock:
-            stop = binding.active and binding is _binding and binding.sequence == sequence and not binding.stopped
-            binding.stopped = True
-        if stop:
-            try:
-                binding.session.close()
-            finally:
-                binding.on_fatal()
+        _stop(binding, sequence, invocation)
+
     return _format_result(result, args.get("action") if isinstance(args, dict) else None)
 
 

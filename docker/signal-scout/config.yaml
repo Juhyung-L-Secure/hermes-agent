@@ -65,6 +65,11 @@ browser:
     width: 1280
     height: 720
     device_scale_factor: 1
+scout_recovery:
+  strategy: reconnect_then_restart
+  reconnect_attempts: 2
+  restart_attempts: 1
+  attempt_timeout: 30
 scout_proxy:
   dns_timeout: 5
   connect_timeout: 10

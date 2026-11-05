@@ -4,6 +4,8 @@ import json
 import re
 from urllib.parse import urlsplit
 
+from ._errors import ControlUnavailable
+
 
 def validate_endpoint(endpoint, host, port):
     """Require the exact numeric host/port and a Chromium browser UUID path."""
@@ -29,6 +31,6 @@ def discover(host, port, timeout):
             raise ValueError
         return validate_endpoint(json.loads(data)["webSocketDebuggerUrl"], host, port)
     except (OSError, ValueError, KeyError, TypeError, http.client.HTTPException):
-        raise RuntimeError("Browser control discovery failed.") from None
+        raise ControlUnavailable("Browser control discovery failed.") from None
     finally:
         connection.close()

@@ -18,3 +18,7 @@ class RequestRevoked(Exception):
 
 class OwnershipFailure(RuntimeError):
     """The live control endpoint no longer belongs to this browser generation."""
+
+
+class ControlUnavailable(RuntimeError):
+    """The owned control endpoint could not be reached or discovered."""

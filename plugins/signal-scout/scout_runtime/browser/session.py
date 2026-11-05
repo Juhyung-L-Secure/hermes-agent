@@ -6,8 +6,10 @@ import logging
 import struct
 import time
 
+from websockets.exceptions import ConnectionClosed
+
 from ._cdp import _CDP, _DocumentKey, _NavigationOutcome, _ObservedEffect, _Page, _ProtocolError
-from ._errors import ActionRejected, BrowserFailure, _RequiredFrameUnavailable, RequestRevoked, OwnershipFailure
+from ._errors import ActionRejected, BrowserFailure, _RequiredFrameUnavailable, RequestRevoked, OwnershipFailure, ControlUnavailable
 from ._geometry import _clip, _project
 from .request import _FormatRejected, copy_request
 
@@ -151,12 +153,12 @@ class BrowserSession:
         self._fatal_reason = "Browser gate is closed."
 
 
-    def request(self, proposal, *, call_id=''):
+    def request(self, proposal, *, call_id='', on_terminal=None):
         from .lifetime import BrowserRequests
 
         if self._requests is None:
             self._requests = BrowserRequests(self)
-        return self._requests.dispatch(proposal, call_id=call_id)
+        return self._requests.dispatch(proposal, call_id=call_id, on_terminal=on_terminal)
 
 
     def abandon(self, parent_tid, reason):
@@ -203,10 +205,11 @@ class BrowserSession:
         if not self._terminal:
             self._terminal = True
             self._fatal_reason = reason
-            try:
-                self._browser.close()
-            except Exception:
-                pass
+            if self._authority is None:
+                try:
+                    self._browser.close()
+                except Exception:
+                    pass
         return self._result("fatal", self._fatal_reason, started=started)
 
 
@@ -218,10 +221,11 @@ class BrowserSession:
         """
         if not self._terminal:
             self._terminal = True
-            try:
-                self._browser.close()
-            except Exception:
-                raise RuntimeError("Browser gate cleanup failed.") from None
+            if self._authority is None:
+                try:
+                    self._browser.close()
+                except Exception:
+                    raise RuntimeError("Browser gate cleanup failed.") from None
 
 
     def _type_target(self, binding, frames):
@@ -386,6 +390,9 @@ class BrowserSession:
         """
         started, action, phase, began = False, "unknown", "preparation", time.monotonic()
         self._action_acknowledged = False
+        if self._cdp is not None:
+            self._cdp.effect_acknowledged = False
+            self._cdp.effect_sent = self._cdp.effect_replies = 0
         def invoke(operation, *, phase_name="execution"):
             nonlocal started, phase
             if self._permissions.get(action, "blocked") == "blocked":
@@ -425,6 +432,10 @@ class BrowserSession:
             except ActionRejected as error:
                 return self._result("rejected", str(error))
             action = request["action"]
+            connection = self._cdp
+            if action == 'close':
+                data = self._execute(action, request['args'], invoke)
+                return self._result('success', started=started, data=data)
             if self._cdp is None:
                 self._connect()
             connection = self._cdp
@@ -464,10 +475,21 @@ class BrowserSession:
                 return self._result("success", started=started, data=data)
         except RequestRevoked:
             raise
-        except (TimeoutError, BrowserFailure) as error:
+        except TimeoutError:
             diagnostic()
-            return self._failure('command_timeout' if isinstance(error, TimeoutError) else 'inspection_failed',
-                                 phase, started)
+            return self._failure('command_timeout', phase, started)
+        except (ConnectionClosed, ControlUnavailable, OSError):
+            diagnostic()
+            return self._result('incomplete', 'Browser control connection unavailable.', started=started,
+                                data={'failure': {'kind': 'control_lost', 'phase': phase,
+                                      'command': dict(self._cdp.facts) if self._cdp is not None else {},
+                                      'action_acknowledged': self._action_acknowledged or
+                                          bool(self._cdp is not None and self._cdp.effect_acknowledged),
+                                      'remote_effects': 'unknown' if started else 'not_started'},
+                                      'capture': {'state': 'unavailable'}})
+        except BrowserFailure as error:
+            diagnostic()
+            return self._failure('inspection_failed', phase, started)
         except _Stopped as error:
             return self._fatal(str(error), started)
         except _RequiredFrameUnavailable as error:
@@ -497,9 +519,10 @@ class BrowserSession:
         facts = dict(connection.facts) if connection is not None else {}
         sent = connection.effect_sent if connection is not None else 0
         acknowledged = connection.effect_replies if connection is not None else 0
-        action_ack = self._action_acknowledged or bool(sent and sent == acknowledged)
+        action_ack = self._action_acknowledged or bool(connection is not None and connection.effect_acknowledged)
         data = {'failure': {'kind': kind, 'phase': phase, 'command': facts,
                            'action_acknowledged': action_ack,
+                           'effect_commands_sent': sent, 'effect_commands_acknowledged': acknowledged,
                            'remote_effects': 'unknown' if started and not action_ack else 'acknowledged' if action_ack else 'not_started'},
                 'capture': {'state': 'unavailable'}}
         if connection is not None:
@@ -530,11 +553,11 @@ class BrowserSession:
         return self._cdp.command(method, params, session)
 
 
-    def _connect(self):
+    def _connect(self, timeout=None):
         self._live()
         self._browser.verify_control()
         policy = self._browser.settings['browser']
-        self._cdp = _CDP(self._browser.endpoint, policy['command_timeout'],
+        self._cdp = _CDP(self._browser.endpoint, policy['command_timeout'] if timeout is None else timeout,
                          policy['observation_timeout'], policy['interaction_observation_timeout'], self._authority)
 
 
@@ -543,7 +566,7 @@ class BrowserSession:
         began = time.monotonic()
         try:
             return operation()
-        except (ActionRejected, TimeoutError, RequestRevoked, OwnershipFailure):
+        except (ActionRejected, TimeoutError, RequestRevoked, OwnershipFailure, ControlUnavailable, ConnectionClosed, OSError):
             raise
         except Exception as error:
             if isinstance(error, _ProtocolError) and error.stale:

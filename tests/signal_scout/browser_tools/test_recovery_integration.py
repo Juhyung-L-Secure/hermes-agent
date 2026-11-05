@@ -300,3 +300,103 @@ with Browser(config) as browser:
     finally:
         release.set()
 ''',timeout=150)
+
+
+def test_BR_004_AG_010_confirmed_loss_reconnects_same_browser_without_replay(fixture_web):
+    stack, _, _, _ = fixture_web
+    with stack.browser_run() as run:
+        owned = run.container
+        stack.browser_probe(SETUP + FAKE_MAIN + r'''
+with Browser(config) as browser:
+    tab=open_fixture(browser);gate=browser.session(target_id=tab)
+    original=g._CDP.command;armed=[True];events=[];old_ref=reference(gate._inspect_snapshot(tab),'Below fold')
+    endpoint=browser.endpoint;task=browser.task
+    def command(self,method,params=None,session=None):
+        if self.authority is not None and method=='Input.dispatchMouseEvent' and armed[0]:
+            armed[0]=False;self.connection.close()
+        if self.authority is not None and method in {'Page.navigate','Page.reload'}:
+            events.append(method)
+        return original(self,method,params,session)
+    def plan(index,kwargs):
+        if index==1:
+            return response([tool({'action':'click','args':{'ref':old_ref}})],content='')
+        result=model_result([m for m in kwargs['messages'] if m.get('role')=='tool'][-1])
+        assert browser.ready and not browser.failed and browser.endpoint==endpoint and browser.task==task
+        if index==2:
+            assert result['status']=='incomplete',result
+            assert result['data']['failure']['kind']=='control_lost'
+            assert result['data']['recovery']=={'kind':'reconnected','reconnect_attempts':1,'restart_attempts':0,
+                'refs_invalidated':True,'session_state_lost':False,'action_replayed':False}
+            assert result['data']['capture']['state']=='fresh' and result['data']['target_id']==tab
+            fresh.append(reference(result['data']['snapshot'],'Below fold'))
+            assert fresh[0]!=old_ref
+            assert browser.command('eval','window.counts.click')['result']==0
+            return response([tool({'action':'click','args':{'ref':old_ref}})],content='')
+        if index==3:
+            assert result['status']=='rejected' and result['execution_started'] is False,result
+            return response([tool({'action':'click','args':{'ref':fresh[0]}})],content='')
+        assert index==4 and result['status']=='success',result
+        assert browser.command('eval','window.counts.click')['result']==1
+        assert events==[]
+        return response()
+    fresh=[]
+    with patch.object(g._CDP,'command',command),fake_main(plan) as (agent,requests):
+        agent._api_max_retries=1
+        with adapter.bind_browser(gate,action_reference=action_reference,on_fatal=partial(agent.interrupt,hard_cancel=True)):
+            outcome=agent.run_conversation('Reconnect controlled browser; reject obsolete refs and never replay input.')
+            assert outcome.get('completed') and not outcome.get('interrupted')
+            stable_requests(requests)
+''',run=run,timeout=150)
+        assert run.container == owned
+
+
+@pytest.mark.parametrize('case', ['close', 'fatal'])
+def test_BR_003_AG_006_real_owner_cleanup_is_bounded_and_stop_precedes_cleanup(fixture_web, case):
+    stack, _, _, _ = fixture_web
+    stack.browser_probe(SETUP + FAKE_MAIN + '\ncase='+repr(case)+'\n'+r'''
+from contextlib import nullcontext
+lifetime=importlib.import_module('plugins.signal-scout.scout_runtime.browser.lifetime')
+errors=importlib.import_module('plugins.signal-scout.scout_runtime.browser._errors')
+with Browser(config) as browser:
+    tab=open_fixture(browser);gate=browser.session(target_id=tab)
+    config['browser']['request_timeout']=2
+    parked=threading.Event();release=threading.Event();old=[];stops=[];ordering=[]
+    native_close=browser.close
+    def close():
+        ordering.append(bool(stops))
+        old.append(gate._requests.active)
+        parked.set()
+        assert release.wait(20),'Root cleanup was not released'
+        return native_close()
+    def broken_control(self):
+        raise errors.OwnershipFailure('Controlled ownership failure.')
+    def plan(index,kwargs):
+        if index==1:
+            return response([tool({'action':'close' if case=='close' else 'snapshot','args':{}})],content='')
+        assert case=='close' and index==2,'Required fatal stop allowed another model call'
+        result=model_result([m for m in kwargs['messages'] if m.get('role')=='tool'][-1])
+        assert result['status']=='incomplete' and result['data']['failure']['phase']=='cleanup',result
+        assert parked.is_set() and not release.is_set()
+        return response([tool({'action':'snapshot','args':{}},call_id='must-reject')],content='')
+    try:
+        with fake_main(plan) as (agent,requests),patch.object(browser,'close',close):
+            agent._api_max_retries=1
+            def stop():
+                stops.append(True);agent.interrupt(hard_cancel=True)
+            with patch.object(lifetime._RequestBrowser,'verify_control',broken_control) if case=='fatal' else nullcontext():
+                with adapter.bind_browser(gate,action_reference=action_reference,on_fatal=stop):
+                    began=time.monotonic()
+                    outcome=agent.run_conversation('Stop terminal browsing without waiting for owned cleanup.')
+                    assert time.monotonic()-began<8,'Real owner cleanup escaped whole request deadline'
+                    assert outcome.get('interrupted') and not outcome.get('completed')
+                    assert len(requests)==(1 if case=='fatal' else 2)
+                    assert parked.is_set() and stops==[True]
+                    assert ordering==[case=='fatal'],'Fatal callback waited behind real owner cleanup'
+                    assert gate._requests.closed and old[0].revoked.is_set()
+                    rejection=unpack(dispatch({'action':'snapshot','args':{}}))
+                    assert rejection['status']=='fatal' and not release.is_set()
+                release.set();assert old[0].done.wait(10)
+                assert stops==[True],'Old cleanup issued a late fatal callback'
+    finally:
+        release.set()
+''', timeout=150)

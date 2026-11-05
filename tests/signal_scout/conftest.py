@@ -12,12 +12,19 @@ from tests.signal_scout.support.browser import fixture_web as fixture_web
 from tests.signal_scout.support.mission import cli_images as cli_images, cli_stack as cli_stack
 
 
+def pytest_addoption(parser):
+    parser.addoption('--scout-compose-file', action='append', default=[],
+                     help='Additional explicit Compose file for existing Scout test stack.')
+
+
 @pytest.fixture(scope="module")
-def scout_stack():
+def scout_stack(request):
     """Restore prior running/stopped helper state; never remove persistent volumes."""
     with (Path(tempfile.gettempdir()) / "signal-scout-tests.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        stack = ScoutStack()
+        from tests.signal_scout.support.stack import lifecycle
+        extra = request.config.getoption('--scout-compose-file')
+        stack = ScoutStack((lifecycle.COMPOSE, *(Path(path).absolute() for path in extra)))
         running = set(stack.compose("ps", "--services", "--status", "running").splitlines())
         try:
             stack.compose('up', '-d', '--wait', '--no-build', '--pull', 'never', '--force-recreate', 'proxy', 'firewall')

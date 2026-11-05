@@ -153,6 +153,7 @@ class _CDP:
         self.capture_deadline = None
         self.facts = {}
         self.effect_sent = self.effect_replies = 0
+        self.effect_acknowledged = False
         self.timeout = timeout
         self.observation_timeout = observation_timeout
         self.interaction_observation_timeout = interaction_observation_timeout
@@ -310,6 +311,7 @@ class _CDP:
     def observe(self, effect, baseline, inspect, capture, *, explicit=False, interaction=False):
         if self._observation is not None:
             raise RuntimeError("Browser observation is already active.")
+        self.effect_acknowledged = False
         observation = _Observation(baseline, explicit, interaction, navigation=not interaction)
         connection = self.connection
         self._observation = observation
@@ -318,6 +320,7 @@ class _CDP:
             observation.executing = False
             if not observation.effects or observation.replies != observation.effects:
                 raise ValueError("Browser effect acknowledgment unavailable.")
+            self.effect_acknowledged = True
             began = observation.acknowledged
             deadline = began + self.observation_timeout
             observation.deadline = deadline

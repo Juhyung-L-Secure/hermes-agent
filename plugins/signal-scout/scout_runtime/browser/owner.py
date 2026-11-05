@@ -5,6 +5,7 @@ import re
 import uuid
 
 from .control import discover
+from ._errors import OwnershipFailure
 from ..runtime_logging import event
 from ..network.urls import validate_url
 
@@ -25,7 +26,7 @@ class Browser:
         actual = discover(network["browser_address"], network["relay_port"],
                           self.settings["scout_lifecycle"]["control_connect_timeout"])
         if actual != self.endpoint:
-            raise RuntimeError("Browser ownership verification failed.")
+            raise OwnershipFailure("Browser ownership verification failed.")
 
     def command(self, name, *args):
         """Invoke native automation without model calls; discard native temporary output."""

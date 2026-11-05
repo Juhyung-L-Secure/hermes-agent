@@ -384,7 +384,7 @@ def test_BR_003_old_run_timeout_hook_cannot_revoke_reused_call_id(native_plugin)
     first.abandon = lambda tid, reason: abandoned.append(('first', tid, reason))
     second.abandon = lambda tid, reason: abandoned.append(('second', tid, reason))
     def pending(index, gate):
-        def request(proposal, *, call_id=''):
+        def request(proposal, *, call_id='', on_terminal=None):
             entered[index].set()
             assert release[index].wait(10)
             return gate.dispatch(proposal)
@@ -429,6 +429,6 @@ def test_BR_003_terminal_cleanup_failure_still_stops_native_agent(native_plugin)
     with pytest.raises(RuntimeError, match='Controlled cleanup failure'):
         with native_plugin.bind_browser(gate, action_reference='rules', on_fatal=lambda: stopped.append(True)):
             result = json.loads(dispatch({'action': 'snapshot', 'args': {}}))
-            assert 'error' in result
+            assert result['status'] == 'fatal'
             assert stopped == [True]
     assert native_plugin._binding is None

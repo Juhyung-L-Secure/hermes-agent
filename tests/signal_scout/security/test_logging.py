@@ -148,6 +148,7 @@ def test_SR_022_browser_failure_uses_saved_native_logs_redaction_and_best_effort
         cdp.timeout, cdp.sequence, cdp._observation = 30, 0, None
         cdp.authority, cdp.capture_deadline, cdp.facts = None, None, {}
         cdp.effect_sent = cdp.effect_replies = 0
+        cdp.effect_acknowledged = False
         cdp.observation_timeout, cdp.interaction_observation_timeout = 5, .25
         sent = []
         def receive(**_):

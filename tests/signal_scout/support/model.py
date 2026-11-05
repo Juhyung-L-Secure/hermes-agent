@@ -17,8 +17,11 @@ class FakeSession:
         self.requests.append(deepcopy(request))
         return deepcopy(self.result)
 
-    def request(self, proposal, *, call_id=""):
-        return self.dispatch(proposal)
+    def request(self, proposal, *, call_id="", on_terminal=None):
+        result = self.dispatch(proposal)
+        if result['status'] == 'fatal' and on_terminal is not None:
+            on_terminal(None)
+        return result
 
     def abandon(self, parent_tid, reason):
         pass

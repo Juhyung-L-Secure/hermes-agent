@@ -23,7 +23,7 @@ def boundary(monkeypatch):
     monkeypatch.setenv('BROWSER_CDP_URL', browser.endpoint)
     calls, effects, closed = [], [], []
     session = session_module.BrowserSession(browser)
-    session._cdp = SimpleNamespace(facts={}, effect_sent=0, effect_replies=0, capture_deadline=None)
+    session._cdp = SimpleNamespace(facts={}, effect_sent=0, effect_replies=0, effect_acknowledged=False, capture_deadline=None)
     session._tabs = lambda: [{'target_id': 'owned-page'}]
     session._run = lambda operation: operation()
     session._snapshot = lambda tab, scan: session._inspect_snapshot(tab)
@@ -60,6 +60,7 @@ def transport(messages=(), *, send_error=None, receive_error=None):
     cdp._observation = None
     cdp.authority, cdp.capture_deadline, cdp.facts = None, None, {}
     cdp.effect_sent = cdp.effect_replies = 0
+    cdp.effect_acknowledged = False
     cdp.connection = SimpleNamespace(send=send, recv=receive)
     return cdp, sent
 

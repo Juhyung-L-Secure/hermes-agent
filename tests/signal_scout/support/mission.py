@@ -17,7 +17,7 @@ CLI = ROOT / "docker/signal-scout/mission_run.py"
 
 
 @pytest.fixture(scope="module")
-def cli_images(tmp_path_factory):
+def cli_images(tmp_path_factory, scout_stack):
     directory = tmp_path_factory.mktemp("scout-cli-inference")
     prefix = "scout-cli-fixture-" + uuid.uuid4().hex
     image, volume = prefix + ":local", prefix + "-auth"
@@ -27,7 +27,7 @@ def cli_images(tmp_path_factory):
     auth = {"version": 1, "providers": {"openai-codex": {"tokens": {
         "access_token": "e30." + payload + ".offline", "refresh_token": "offline-fixture-refresh"}}}}
     dockerfile = directory / "Dockerfile"
-    dockerfile.write_text("FROM signal-scout-bootstrap-runtime:local\n"
+    dockerfile.write_text("FROM " + scout_stack.image("scout") + "\n"
         "COPY --chown=10000:10000 sitecustomize.py /opt/fixture/sitecustomize.py\n"
         "ENV PYTHONPATH=/opt/fixture:/opt/hermes\n"
         "RUN python -c " + __import__("shlex").quote("from pathlib import Path; Path('/var/lib/scout/auth.json').write_text(" + repr(json.dumps(auth)) + ")") + "\n")

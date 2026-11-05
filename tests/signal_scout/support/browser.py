@@ -56,7 +56,7 @@ def fixture_web(scout_stack, tmp_path_factory):
                    'example.com': public_https}
         (local / 'records.json').write_text(json.dumps(initial))
         subprocess.run(['cp', str(Path(__file__).with_name('fixture_server.py')), str(local / 'fixture_server.py')], check=True)
-        (local / 'Dockerfile').write_text('FROM signal-scout-bootstrap-network:local\n'
+        (local / 'Dockerfile').write_text('FROM ' + scout_stack.image('proxy') + '\n'
             'COPY --chown=10000:10000 cert.pem key.pem records.json /tmp/scout-network-fixture/\n'
             'COPY fixture_server.py /opt/fixture/server.py\n')
         docker('build', '-q', '-t', image, str(local))

@@ -32,7 +32,7 @@ assert json.loads(policy.read_text())=={'DownloadRestrictions':3}
 def native_policy_variant(stack, tmp_path, content, destination=POLICY, entrypoint=None):
     image = 'signal-scout-policy-fixture-' + uuid.uuid4().hex + ':local'
     dockerfile = tmp_path / 'Dockerfile.policy'
-    source = 'FROM signal-scout-bootstrap-browser:local\nUSER 0:0\nRUN rm ' + POLICY + '\n'
+    source = 'FROM ' + stack.image('browser') + '\nUSER 0:0\nRUN rm ' + POLICY + '\n'
     if content is not None:
         (tmp_path / 'policy.json').write_text(content)
         source += 'RUN install -d -m 0755 ' + destination.rsplit('/', 1)[0] + '\n'
