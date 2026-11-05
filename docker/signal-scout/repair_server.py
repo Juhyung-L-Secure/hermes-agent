@@ -207,6 +207,7 @@ class RecoveryServer:
                 self.browser.endpoint = endpoint
 
         try:
+            self.browser.ensure_repair_diagnostics(operation.deadline)
             if request['operation'] == 'status':
                 endpoint = self.browser.recovery_status(operation.deadline, stopped)
                 response = _response('ready' if endpoint else 'unavailable', self.browser.generation, endpoint)

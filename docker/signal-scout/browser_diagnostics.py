@@ -81,8 +81,15 @@ class BrowserDiagnostics:
         self.closed = False
 
     def start(self):
+        self._start(browser=True)
+
+    def start_host(self):
+        self._start(browser=False)
+
+    def _start(self, *, browser):
         try:
-            self.owner.inspect_owned()
+            if browser:
+                self.owner.inspect_owned()
             helper = self.owner.inspect_helper('proxy')
             if helper is None or not helper['State']['Running']:
                 raise RuntimeError('Browser diagnostic proxy unavailable.')
@@ -92,9 +99,12 @@ class BrowserDiagnostics:
             self.sink = subprocess.Popen(['docker', 'exec', '-i', self.proxy, '/usr/bin/python3', '-m',
                 'scout_runtime.runtime_logging', '--browser-writer', self.writer_token], stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-            self.source = subprocess.Popen(['docker', 'logs', '--follow', self.owner.container],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
-            os.set_blocking(self.source.stdout.fileno(), False)
+            if browser:
+                self.source = subprocess.Popen(['docker', 'logs', '--follow', self.owner.container],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
+                os.set_blocking(self.source.stdout.fileno(), False)
+            else:
+                self.source_done.set()
             os.set_blocking(self.sink.stdin.fileno(), False)
             os.set_blocking(self.redactor.stdin.fileno(), False)
             os.set_blocking(self.redactor.stdout.fileno(), False)
@@ -172,7 +182,7 @@ class BrowserDiagnostics:
 
     def capture(self, phase, info=None, *, error=None):
         if error is not None:
-            if self.owner.container is None or self.worker is None or self.closed:
+            if self.worker is None or self.closed:
                 self._warning()
                 return
             self._enqueue(_Record('launcher', 'startup_error', logging.ERROR, error,
@@ -193,8 +203,9 @@ class BrowserDiagnostics:
 
     def _observe(self):
         lines = {'source': Lines(self.limit), 'redactor': Lines(self.limit)}
-        inputs = {self.source.stdout.fileno(): ('source', self.source_done),
-                  self.redactor.stdout.fileno(): ('redactor', self.redactor_done)}
+        inputs = {self.redactor.stdout.fileno(): ('redactor', self.redactor_done)}
+        if self.source is not None:
+            inputs[self.source.stdout.fileno()] = ('source', self.source_done)
         outputs = {'redactor': self.redactor.stdin.fileno(), 'sink': self.sink.stdin.fileno(), 'console': self.console}
         while not self.abort.is_set() and (not self.closing.is_set() or time.monotonic() < self.deadline):
             with self.lock:

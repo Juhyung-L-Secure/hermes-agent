@@ -27,16 +27,24 @@ class Diagnostics:
         self.owner = owner
         self.events = []
         self.errors = []
+        self.worker = None
+        self.closed = False
 
     def start(self):
+        self.worker = object()
         self.events.append(('start', self.owner.container))
+
+    def start_host(self):
+        self.worker = object()
+        self.events.append(('start_host', self.owner.container))
 
     def capture(self, phase, info=None, **kwargs):
         self.events.append((phase, self.owner.container))
-        if 'error' in kwargs:
+        if 'error' in kwargs and self.worker is not None and not self.closed:
             self.errors.append((phase, kwargs['error']))
 
     def close(self):
+        self.closed = True
         self.events.append(('close', self.owner.container))
 
 
@@ -111,6 +119,7 @@ def owned(monkeypatch, tmp_path):
     run.container = '1' * 64
     run.endpoint = 'ws://initial/devtools/browser/initial'
     run._diagnostics = run._new_diagnostics(run.container)
+    run._diagnostics.start()
     run._helper_state = {'proxy': True, 'firewall': False}
     run.lock = os.open(tmp_path / 'owned.lock', os.O_CREAT | os.O_RDWR, 0o600)
     fcntl.flock(run.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -541,6 +550,134 @@ def test_SR_005_repair_traceback_uses_existing_redacted_diagnostic_path(owned):
     assert secret not in rendered and 'glpat-...' in rendered
     assert 'Traceback (most recent call last)' in rendered and 'ValueError' in rendered
     assert 'phase=repair_readiness' in rendered and 'generation=1' in rendered and run.run in rendered
+
+
+def test_SR_005_real_diagnostics_keep_reconciled_and_no_browser_retry_tracebacks(owned, monkeypatch, tmp_path):
+    import browser_diagnostics
+
+    run, docker = owned
+    original_container = run.container
+    run.config['scout_recovery']['attempt_timeout'] = 8
+    run.config['scout_lifecycle']['shutdown_timeout'] = 2
+    run.config['scout_lifecycle']['control_connect_timeout'] = 0.2
+    native_popen = browser_diagnostics.subprocess.Popen
+    observers, processes, tokens, sources, host_starts = [], [], [], [], []
+    delivered = tmp_path / 'delivered-diagnostics.jsonl'
+
+    class Observer(browser_diagnostics.BrowserDiagnostics):
+        def __init__(self, owner, verbose):
+            super().__init__(owner, verbose)
+            observers.append(self)
+
+        def start_host(self):
+            host_starts.append((self.writer_token, self.owner.container, self.owner.deadline, time.monotonic()))
+            super().start_host()
+
+    def popen(command, **kwargs):
+        if command[:2] == ['docker', 'logs']:
+            sources.append(command[-1])
+            process = native_popen([sys.executable, '-c', 'pass'], **kwargs)
+        elif command[:2] == ['docker', 'exec']:
+            assert '--browser-writer' in command
+            tokens.append(command[-1])
+            script = ('import sys\n'
+                      'with open(sys.argv[1], "ab", buffering=0) as saved:\n'
+                      ' for line in sys.stdin.buffer: saved.write(line)\n')
+            process = native_popen([sys.executable, '-c', script, str(delivered)], **kwargs)
+        else:
+            assert command[1] == browser_diagnostics.__file__ and command[2] == '--redact'
+            process = native_popen(command, **kwargs)
+        processes.append(process)
+        return process
+
+    def process_run(command, **kwargs):
+        if command[:2] == ['docker', 'inspect'] and '--format' in command:
+            return SimpleNamespace(returncode=0, stdout=json.dumps({
+                'com.docker.compose.project': run.project, 'com.docker.compose.service': 'proxy'}))
+        if command[:2] == ['docker', 'exec'] and '-c' in command:
+            assert any('stop_browser_writer' in part for part in command)
+            return SimpleNamespace(returncode=0)
+        return docker.readiness(command, **kwargs)
+
+    monkeypatch.setattr(lifecycle, 'BrowserDiagnostics', Observer)
+    monkeypatch.setattr(browser_diagnostics.subprocess, 'Popen', popen)
+    monkeypatch.setattr(browser_diagnostics.subprocess, 'run', process_run)
+    monkeypatch.setattr(browser_diagnostics, '_console_fd',
+                        lambda: os.open(os.devnull, os.O_WRONLY | os.O_NONBLOCK))
+    monkeypatch.setattr(run, 'inspect_helper', lambda service, **kwargs:
+                        {'Id': 'c' * 64, 'State': {'Running': True}})
+    monkeypatch.setattr(run, '_restore_helpers', lambda: None)
+    run._diagnostics.close()
+    run._diagnostics = run._new_diagnostics(run.container)
+    run._diagnostics.start()
+    original_checked = docker.checked
+    lookup_available = False
+    stage = [1]
+    created_in_stage = {}
+    secret = 'glpat-' + 'Zx9AbCdEfGhIjKlMnOpQ'
+
+    def checked(command, **kwargs):
+        if command[:3] == ['docker', 'ps', '-aq'] and not lookup_available:
+            raise RuntimeError('First pending lookup unavailable')
+        return original_checked(command, **kwargs)
+
+    def create(identifier):
+        created_in_stage[identifier] = stage[0]
+        raise RuntimeError(f'Host create failure stage={stage[0]} ' + secret)
+
+    def remove(identifier):
+        if created_in_stage.get(identifier) == stage[0] and stage[0] in {2, 4}:
+            raise RuntimeError(f'Host cleanup failure stage={stage[0]}')
+
+    monkeypatch.setattr(lifecycle, 'checked', checked)
+    docker.on_create, docker.on_remove = create, remove
+    server = repair.RecoveryServer(run).start()
+
+    def perform():
+        with connect(server, request(server, deadline=time.time() + 15)) as connection:
+            deadline = time.monotonic() + 10
+            size = struct.unpack('!I', repair._receive(connection, 4, deadline))[0]
+            return json.loads(repair._receive(connection, size, deadline))
+
+    try:
+        assert perform()['status'] == 'failed'
+        assert isinstance(run.container, lifecycle._PendingCreate)
+        first_observer = run._diagnostics
+        lookup_available = True
+        stage[0] = 2
+        assert perform()['status'] == 'failed'
+        assert first_observer.closed and run.container == docker.created[-1]
+        stage[0] = 3
+        assert perform()['status'] == 'failed'
+        assert run.container is None and run._diagnostics.closed
+        stage[0] = 4
+        assert perform()['status'] == 'failed'
+        saved = delivered.read_text()
+        for index in (1, 2, 3, 4):
+            assert f'Host create failure stage={index}' in saved
+        assert 'Host cleanup failure stage=2' in saved and 'Host cleanup failure stage=4' in saved
+        assert 'Traceback (most recent call last)' in saved and 'phase=repair_cleanup' in saved
+        assert run.run in saved and secret not in saved and 'glpat-...' in saved
+        assert 'generation=5 phase=repair_create' in saved
+        assert sources == [original_container]
+        assert len(tokens) == len(set(tokens)) and len(tokens) >= 4
+        assert any(observer.owner.container is None and observer.worker is not None for observer in observers)
+        assert len(host_starts) >= 3
+        assert all(deadline is not None and started < deadline for _, _, deadline, started in host_starts)
+        assert all(left[2] < right[2] for left, right in zip(host_starts, host_starts[1:]))
+    finally:
+        lookup_available = True
+        docker.on_remove = lambda identifier: None
+        try:
+            server.close()
+        finally:
+            run.close()
+            for observer in observers:
+                observer.close()
+            for process in processes:
+                if process.poll() is None:
+                    process.kill()
+                process.wait(timeout=3)
 
 
 def test_SR_005_diagnostic_helper_requires_exact_writer_token_for_multiple_generations(monkeypatch, tmp_path):

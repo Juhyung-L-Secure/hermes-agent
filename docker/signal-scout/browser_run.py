@@ -274,7 +274,17 @@ class BrowserRun:
             self._resolve_pending_create(deadline, lambda: False)
             if self.container is not None:
                 self._diagnostics.close()
-                self._diagnostics = self._new_diagnostics(self.container)
+                self._remaining(deadline, lambda: False)
+                self._diagnostics = self._new_diagnostics(self.container, deadline=deadline)
+                self._diagnostics.start_host()
+
+    def ensure_repair_diagnostics(self, deadline):
+        if self._diagnostics.worker is None or self._diagnostics.closed:
+            self._diagnostics.close()
+            self._remaining(deadline, lambda: False)
+            identifier = self.container if isinstance(self.container, str) else None
+            self._diagnostics = self._new_diagnostics(identifier, deadline=deadline)
+            self._diagnostics.start_host()
 
     def report_repair_failure(self, phase, error, *, diagnostics=None):
         (self._diagnostics if diagnostics is None else diagnostics).capture(phase,
