@@ -148,7 +148,11 @@ class _ProtocolError(Exception):
 
 
 class _CDP:
-    def __init__(self, endpoint, timeout, observation_timeout, interaction_observation_timeout):
+    def __init__(self, endpoint, timeout, observation_timeout, interaction_observation_timeout, authority=None):
+        self.authority = authority
+        self.capture_deadline = None
+        self.facts = {}
+        self.effect_sent = self.effect_replies = 0
         self.timeout = timeout
         self.observation_timeout = observation_timeout
         self.interaction_observation_timeout = interaction_observation_timeout
@@ -156,6 +160,8 @@ class _CDP:
         self._observation = None
         self.connection = connect(endpoint, proxy=None, open_timeout=timeout,
                                   close_timeout=timeout, ping_interval=None, max_size=None)
+        if authority is not None:
+            authority.attach(self)
 
     def _log(self, level, message, *args, **kwargs):
         try:
@@ -215,6 +221,8 @@ class _CDP:
             message["sessionId"] = session
         began = time.monotonic()
         deadline = began + self.timeout
+        if self.capture_deadline is not None:
+            deadline = min(deadline, self.capture_deadline)
         response_received, wait_state = False, "send"
         protocol_code, protocol_message = None, None
         observation = self._observation
@@ -222,9 +230,23 @@ class _CDP:
         if effect:
             observation.sent = True
             observation.effects.add(command_id)
+        authority = self.authority
+        facts = {'id': command_id, 'method': method, 'send_started': False,
+                 'sent': False, 'response_received': False}
+        self.facts = facts
+        if authority is not None:
+            authority.last_command = facts
         try:
+            if authority is not None:
+                authority.check()
             self._log(logging.INFO, "Browser command send id=%s method=%s session=%s", command_id, method, session)
+            facts['send_started'] = True
             self.connection.send(json.dumps(message))
+            facts['sent'] = True
+            if effect:
+                self.effect_sent = self.effect_sent + 1
+            if authority is not None:
+                authority.check()
             wait_state = "command_response"
             while True:
                 response = self._receive(deadline)
@@ -233,6 +255,7 @@ class _CDP:
                         self._log(logging.INFO, "Browser late response id=%s waiting_id=%s", response["id"], command_id)
                     continue
                 response_received = True
+                facts["response_received"] = True
                 if response.get("sessionId") != session:
                     raise ValueError("Invalid browser response session.")
                 if "error" in response:
@@ -269,6 +292,7 @@ class _CDP:
                         observation.expected = result["loaderId"]
                 replied = time.monotonic()
                 if effect:
+                    self.effect_replies = self.effect_replies + 1
                     observation.replies.add(command_id)
                     observation.acknowledged = replied
                 self._log(logging.INFO, "Browser command reply id=%s method=%s session=%s elapsed_ms=%d response_received=True",

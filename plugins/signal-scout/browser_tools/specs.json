@@ -84,8 +84,8 @@
     {
       "id": "BR_003",
       "subfeature": "native-browser-routing",
-      "title": "Scoped binding and mandatory enclosing-run stop",
-      "contract": "Trusted bind_browser(gate, *, on_fatal, action_reference) receives its already constructed gate, stop callback and fully loaded action reference directly and supports one binding at a time. Required guidance is checked when loaded; internal binding does not repeat argument type or content validation. Runtime handler enforces the binding on every call, independently of cached discovery checks; unbound calls cannot create or attach a Browser or select a fallback. Scope exit closes the captured gate and releases the binding. Fatal invokes the original bound callback before returning and prevents subsequent dispatch through that binding. Real Hermes wiring calls AIAgent.interrupt(hard_cancel=True), skips remaining tool effects and additional main-model turns, then permits normal owner teardown to remove the exact owned browser. A delayed old call retains its old gate/callback and cannot execute through a new run.",
+      "title": "Scoped binding and safe recovery across requests",
+      "contract": "Trusted browser binding captures its run-owned action session, fatal callback and loaded action reference, supports one mission binding, and enforces live binding and allowed/blocked policy on every call. Unbound calls cannot create or attach an arbitrary browser. Recoverable action failure or reply timeout returns useful failure information without invoking the fatal callback. Each request retains its original authority and resources; after abandonment it cannot issue further browser commands, publish a late result as current, stop the continuing mission or close a replacement connection/browser. Owned cleanup may finish without regaining action authority. Scope exit revokes the binding. Only operator interruption, unrecoverable protection/ownership failure or exhausted infrastructure recovery terminates browsing through the bound fatal path and exact owned teardown.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -99,22 +99,37 @@
         {
           "layer": "unit",
           "file": "tests/signal_scout/browser_tools/test_adapter.py",
-          "test": "test_BR_003_fatal_calls_stop_before_return_and_never_redispatches"
-        },
-        {
-          "layer": "unit",
-          "file": "tests/signal_scout/browser_tools/test_adapter.py",
           "test": "test_BR_003_late_call_keeps_original_gate_and_stop_callback"
         },
         {
           "layer": "unit",
           "file": "tests/signal_scout/browser_tools/test_adapter.py",
-          "test": "test_BR_001_BR_003_native_model_loop_fatal_interrupt_skips_remaining_calls"
+          "test": "test_BR_003_old_run_timeout_hook_cannot_revoke_reused_call_id"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/browser_tools/test_adapter.py",
+          "test": "test_BR_003_terminal_cleanup_failure_still_stops_native_agent"
         },
         {
           "layer": "e2e",
-          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
-          "test": "test_AG_009_BR_003_BR_004_native_required_failure_stops_agent_and_host_cleans_owned_browser"
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_BR_004_AG_006_abandoned_send_cannot_affect_continuing_browser"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_BR_004_AG_006_late_fatal_state_and_cleanup_are_private"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_BR_004_AG_006_native_backstop_revokes_exact_request"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_AG_006_whole_deadline_includes_owned_cleanup"
         }
       ],
       "otherCoverage": [],
@@ -123,28 +138,12 @@
     {
       "id": "BR_004",
       "subfeature": "native-browser-routing",
-      "title": "Native reviewer-free browser integration",
-      "contract": "Actual native discovery/dispatch and real AIAgent model/tool loop with external main inference doubled exercise the real run-owned BrowserSession against isolated Chromium without a safety reviewer or reviewer configuration. Ordinary exact-target effects occur once, stale or blocked proposals cause no proposed effect, and healthy rejection allows subsequent observation. Actual required browser machinery failure returns fatal, triggers mandatory native hard stop, prevents later effects/model turns and completes exact host-owned cleanup. Fake gates alone do not establish this proof. No paid provider call, authentication workflow or alternate Docker stack is required.",
+      "title": "Native browser recovery integration",
+      "contract": "Actual plugin discovery/dispatch and real AIAgent model/tool loop with external main inference doubled exercise the run-owned browser session and owned recovery path against isolated Chromium. Exact-target actions occur once; stale or blocked requests produce no proposed effect, and a nonfatal action timeout reaches the next model call as truthful feedback. Delayed abandoned work cannot issue later browser effects or poison replacement state. Confirmed CDP loss reconnects or replaces the owned browser according to AG_010 while the same Hermes conversation continues; exhausted recovery and terminal protection failures stop cleanly. Fake gates alone do not prove these contracts. No paid provider, login workflow, reviewer or alternate application stack is required.",
       "requiredCoverage": [
         "e2e"
       ],
-      "coverage": [
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
-          "test": "test_BR_001_BR_002_BR_004_BR_005_native_model_allowed_effects_images_and_no_bypass"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
-          "test": "test_BR_002_BR_004_native_model_rejection_leaves_healthy_browser"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/browser_tools/test_native_integration.py",
-          "test": "test_AG_009_BR_003_BR_004_native_required_failure_stops_agent_and_host_cleans_owned_browser"
-        }
-      ],
+      "coverage": [],
       "otherCoverage": [],
       "blocker": ""
     },
@@ -366,28 +365,12 @@
     {
       "id": "AE_006",
       "subfeature": "action-evidence",
-      "title": "Required ordinary browser machinery failures",
-      "contract": "Required ordinary inspection, explicitly requested capture, unknown protocol or control-transport failure marks the Browser unusable and produces a sanitized fatal result for existing owned teardown. Expected stale, detached, hidden, covered or unavailable required targets instead reject before proposed effect and allow healthy continuation. Known unrelated iframe loss follows AE_007. Existing command timeout, ownership and teardown apply without a reviewer, automatic input replay or browser replacement. Preserve helper state and auth/log volumes.",
+      "title": "Truthful machinery failure feedback and bounded recovery",
+      "contract": "Required inspection, capture or command failures report the actual failing phase and known send/reply state without assuming a timeout proves renderer hang, transport loss or absent site effects. A missing reply alone causes no automatic action replay, page reload, reconnect or browser restart; return nonfatal failure information and a fresh snapshot when bounded capture succeeds, otherwise explicitly report observation unavailable. If action acknowledgment arrived but observation failed, distinguish those facts. Expected stale/detached/hidden/covered/unavailable target failures reject before proposed effect and keep healthy browsing usable; unrelated iframe loss follows AE_007. Separately confirmed transport/browser unavailability follows AG_010. Broken ownership/protection invariants remain terminal. Preserve helper state and auth/log volumes.",
       "requiredCoverage": [
         "e2e"
       ],
-      "coverage": [
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_actions_browser.py",
-          "test": "test_AG_005_AG_006_required_failure_terminal_started_and_owned_cleanup"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_actions_browser.py",
-          "test": "test_AG_002_AG_003_rejection_never_executes_proposal_and_browser_continues"
-        },
-        {
-          "layer": "unit",
-          "file": "tests/signal_scout/security/test_inspection.py",
-          "test": "test_AE_006_expected_target_loss_protocol_errors_reject"
-        }
-      ],
+      "coverage": [],
       "otherCoverage": [],
       "blocker": ""
     },
@@ -576,7 +559,7 @@
       "id": "AG_004",
       "subfeature": "browser-action-gate",
       "title": "Selected-page and ordinary browser controls",
-      "contract": "Back, scroll, snapshots, explicit screenshots, image observations, tab listing, explicit existing-tab switching and close use the same run-owned browser and trusted allowed/blocked map as other actions. No action is classified as a review exemption. Listing and switching do not create or select replacement tabs implicitly. Preserve native scroll direction, selected-page feedback, shared browser protections and close revocation; introduce no new selected-tab closure or browser replacement behavior.",
+      "contract": "Back, reload, scroll, snapshots, explicit screenshots, image observations, tab listing, explicit existing-tab switching and close use the same run-owned browser and trusted allowed/blocked map as other actions. Reload reaches the selected owned target without requiring successful DOM/frame or accessibility inspection first, then attempts bounded fresh observation. No action is classified as a review exemption. Listing and switching do not create or select replacement tabs implicitly. Preserve native scroll direction, selected-page feedback, shared browser protections and close revocation; introduce no new selected-tab closure semantics. Ordinary controls do not choose infrastructure replacement, which follows AG_010.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -605,56 +588,20 @@
       "id": "AG_005",
       "subfeature": "browser-action-gate",
       "title": "Complete truthful outcomes and fresh applicable observations",
-      "contract": "Every dispatch returns a truthful gate status, fixed sanitized reason or null, truthful execution_started and dictionary data. A proposal rejected before any execution has false execution_started and no proposed effect. Started means effect/read dispatch began, not proof of server effects; post-dispatch or required observation machinery failure is fatal with true. Ordinary navigation-load failure is distinguished from machinery failure under AG_008 and never misreported as successful destination loading. Successful click/navigation/type/key/back/scroll/switch returns fresh compact AX snapshot and exact selected target_id, without automatic main-agent screenshot. Completed native download cancellation is successful enforcement: success with true execution_started, fresh selected-page AX and healthy continuation, not a claim that destination loaded or machinery-loss recovery. Explicit screenshot returns full native viewport PNG bytes/MIME in memory. Tabs/images return actual observations, close returns close result. AG_008 owns navigation-aware observations using an independent short observation deadline and the matching initial-document DOMContentLoaded event instead of a mandatory load-event wait. Navigation observations include truthful readiness and configured-deadline information for the main agent; they do not promise all media, application data or future updates are ready. SR_022 keeps raw diagnostic exceptions and protocol payloads out of model-facing results.",
+      "contract": "Every dispatch returns a truthful gate status, fixed sanitized reason or null, truthful execution_started and dictionary data. A proposal rejected before any execution has false execution_started and no proposed effect. Started means effect/read dispatch began, not proof of server effects; post-dispatch or required observation failure preserves truthful started state and returns nonfatal feedback unless an ownership/protection invariant is broken or infrastructure repair is exhausted. A bounded fresh snapshot is best effort on failure and its absence is explicit; acknowledgment and observation failure are distinct facts. Ordinary navigation-load failure is distinguished from machinery failure under AG_008 and never misreported as successful destination loading. Successful click/navigation/type/key/back/scroll/switch returns fresh compact AX snapshot and exact selected target_id, without automatic main-agent screenshot. Completed native download cancellation is successful enforcement: success with true execution_started, fresh selected-page AX and healthy continuation, not a claim that destination loaded or machinery-loss recovery. Explicit screenshot returns full native viewport PNG bytes/MIME in memory. Tabs/images return actual observations, close returns close result. AG_008 owns navigation-aware observations using an independent short observation deadline and the matching initial-document DOMContentLoaded event instead of a mandatory load-event wait. Navigation observations include truthful readiness and configured-deadline information for the main agent; they do not promise all media, application data or future updates are ready. SR_022 keeps raw diagnostic exceptions and protocol payloads out of model-facing results.",
       "requiredCoverage": [
         "unit",
         "e2e"
       ],
-      "coverage": [
-        {
-          "layer": "unit",
-          "file": "tests/signal_scout/security/test_actions.py",
-          "test": "test_AG_005_AG_006_fatal_tracks_started_execution_and_is_terminal"
-        },
-        {
-          "layer": "unit",
-          "file": "tests/signal_scout/security/test_actions.py",
-          "test": "test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_healthy"
-        },
-        {
-          "layer": "unit",
-          "file": "tests/signal_scout/security/test_actions.py",
-          "test": "test_AG_005_navigation_observation_matches_native_document"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_actions_browser.py",
-          "test": "test_AG_004_AG_005_observations_selection_scroll_back_close_and_media"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_actions_browser.py",
-          "test": "test_AG_005_AG_006_required_failure_terminal_started_and_owned_cleanup"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_actions_browser.py",
-          "test": "test_AG_001_AG_002_AG_005_allowed_actions_and_fresh_compact_feedback"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_actions_browser.py",
-          "test": "test_AG_002_AG_005_SR_005_SR_006_SR_010_native_download_navigation_keeps_browser_healthy"
-        }
-      ],
+      "coverage": [],
       "otherCoverage": [],
       "blocker": ""
     },
     {
       "id": "AG_006",
       "subfeature": "browser-action-gate",
-      "title": "Terminal browser failure and native hard stop",
-      "contract": "Required ordinary inspection, explicit capture, control, execution or observation machinery failure makes the gate terminal and closes its Browser. Native interruption, closed binding, failed Browser and control-route changes prevent later dispatch. Adapter invokes the original bound native hard-stop callback once, skips later effects and model turns, and allows exact host-owned cleanup. Ordinary navigation recovery is bounded by AG_008. No review verdict, review timeout, auxiliary retry, queue, watchdog, broad recovery or browser replacement remains.",
+      "title": "Bounded requests and abandoned-worker access revocation",
+      "contract": "Browser actions remain serial and wait for actual replies within a configurable command/reply deadline. A separate configurable overall worker deadline covers the whole tool request, including observation and cleanup. Both bounds apply during execution. When the overall request is abandoned, a handler independent of the stuck worker revokes that request authority at actual browser-command dispatch and requests cooperative cancellation without changing Hermes worker architecture, adding process-isolated workers or claiming the thread was killed. Revocation prevents further local commands, late results/fatal callbacks or cleanup from affecting current or replacement browser state, while permitting cleanup of old request-owned resources. Do not promise already-issued remote effects are canceled. Log failure/revocation before bounded best-effort observation, then return informative nonfatal feedback so Hermes may continue; unavailable snapshot is explicit and cannot indefinitely block feedback. No normal-operation queue, automatic replay or universal page-recovery sequence is added.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -662,23 +609,53 @@
       "coverage": [
         {
           "layer": "unit",
-          "file": "tests/signal_scout/security/test_actions.py",
-          "test": "test_AG_005_AG_006_fatal_tracks_started_execution_and_is_terminal"
+          "file": "tests/signal_scout/security/test_recovery_unit.py",
+          "test": "test_AG_006_command_timeout_keeps_browser_available"
         },
         {
           "layer": "unit",
-          "file": "tests/signal_scout/security/test_actions.py",
-          "test": "test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_healthy"
+          "file": "tests/signal_scout/security/test_recovery_unit.py",
+          "test": "test_AG_006_revoked_notice_cannot_change_after_worker_resumes"
         },
         {
           "layer": "unit",
-          "file": "tests/signal_scout/security/test_actions.py",
-          "test": "test_AG_006_native_interrupt_and_scope_close_prevent_effect"
+          "file": "tests/signal_scout/security/test_recovery_unit.py",
+          "test": "test_AG_006_acknowledged_typing_survives_release_timeout"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_recovery_unit.py",
+          "test": "test_AG_006_native_backstop_requires_request_headroom"
         },
         {
           "layer": "e2e",
-          "file": "tests/signal_scout/security/test_actions_browser.py",
-          "test": "test_AG_005_AG_006_required_failure_terminal_started_and_owned_cleanup"
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_BR_004_AG_006_native_timeout_and_acknowledged_observation_continue"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_BR_004_AG_006_abandoned_send_cannot_affect_continuing_browser"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_004_AG_006_delayed_reply_is_uncertain_and_does_not_repair"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_BR_004_AG_006_late_fatal_state_and_cleanup_are_private"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_BR_004_AG_006_native_backstop_revokes_exact_request"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_AG_006_whole_deadline_includes_owned_cleanup"
         }
       ],
       "otherCoverage": [],
@@ -717,7 +694,7 @@
       "id": "AG_008",
       "subfeature": "browser-action-gate",
       "title": "Early navigation observations and bounded error recovery",
-      "contract": "Explicit URL navigation and back observe the actual selected document until its matching DOMContentLoaded event or a configurable browser.observation_timeout, initially 5 seconds, whichever occurs first. The observation allowance starts after the corresponding browser command acknowledgment, and is not restarted by each unrelated event or redirect. Snapshot capture and other browser commands have their own control deadlines; 5 seconds is not a guaranteed total tool duration. browser.command_timeout remains the separate configured command-response deadline, initially 60 seconds. A late or missing load event alone does not delay observation until that deadline. Readiness events are bound to the actual selected tab, frame and document loader, including redirects; stale, child-frame or other-session events cannot establish readiness for the current destination. Clicks and keypresses also observe navigation when it results from their single execution, using the same readiness/deadline policy without replaying the already-executed input. Non-navigation interactions such as opening a dropdown return fresh current-page observations without waiting for a new DOMContentLoaded event or consuming the full navigation allowance. Required browser.interaction_observation_timeout initially 0.25 seconds bounds ordinary interaction observation; it cannot guarantee detection of every future delayed navigation. Both observation settings require finite positive numeric values up to 120 seconds, reject booleans, and require the interaction interval no greater than the document allowance. Subsequent actions retain ordinary original-document/node and current-focus checks. Same-document URL/content changes do not require a new document readiness event. On observation deadline with healthy owned control and capturable page evidence, return a nonfatal incomplete result with execution_started true, the verified current compact AX snapshot, exact selected target identity, actual observed URL, and a sanitized explicit reason identifying the observation deadline and configured wait duration. Distinguish a still-pending destination from the actually observed document; never call the previous document or about:blank a successfully loaded destination. Report initial-document readiness truthfully without claiming all images, async application content or later requests are ready. Return the first timeout observation without automatic reload, repeated input, another capture solely for retry, or an auxiliary safety-model call. The main agent chooses a later observation, an explicitly requested retry through the normal gate, another URL or a blocked-page report; no cross-turn timeout counter or automatic mission stop after a number of such observations is introduced. browser.navigation_retries remains a required nonnegative integer, never a boolean, initially one, and bounds only automatic recovery of explicit navigate requests from acknowledged ordinary loading errors. Such retries repeat only the same requested public URL and each obeys current permissions and resolves current ordinary browser state. Blocked or stale error retries perform no new effect and return current observable page state with a nonfatal warning; exhausted loading errors also return incomplete current observations. Ordinary observed 404 or CAPTCHA content does not itself trigger fatal shutdown or an automatic reload based on text. Completed native download denial retains AG_005 successful enforcement semantics. A missing command acknowledgment, failed required ordinary inspection, lost or mismatched control, interruption and other machinery failures remain fatal. No recovery automatically repeats click, type, keypress, back or scroll, changes protections, replaces the browser or opens another execution route.",
+      "contract": "Explicit URL navigation and back observe the actual selected document until its matching DOMContentLoaded event or a configurable browser.observation_timeout, initially 5 seconds, whichever occurs first. The observation allowance starts after the corresponding browser command acknowledgment, and is not restarted by each unrelated event or redirect. Snapshot capture and other browser commands have their own control deadlines; 5 seconds is not a guaranteed total tool duration. browser.command_timeout remains the separate configured command-response deadline, initially 60 seconds. A late or missing load event alone does not delay observation until that deadline. Readiness events are bound to the actual selected tab, frame and document loader, including redirects; stale, child-frame or other-session events cannot establish readiness for the current destination. Clicks and keypresses also observe navigation when it results from their single execution, using the same readiness/deadline policy without replaying the already-executed input. Non-navigation interactions such as opening a dropdown return fresh current-page observations without waiting for a new DOMContentLoaded event or consuming the full navigation allowance. Required browser.interaction_observation_timeout initially 0.25 seconds bounds ordinary interaction observation; it cannot guarantee detection of every future delayed navigation. Both observation settings require finite positive numeric values up to 120 seconds, reject booleans, and require the interaction interval no greater than the document allowance. Subsequent actions retain ordinary original-document/node and current-focus checks. Same-document URL/content changes do not require a new document readiness event. On observation deadline with healthy owned control and capturable page evidence, return a nonfatal incomplete result with execution_started true, the verified current compact AX snapshot, exact selected target identity, actual observed URL, and a sanitized explicit reason identifying the observation deadline and configured wait duration. Distinguish a still-pending destination from the actually observed document; never call the previous document or about:blank a successfully loaded destination. Report initial-document readiness truthfully without claiming all images, async application content or later requests are ready. Return the first timeout observation without automatic reload, repeated input, another capture solely for retry, or an auxiliary safety-model call. The main agent chooses a later observation, an explicitly requested retry through the normal gate, another URL or a blocked-page report; no cross-turn timeout counter or automatic mission stop after a number of such observations is introduced. browser.navigation_retries remains a required nonnegative integer, never a boolean, initially one, and bounds only automatic recovery of explicit navigate requests from acknowledged ordinary loading errors. Such retries repeat only the same requested public URL and each obeys current permissions and resolves current ordinary browser state. Blocked or stale error retries perform no new effect and return current observable page state with a nonfatal warning; exhausted loading errors also return incomplete current observations. Ordinary observed 404 or CAPTCHA content does not itself trigger fatal shutdown or an automatic reload based on text. Completed native download denial retains AG_005 successful enforcement semantics. Missing command acknowledgments and recoverable ordinary inspection failures follow AG_006 bounded nonfatal feedback. Confirmed control loss follows AG_010 code-directed owned repair; interruption, ownership/protection failure, unrecoverable machinery failure and exhausted infrastructure repair remain terminal. No recovery automatically repeats click, type, keypress, back or scroll, changes protections or opens another execution route.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -928,6 +905,19 @@
           "test": "test_AG_009_BR_003_BR_004_native_required_failure_stops_agent_and_host_cleans_owned_browser"
         }
       ],
+      "otherCoverage": [],
+      "blocker": ""
+    },
+    {
+      "id": "AG_010",
+      "subfeature": "infrastructure-recovery",
+      "title": "Code-directed reconnect and owned browser replacement",
+      "contract": "Confirmed CDP disconnection triggers bounded code-directed repair. Default policy tries reconnecting the same live owned browser first, then starts a fresh owned browser if reconnect fails; browser unavailable uses the same owned replacement sequence directly. Strategy, attempt counts and time bounds are configurable, and exhaustion produces terminal failure with diagnostic facts. An action reply timeout or ordinary page content alone does not establish a disconnect and does not trigger this repair. Ownership mismatch or protection failure never authorizes attaching to an unknown instance. Repair preserves the same Hermes conversation, exposes fresh state and invalidates old references; restart discloses lost tabs/session state. Old request activity or cleanup cannot affect the replacement. Preserve exact owned lifecycle, immutable selected configuration, sandbox, network/download protections and normal teardown.",
+      "requiredCoverage": [
+        "unit",
+        "e2e"
+      ],
+      "coverage": [],
       "otherCoverage": [],
       "blocker": ""
     }

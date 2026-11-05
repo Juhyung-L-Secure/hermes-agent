@@ -68,10 +68,23 @@ def parse_settings(contents):
                        "mode": browser["mode"],
                        "auto_local_for_private_urls": False, "command_timeout": browser["command_timeout"],
                        "navigation_retries": browser["navigation_retries"],
+                       "request_timeout": browser["request_timeout"],
+                       "capture_timeout": browser["capture_timeout"],
                        "observation_timeout": browser["observation_timeout"],
                        "interaction_observation_timeout": browser["interaction_observation_timeout"],
                        "viewport": viewport, "action_permissions": permissions,
                        "scroll_pixels": browser["scroll_pixels"]}):
+            raise ValueError
+        for key in ("request_timeout", "capture_timeout"):
+            value = browser[key]
+            if type(value) not in (int, float) or not math.isfinite(value) or not 0 < value <= 3600:
+                raise ValueError
+        outer = config['timeouts']['tools']['sequential_call']
+        if (type(outer) not in (int, float) or not math.isfinite(outer)
+                or outer < browser['request_timeout'] + browser['capture_timeout'] + 1):
+            raise ValueError
+        retries = config['agent']['api_max_retries']
+        if type(retries) is not int or retries < 1:
             raise ValueError
         for key in ("observation_timeout", "interaction_observation_timeout"):
             value = browser[key]

@@ -1,12 +1,13 @@
 import base64
 from dataclasses import dataclass
+import itertools
 import json
 import logging
 import struct
 import time
 
 from ._cdp import _CDP, _DocumentKey, _NavigationOutcome, _ObservedEffect, _Page, _ProtocolError
-from ._errors import ActionRejected, BrowserFailure, _RequiredFrameUnavailable
+from ._errors import ActionRejected, BrowserFailure, _RequiredFrameUnavailable, RequestRevoked, OwnershipFailure
 from ._geometry import _clip, _project
 from .request import _FormatRejected, copy_request
 
@@ -142,9 +143,25 @@ class BrowserSession:
         self._cdp = None
         self._sessions = {}
         self._refs = {}
+        self._ref_numbers = itertools.count(1)
+        self._authority = None
+        self._requests = None
         self._selected = None
         self._terminal = False
         self._fatal_reason = "Browser gate is closed."
+
+
+    def request(self, proposal, *, call_id=''):
+        from .lifetime import BrowserRequests
+
+        if self._requests is None:
+            self._requests = BrowserRequests(self)
+        return self._requests.dispatch(proposal, call_id=call_id)
+
+
+    def abandon(self, parent_tid, reason):
+        if self._requests is not None:
+            self._requests.abandon(parent_tid=parent_tid, reason=reason)
 
 
     def _bind(self, target_id):
@@ -166,6 +183,8 @@ class BrowserSession:
     def _live(self):
         from tools.interrupt import is_interrupted
 
+        if self._authority is not None:
+            self._authority.check()
         if self._terminal:
             raise _Stopped(self._fatal_reason)
         if not self._browser.ready or self._browser.failed:
@@ -224,7 +243,8 @@ class BrowserSession:
         self._command("Page.setLifecycleEventsEnabled", {"enabled": True}, root.session)
         connection = self._cdp
         return invoke(lambda: connection.observe(effect, baseline,
-            lambda: self._document_key(self._frames(self._selected, root_only=True).frames),
+            lambda: invoke(lambda: self._document_key(self._frames(self._selected, root_only=True).frames),
+                           phase_name="observation"),
             lambda: invoke(lambda: self._navigation_page(connection), phase_name="observation"),
             explicit=action == "navigate", interaction=action in {"click", "keypress"}))
 
@@ -262,6 +282,12 @@ class BrowserSession:
             invoke(self.close)
             return {"closed": True}
         tab = args["target_id"] if action == "switch_tab" else self._selected
+        if action == 'reload':
+            target = self._session(tab)
+            invoke(lambda: self._command('Page.reload', {}, target))
+            self._action_acknowledged = True
+            return {'snapshot': invoke(lambda: self._inspect_snapshot(tab), phase_name='observation'),
+                    'target_id': tab}
         scan = self._frames(tab)
         frames = scan.frames
         root = next(frame for frame in frames.values() if frame.parent is None)
@@ -305,6 +331,7 @@ class BrowserSession:
                 if self._focus(tab, frames)[0] != binding:
                     raise BrowserFailure("Exact browser typing focus changed.")
                 command("Input.insertText", {"text": args["text"]})
+                self._action_acknowledged = True
             finally:
                 self._command("Runtime.releaseObject", {"objectId": obj}, frame.session)
         elif action == "keypress":
@@ -344,6 +371,7 @@ class BrowserSession:
                     **({"inspection": scan.summary()} if scan.omitted else {})}
         else:
             raise BrowserFailure("Browser action execution unavailable.")
+        self._action_acknowledged = True
         return {"snapshot": invoke(lambda: self._inspect_snapshot(self._selected), phase_name="observation"),
                 "target_id": self._selected}
 
@@ -351,21 +379,26 @@ class BrowserSession:
     def dispatch(self, request):
         """Validate/copy one proposal, resolve current target, then execute.
 
-        Always return status/reason/execution_started/data. Rejection has no
-        proposed effect and leaves healthy browsing usable. Technical failure
-        closes this gate/Browser; adapter must stop its enclosing run. Started
-        means dispatch began, never proof of completed server-side effects.
+        Ordinary outcomes return status/reason/execution_started/data. Recoverable
+        inspection failures return incomplete observations. Terminal ownership or
+        machinery failure closes this gate; revoked requests raise RequestRevoked.
+        Started never proves completed server-side effects.
         """
         started, action, phase, began = False, "unknown", "preparation", time.monotonic()
+        self._action_acknowledged = False
         def invoke(operation, *, phase_name="execution"):
             nonlocal started, phase
             if self._permissions.get(action, "blocked") == "blocked":
                 raise ActionRejected("Browser action is blocked.")
             phase = phase_name
+            if self._authority is not None:
+                self._authority.phase = phase
             self._live()
             if self._cdp is not connection:
                 raise BrowserFailure("Browser control unavailable.")
             started = True
+            if self._authority is not None:
+                self._authority.started = True
             return operation()
         def diagnostic(*, failure=None):
             try:
@@ -392,7 +425,9 @@ class BrowserSession:
             except ActionRejected as error:
                 return self._result("rejected", str(error))
             action = request["action"]
-            connection = getattr(self, "_cdp", None)
+            if self._cdp is None:
+                self._connect()
+            connection = self._cdp
             failed_navigation = False
             last_observation = None
             attempts = 1 + self._navigation_retries if action == "navigate" else 1
@@ -427,6 +462,12 @@ class BrowserSession:
                             started=True, data=projected)
                     data = projected
                 return self._result("success", started=started, data=data)
+        except RequestRevoked:
+            raise
+        except (TimeoutError, BrowserFailure) as error:
+            diagnostic()
+            return self._failure('command_timeout' if isinstance(error, TimeoutError) else 'inspection_failed',
+                                 phase, started)
         except _Stopped as error:
             return self._fatal(str(error), started)
         except _RequiredFrameUnavailable as error:
@@ -451,22 +492,58 @@ class BrowserSession:
             return self._fatal("Browser action failed.", started)
 
 
+    def _failure(self, kind, phase, started):
+        connection = self._cdp
+        facts = dict(connection.facts) if connection is not None else {}
+        sent = connection.effect_sent if connection is not None else 0
+        acknowledged = connection.effect_replies if connection is not None else 0
+        action_ack = self._action_acknowledged or bool(sent and sent == acknowledged)
+        data = {'failure': {'kind': kind, 'phase': phase, 'command': facts,
+                           'action_acknowledged': action_ack,
+                           'remote_effects': 'unknown' if started and not action_ack else 'acknowledged' if action_ack else 'not_started'},
+                'capture': {'state': 'unavailable'}}
+        if connection is not None:
+            connection.capture_deadline = time.monotonic() + self._browser.settings['browser']['capture_timeout']
+            try:
+                snapshot = self._inspect_snapshot(self._selected)
+                data.update(snapshot=snapshot, target_id=self._selected)
+                data['capture'] = {'state': 'fresh'}
+            except RequestRevoked:
+                raise
+            except Exception:
+                logger.exception('Browser recovery capture unavailable')
+            finally:
+                connection.capture_deadline = None
+        reason = ('Browser observation command reply deadline reached after action acknowledgment.'
+                  if phase == 'observation' and action_ack else 'Browser command reply deadline reached.')
+        if kind != 'command_timeout':
+            reason = 'Browser inspection unavailable.'
+        return self._result('incomplete', reason, started=started, data=data)
+
+
     def _command(self, method, params=None, session=None):
+        self._live()
         if not self._browser.ready or self._browser.failed:
             raise BrowserFailure("Browser evidence unavailable.")
         if self._cdp is None:
-            self._browser.verify_control()
-            policy = self._browser.settings["browser"]
-            self._cdp = _CDP(self._browser.endpoint, policy["command_timeout"],
-                             policy["observation_timeout"], policy["interaction_observation_timeout"])
+            self._connect()
         return self._cdp.command(method, params, session)
+
+
+    def _connect(self):
+        self._live()
+        self._browser.verify_control()
+        policy = self._browser.settings['browser']
+        self._cdp = _CDP(self._browser.endpoint, policy['command_timeout'],
+                         policy['observation_timeout'], policy['interaction_observation_timeout'], self._authority)
+
 
 
     def _run(self, operation):
         began = time.monotonic()
         try:
             return operation()
-        except ActionRejected:
+        except (ActionRejected, TimeoutError, RequestRevoked, OwnershipFailure):
             raise
         except Exception as error:
             if isinstance(error, _ProtocolError) and error.stale:
@@ -478,7 +555,6 @@ class BrowserSession:
                     int((time.monotonic() - began) * 1000), exc_info=True)
             except Exception:
                 pass
-            self._browser.failed = True
             raise BrowserFailure("Required browser evidence check failed.") from None
 
 
@@ -817,7 +893,7 @@ class BrowserSession:
                     binding = self._binding(target_id, frame_id, frame, node["backendDOMNodeId"])
                     ref = next((key for key, value in self._refs.items() if value == binding), None)
                     if ref is None:
-                        ref = "@s" + str(len(self._refs) + 1)
+                        ref = "@s" + str(next(self._ref_numbers))
                         self._refs[ref] = binding
                 lines.append(f"- {role} {json.dumps(name, ensure_ascii=False)}" + (f" [{ref}]" if ref else ""))
         return scan.describe("\n".join(lines))

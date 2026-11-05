@@ -5,10 +5,13 @@ agent:
   max_turns: 3
   reasoning_effort: low
   run_budget_seconds: 0
-  api_max_retries: 2
+  api_max_retries: 6
   intent_ack_continuation: false
   empty_response_guard:
     enabled: false
+timeouts:
+  tools:
+    sequential_call: 420
 plugins:
   enabled: [signal-scout]
 compression:
@@ -38,6 +41,8 @@ browser:
   use_real_profile: false
   auto_local_for_private_urls: false
   command_timeout: 60
+  request_timeout: 400
+  capture_timeout: 3
   observation_timeout: 5
   interaction_observation_timeout: 0.25
   navigation_retries: 1
@@ -48,6 +53,7 @@ browser:
     type: allowed
     keypress: allowed
     back: allowed
+    reload: allowed
     scroll: allowed
     snapshot: allowed
     screenshot: allowed

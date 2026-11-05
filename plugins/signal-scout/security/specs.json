@@ -400,74 +400,13 @@
     {
       "id": "SR_005",
       "subfeature": "browser-security",
-      "title": "Disposable single-run browser lifecycle",
-      "contract": "One trusted host lifecycle owns one active run and is reused by deterministic smoke/tests. Each run creates new browser container/process and anonymous temporary profile; second claimant or leftover container is rejected without disturbing/adopting first. Multiple tabs may exist inside run. Normal end or surfaced fatal failure removes only exact owned container and temporary state, retaining helpers, auth/log volumes and images. If Docker creates the current attempt but cannot start it, cleanup resolves exact attempted name/project/service/run ownership and verifies full ID before removal; foreign collisions remain untouched. Browser child exit closes relay; stale/unavailable control, observed native action-driver transport loss even with healthy HTTP discovery, and control-command timeout are terminal, never browser replacement, mission restart, arbitrary attachment or local/cloud fallback. Ordinary navigation denial is not itself transport loss. Navigation-specific page-load failure may follow AG_008 only while the same owned browser remains controllable and observable; other command/lifecycle failures remain terminal. Startup/local-control/shutdown/smoke bounds are consumed from validated trusted startup settings; host stop deadline allows configured shutdown grace plus bounded Docker overhead, including supported grace above 60 seconds. Existing auxiliary supervisor reconnect is not browser replacement; reconnect/degraded-monitoring policy remains deferred. If Hermes/launcher/host disappears, independent teardown is not guaranteed and requires deliberate operator inspection/cleanup; no watchdog, recovery daemon or scavenging is implemented.",
+      "title": "Disposable single-run browser lifecycle and owned replacement",
+      "contract": "One trusted host lifecycle owns one active research run and is reused by deterministic smoke/tests. Each initial browser and every replacement uses an exact owned container/process and fresh temporary profile; a second claimant or foreign/leftover resource is never adopted or disturbed. Code-directed repair may reconnect the same live owned browser or replace an unavailable owned browser under AG_010 without restarting Hermes conversation. Replacement revokes old action authority, retires old controls and element references, preserves configured sandbox/network/download protections, and reports browser-state loss. Normal mission end, exhausted repair or terminal protection failure removes only exact owned resources, retaining auth/log volumes and images and restoring helper state. Partial creation resolves exact attempted ownership before removal; foreign collisions remain untouched. Validated startup/control/shutdown/smoke bounds are consumed directly; host stop allows configured grace plus bounded Docker overhead. No arbitrary endpoint attachment, local/cloud fallback, host-death scavenging, independent orphan watchdog or durable mission resume is added. Auxiliary native helper lifecycle changes remain outside this feature except necessary rebinding of the owned replacement.",
       "requiredCoverage": [
         "unit",
         "e2e"
       ],
-      "coverage": [
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_lifecycle_failures.py",
-          "test": "test_SR_005_create_then_start_failure_removes_only_attempted_owner"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_actions_browser.py",
-          "test": "test_AG_002_AG_005_SR_005_SR_006_SR_010_native_download_navigation_keeps_browser_healthy"
-        },
-        {
-          "layer": "unit",
-          "file": "tests/signal_scout/security/test_lifecycle_failures.py",
-          "test": "test_SR_005_driver_transport_failure_is_terminal_with_healthy_discovery"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_lifecycle_failures.py",
-          "test": "test_SR_005_live_driver_reset_is_terminal_with_healthy_discovery"
-        },
-        {
-          "layer": "unit",
-          "file": "tests/signal_scout/security/test_lifecycle_failures.py",
-          "test": "test_SR_005_shutdown_deadline_includes_supported_grace"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_lifecycle_failures.py",
-          "test": "test_SR_005_configured_long_shutdown_removes_stopped_launcher"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SR_005_command_hang_is_terminal_and_owned_container_removed"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SR_005_unavailable_relay_cleans_new_child_only"
-        },
-        {
-          "layer": "unit",
-          "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SR_005_wrong_container_and_run_ownership_reject_cleanup"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SR_005_single_claim_fresh_profile_and_ordinary_fatal_teardown"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SR_005_child_exit_closes_relay_and_never_replaces_browser"
-        },
-        {
-          "layer": "e2e",
-          "file": "tests/signal_scout/security/test_isolation.py",
-          "test": "test_SR_005_stale_endpoint_fails_without_local_fallback"
-        }
-      ],
+      "coverage": [],
       "otherCoverage": [],
       "blocker": ""
     },
@@ -475,7 +414,7 @@
       "id": "SR_006",
       "subfeature": "browser-security",
       "title": "Persistent native browser download denial",
-      "contract": "Pinned Chrome for Testing loads root-owned/read-only /etc/opt/chrome_for_testing/policies/managed/scout.json with mandatory DownloadRestrictions: 3. The launcher supplies the installed policy without a startup policy-page readback. Native policy persists after bounded startup CDP closes, without a download override or policy-only run-lived connection. Real attachment, redirected attachment and generated-blob attempts in initial/new tabs and separate popups emit attempted-download and canceled-progress events and save no file after startup disconnect. Controlled transient policy-free images prove real attachment/redirect downloads enter native progress, then native UI cancels before payload. Ordinary HTML, image, audio and video loading remains available. Native policy blocks ordinary webpage downloads, not Save Page or print-to-PDF. No allow toggle, custom download filter or download destination is introduced. Sole fresh anonymous default context remains supported; arbitrary trusted CDP remains trusted outside the model-facing gate under AG_001–AG_007.",
+      "contract": "Pinned Chrome for Testing loads root-owned/read-only /etc/opt/chrome_for_testing/policies/managed/scout.json with mandatory DownloadRestrictions: 3. The launcher supplies the installed policy without a startup policy-page readback. Native policy persists after bounded startup CDP closes, without a download override or policy-only run-lived connection. Real attachment, redirected attachment and generated-blob attempts in initial/new tabs and separate popups emit attempted-download and canceled-progress events and save no file after startup disconnect. Controlled transient policy-free images prove real attachment/redirect downloads enter native progress, then native UI cancels before payload. Ordinary HTML, image, audio and video loading remains available. Native policy blocks ordinary webpage downloads, not Save Page or print-to-PDF. No allow toggle, custom download filter or download destination is introduced. Sole fresh anonymous default context remains supported; arbitrary trusted CDP remains trusted outside the model-facing gate under AG_001\u2013AG_007.",
       "requiredCoverage": [
         "e2e"
       ],

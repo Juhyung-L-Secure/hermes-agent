@@ -3,10 +3,18 @@ class ActionRejected(Exception):
 
 
 class BrowserFailure(RuntimeError):
-    """End browsing after required inspection/capture fails; owner must tear down."""
+    """Report unavailable ordinary browser inspection without replaying an action."""
 
 
 class _RequiredFrameUnavailable(ActionRejected):
     def __init__(self, reason="Required browser target or frame is unavailable.", *, frame=None, parent=None):
         self.frame, self.parent = frame, parent
         super().__init__(reason)
+
+
+class RequestRevoked(Exception):
+    """The request may clean up its transport but has no browser authority."""
+
+
+class OwnershipFailure(RuntimeError):
+    """The live control endpoint no longer belongs to this browser generation."""

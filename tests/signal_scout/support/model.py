@@ -17,6 +17,12 @@ class FakeSession:
         self.requests.append(deepcopy(request))
         return deepcopy(self.result)
 
+    def request(self, proposal, *, call_id=""):
+        return self.dispatch(proposal)
+
+    def abandon(self, parent_tid, reason):
+        pass
+
     def close(self):
         self.closed = True
 

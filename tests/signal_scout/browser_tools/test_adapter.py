@@ -193,7 +193,7 @@ def test_BR_003_late_call_keeps_original_gate_and_stop_callback(native_plugin):
 
     started = threading.Event()
     released = threading.Event()
-    first = FakeSession({"status": "fatal", "reason": "Browser closed.", "execution_started": False, "data": {}})
+    first = FakeSession({"status": "fatal", "reason": "Browser closed.", "execution_started": True, "data": {}})
     second = FakeSession()
     stopped = []
     original_dispatch = first.dispatch
@@ -216,8 +216,9 @@ def test_BR_003_late_call_keeps_original_gate_and_stop_callback(native_plugin):
             released.set()
             thread.join(5)
             assert not thread.is_alive()
-            assert json.loads(outputs[0])["status"] == "fatal"
-            assert second.requests == [] and stopped == ["first"]
+            assert json.loads(outputs[0])["status"] == "incomplete"
+            assert json.loads(outputs[0])["execution_started"] is True
+            assert second.requests == [] and stopped == []
             assert json.loads(dispatch({"action": "snapshot", "args": {}}))["status"] == "success"
     finally:
         released.set()
@@ -371,3 +372,63 @@ def test_BR_005_native_model_frames_actual_tool_defangs_delimiters_and_preserves
         assert all(message["name"] == message["tool_name"] == "browser_scout" for message in replies)
         assert len(replies) == 2
 
+
+
+def test_BR_003_old_run_timeout_hook_cannot_revoke_reused_call_id(native_plugin):
+    from tools.interrupt import set_interrupt
+
+    first, second = FakeSession(), FakeSession()
+    entered = [threading.Event(), threading.Event()]
+    release = [threading.Event(), threading.Event()]
+    abandoned, results = [], []
+    first.abandon = lambda tid, reason: abandoned.append(('first', tid, reason))
+    second.abandon = lambda tid, reason: abandoned.append(('second', tid, reason))
+    def pending(index, gate):
+        def request(proposal, *, call_id=''):
+            entered[index].set()
+            assert release[index].wait(10)
+            return gate.dispatch(proposal)
+        gate.request = request
+    pending(0, first)
+    pending(1, second)
+    def invoke():
+        results.append(native_plugin._execution(tool_name='browser_scout', args={},
+            tool_call_id='reused', next_call=lambda _: native_plugin._handle({'action': 'snapshot', 'args': {}})))
+    threads = [threading.Thread(target=invoke), threading.Thread(target=invoke)]
+    try:
+        with native_plugin.bind_browser(first, action_reference='rules', on_fatal=lambda: pytest.fail('Old fatal')):
+            threads[0].start()
+            assert entered[0].wait(5)
+        with native_plugin.bind_browser(second, action_reference='rules', on_fatal=lambda: pytest.fail('New fatal')):
+            threads[1].start()
+            assert entered[1].wait(5)
+            set_interrupt(True, threads[0].ident)
+            native_plugin._post_call(tool_name='browser_scout', status='timeout', tool_call_id='reused')
+            assert abandoned == [('first', threads[0].ident, 'timeout')]
+            release[0].set()
+            threads[0].join(5)
+            assert not threads[0].is_alive() and json.loads(results[0])['status'] == 'incomplete'
+            release[1].set()
+            threads[1].join(5)
+            assert not threads[1].is_alive() and json.loads(results[1])['status'] == 'success'
+    finally:
+        for event in release:
+            event.set()
+        for thread in threads:
+            if thread.ident is not None:
+                thread.join(5)
+                set_interrupt(False, thread.ident)
+
+
+def test_BR_003_terminal_cleanup_failure_still_stops_native_agent(native_plugin):
+    gate = FakeSession({'status': 'fatal', 'reason': 'Protection failure.', 'execution_started': True, 'data': {}})
+    stopped = []
+    def close():
+        raise RuntimeError('Controlled cleanup failure.')
+    gate.close = close
+    with pytest.raises(RuntimeError, match='Controlled cleanup failure'):
+        with native_plugin.bind_browser(gate, action_reference='rules', on_fatal=lambda: stopped.append(True)):
+            result = json.loads(dispatch({'action': 'snapshot', 'args': {}}))
+            assert 'error' in result
+            assert stopped == [True]
+    assert native_plugin._binding is None

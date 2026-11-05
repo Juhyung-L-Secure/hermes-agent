@@ -3,6 +3,7 @@ ACTION_FIELDS = {
     'navigate': frozenset(['url']),
     'type': frozenset(['ref', 'text']),
     'keypress': frozenset(['key']),
+    'reload': frozenset(),
     'back': frozenset([]),
     'scroll': frozenset(['direction']),
     'snapshot': frozenset([]),
