@@ -263,6 +263,16 @@
           "layer": "unit",
           "file": "tests/signal_scout/integration/test_recovery_model_retries.py",
           "test": "test_MI_036_research_uses_guard_from_actual_registered_plugin"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_recovery_model_retries.py",
+          "test": "test_MI_036_native_invalid_return_and_transport_failures_share_application_budget"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/integration/test_recovery_model_retries.py",
+          "test": "test_MI_036_mixed_native_invalid_response_allows_sixth_success_then_fresh_call_budget"
         }
       ],
       "otherCoverage": [],

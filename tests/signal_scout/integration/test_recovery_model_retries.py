@@ -37,6 +37,14 @@ def _response(request, body, text):
                           content=payload, request=request)
 
 
+def _empty_completed_response(request, body):
+    completed = {'id': 'empty-retry-proof', 'model': body['model'], 'status': 'completed',
+                 'output': [], 'usage': {'input_tokens': 10, 'output_tokens': 0, 'total_tokens': 10}}
+    payload = 'data: ' + json.dumps({'type': 'response.completed', 'response': completed}) + '\n\n'
+    return httpx.Response(200, headers={'content-type': 'text/event-stream'},
+                          content=payload, request=request)
+
+
 @contextmanager
 def _native_model(tmp_path, monkeypatch, plan, *, attempts=None):
     settings = importlib.import_module('plugins.signal-scout.scout_runtime.settings')
@@ -363,3 +371,63 @@ def test_MI_036_research_uses_guard_from_actual_registered_plugin(tmp_path, monk
             assert result['final_response'] == 'Registered mission budget succeeded.'
         else:
             assert result['interrupted'] is True
+
+
+@pytest.mark.parametrize('limit,empty_at', [(6, 1), (6, 3), (6, 5), (6, 6), (3, 1), (1, 1)])
+def test_MI_036_native_invalid_return_and_transport_failures_share_application_budget(tmp_path, monkeypatch, caplog, limit, empty_at):
+    mission = importlib.import_module('plugins.signal-scout.scout_runtime.mission')
+    def plan(index, request, body):
+        if index == empty_at:
+            return _empty_completed_response(request, body)
+        if index <= limit:
+            return _transient('connection', request)
+        return _response(request, body, 'Forbidden beyond application cap.')
+
+    with _native_model(tmp_path, monkeypatch, plan, attempts=limit) as (agent, config, attempts, wires), \
+         _budget(agent, config['agent']['api_max_retries']), _request_ids() as (ids, errors), \
+         patch.object(agent, 'interrupt', wraps=agent.interrupt) as interrupt:
+        result = agent.run_conversation('Bound returned invalid responses and connection failures.')
+        counts = f'provider entries={len(attempts)}; middleware entries={len(ids)}; HTTP wire sends={len(wires)}'
+        assert len(attempts) == limit, counts
+        assert len(ids) == len(wires) == limit, counts
+        assert len(set(ids)) == 1 and all(value == attempts[0] for value in attempts)
+        assert [error[:2] for error in errors] == [call[:2] for call in ids]
+        assert result['completed'] is False and mission.MissionOutcome.from_native(result) == 1
+        assert 'Forbidden beyond application cap.' not in result['final_response']
+        interrupt.assert_called_once_with(hard_cancel=True)
+        assert agent.provider == 'openai-codex' and agent._fallback_activated is False
+        assert agent._fallback_chain == []
+        records = [record for record in caplog.records if 'Scout model application budget exhausted' in record.message]
+        assert len(records) == 1 and f'attempts={limit}' in records[0].message
+
+
+@pytest.mark.parametrize('empty_at', [1, 5])
+def test_MI_036_mixed_native_invalid_response_allows_sixth_success_then_fresh_call_budget(tmp_path, monkeypatch, empty_at):
+    def plan(index, request, body):
+        if index == empty_at:
+            return _empty_completed_response(request, body)
+        if index not in (6, 12):
+            return _transient('connection', request)
+        return _response(request, body, 'Mixed sixth success.' if index == 6 else 'Fresh sixth success.')
+
+    with _native_model(tmp_path, monkeypatch, plan) as (agent, config, attempts, wires), \
+         _budget(agent, config['agent']['api_max_retries']), _request_ids() as (ids, errors), \
+         patch.object(agent, 'interrupt', wraps=agent.interrupt) as interrupt:
+        first = agent.run_conversation('Preserve mixed retry conversation.')
+        assert len(attempts) == len(wires) == len(ids) == 6
+        assert first['completed'] is True and first['final_response'] == 'Mixed sixth success.'
+        assert all(value == attempts[0] for value in attempts)
+        continued = agent.run_conversation('Continue accepted conversation.', conversation_history=first['messages'])
+        assert len(attempts) == len(wires) == len(ids) == 12
+        assert continued['completed'] is True and continued['final_response'] == 'Fresh sixth success.'
+        assert len(set(ids[:6])) == len(set(ids[6:])) == 1 and ids[0] != ids[6]
+        assert [error[:2] for error in errors] == [call[:2] for call in ids[:5] + ids[6:11]]
+        assert all(value == attempts[6] for value in attempts[6:])
+        assert attempts[6]['instructions'] == attempts[0]['instructions']
+        assert attempts[6]['tools'] == attempts[0]['tools']
+        assert attempts[6]['input'][:len(attempts[0]['input'])] == attempts[0]['input']
+        retained = json.dumps(wires[-1]['body']['input'])
+        assert 'Preserve mixed retry conversation.' in retained and 'Mixed sixth success.' in retained
+        interrupt.assert_not_called()
+        assert agent.provider == 'openai-codex' and agent._fallback_activated is False
+        assert agent._fallback_chain == []

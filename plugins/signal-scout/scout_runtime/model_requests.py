@@ -1,6 +1,6 @@
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import logging
 import sys
 import threading
@@ -14,22 +14,23 @@ class _Binding:
     agent: object
     session_id: str
     max_attempts: int
-    failures: dict[str, int] = field(default_factory=dict)
+    attempts: dict[str, int] = field(default_factory=dict)
     active: bool = True
     stopped: bool = False
 
 
 @dataclass(frozen=True)
-class _Failure:
+class _Attempt:
     binding: _Binding
     session_id: str
     api_request_id: str
-    exc_info: tuple
+    number: int
+    exc_info: tuple | None = None
 
 
 _binding = None
 _binding_lock = threading.Lock()
-_failed_call = ContextVar('scout_failed_model_call', default=None)
+_request_attempt = ContextVar('scout_model_request_attempt', default=None)
 
 
 @contextmanager
@@ -47,51 +48,48 @@ def bind_model_requests(agent, *, max_attempts):
             binding.active = False
             if _binding is binding:
                 _binding = None
-        failure = _failed_call.get()
-        if failure is not None and failure.binding is binding:
-            _failed_call.set(None)
+        attempt = _request_attempt.get()
+        if attempt is not None and attempt.binding is binding:
+            _request_attempt.set(None)
 
 
 def _execute(*, request, next_call, session_id='', api_request_id='', **_):
-    _failed_call.set(None)
+    _request_attempt.set(None)
     with _binding_lock:
         binding = _binding
         matched = (binding is not None and binding.active
                    and session_id == binding.session_id and bool(api_request_id))
+        if matched:
+            number = binding.attempts.get(api_request_id, 0) + 1
+            binding.attempts[api_request_id] = number
+            attempt = _Attempt(binding, session_id, api_request_id, number)
     if not matched:
         return next_call(request)
+    _request_attempt.set(attempt)
     try:
-        result = next_call(request)
+        return next_call(request)
     except Exception:
-        with _binding_lock:
-            if _binding is binding and binding.active:
-                binding.failures[api_request_id] = binding.failures.get(api_request_id, 0) + 1
-        _failed_call.set(_Failure(binding, session_id, api_request_id, sys.exc_info()))
+        _request_attempt.set(replace(attempt, exc_info=sys.exc_info()))
         raise
-    else:
-        with _binding_lock:
-            if _binding is binding and binding.active:
-                binding.failures.pop(api_request_id, None)
-        return result
 
 
 def _on_error(*, session_id='', api_request_id='', retryable=None, **_):
-    failure = _failed_call.get()
-    _failed_call.set(None)
-    if (failure is None or failure.session_id != session_id
-            or failure.api_request_id != api_request_id or retryable is not True):
+    attempt = _request_attempt.get()
+    _request_attempt.set(None)
+    if (attempt is None or attempt.session_id != session_id
+            or attempt.api_request_id != api_request_id or retryable is not True):
         return
-    binding = failure.binding
+    binding = attempt.binding
     exhausted = False
     with _binding_lock:
         if (_binding is binding and binding.active and not binding.stopped
-                and binding.failures.get(api_request_id, 0) >= binding.max_attempts):
+                and attempt.number >= binding.max_attempts):
             binding.stopped = True
             binding.agent.interrupt(hard_cancel=True)
             exhausted = True
     if exhausted:
         logger.error('Scout model application budget exhausted session_id=%s api_request_id=%s attempts=%s',
-                     session_id, api_request_id, binding.max_attempts, exc_info=failure.exc_info)
+                     session_id, api_request_id, attempt.number, exc_info=attempt.exc_info)
 
 
 def register(ctx):
