@@ -160,6 +160,8 @@ class _CDP:
         self.interaction_observation_timeout = interaction_observation_timeout
         self.sequence = 0
         self._observation = None
+        if authority is not None:
+            authority.check()
         self.connection = connect(endpoint, proxy=None, open_timeout=timeout,
                                   close_timeout=timeout, ping_interval=None, max_size=None)
         if authority is not None:

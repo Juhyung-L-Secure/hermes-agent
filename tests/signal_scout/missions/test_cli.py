@@ -290,6 +290,8 @@ def test_MI_035_attach_status_cannot_override_native_exit_or_cleanup(monkeypatch
         config={"browser": {"mode": "headless"}, "scout_lifecycle": {"shutdown_timeout": 5}},
         scout_environment=lambda: {}, __enter__=lambda: None, close=lambda: None)
     monkeypatch.setattr(host, "BrowserRun", lambda *_args, **_kwargs: browser)
+    monkeypatch.setattr(host, 'RecoveryServer', lambda _: SimpleNamespace(
+        start=lambda: None, cancel=lambda: None, close=lambda: None, scout_options=lambda: []))
     owner = host.MissionRun(mission.MissionRequest("Research rice."))
     info = {"Id": "a" * 64, "State": {"Running": True, "ExitCode": 0}}
     state = iter([info, {"Id": "a" * 64, "State": {"Running": running, "ExitCode": exit_code}}, info])
@@ -351,6 +353,8 @@ def test_MI_035_creation_failure_and_deferred_cancel_clean_attempted_owner(monke
         config={"browser": {"mode": "headless"}, "scout_lifecycle": {"shutdown_timeout": 5}},
         scout_environment=lambda: {}, __enter__=enter, close=lambda: closed.append("browser"))
     monkeypatch.setattr(host, "BrowserRun", lambda *_args, **_kwargs: browser)
+    monkeypatch.setattr(host, 'RecoveryServer', lambda _: SimpleNamespace(
+        start=lambda: None, cancel=lambda: None, close=lambda: None, scout_options=lambda: []))
     owner = host.MissionRun(mission.MissionRequest("Research rice."))
     looked_up = []
 

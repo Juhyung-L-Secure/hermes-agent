@@ -20,6 +20,7 @@ def boundary(monkeypatch):
     browser = owner_module.Browser.__new__(owner_module.Browser)
     browser.settings = settings.load_settings(CONFIG)
     browser.ready, browser.failed, browser.endpoint = True, False, 'ws://trusted-owned-browser'
+    browser.generation, browser.recovery, browser.sandbox_status = 1, None, 'fixture-sandbox'
     monkeypatch.setenv('BROWSER_CDP_URL', browser.endpoint)
     calls, effects, closed = [], [], []
     session = session_module.BrowserSession(browser)

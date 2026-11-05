@@ -2,10 +2,13 @@
 import os
 from pathlib import Path
 import re
+import threading
 import uuid
 
 from .control import discover
 from ._errors import OwnershipFailure
+from .recovery import RecoveryClient
+from .generation import GenerationHelper, capture_bootstrap, retire_bootstrap
 from ..runtime_logging import event
 from ..network.urls import validate_url
 
@@ -20,6 +23,11 @@ class Browser:
         self.failed = False
         self._session = None
         self.endpoint = os.environ.get("BROWSER_CDP_URL", "")
+        self.recovery, self.generation = RecoveryClient.from_environment(config)
+        self.sandbox_status = None
+        self._native_retired = False
+        self._generation_helper = None
+
     def verify_control(self):
         """Reject unavailable or stale discovery before any sandbox/navigation work."""
         network = self.settings["scout_network"]
@@ -34,6 +42,8 @@ class Browser:
 
         if self.failed:
             raise RuntimeError("Browser control unavailable.")
+        if self._native_retired:
+            raise RuntimeError("Native bootstrap session was retired after browser replacement.")
         try:
             result = browser_tool._run_browser_command(self.task, name, list(args),
                                                        timeout=self.settings["browser"]["command_timeout"])
@@ -116,10 +126,27 @@ class Browser:
             if self._session is not None:
                 self._session._disconnect()
         finally:
-            if self.task in browser_tool._active_sessions:
+            if self._generation_helper is not None:
+                self._generation_helper.retire()
+            if not self._native_retired and self.task in browser_tool._active_sessions:
                 browser_tool._cleanup_single_browser_session(self.task)
             self.failed = True
             event("scout", "closed")
+
+    def accept_replacement(self, replacement):
+        self.endpoint, self.generation = replacement.endpoint, replacement.generation
+        self.sandbox_status = replacement.sandbox_status
+        previous = self._generation_helper
+        helper = GenerationHelper(self.task + '-generation-' + str(self.generation), self.endpoint)
+        self._generation_helper = helper
+        if not self._native_retired:
+            self._native_retired = True
+            task = self.task
+            threading.Thread(target=lambda: retire_bootstrap(task, capture_bootstrap(task)), daemon=True,
+                             name='scout-retire-bootstrap').start()
+        if previous is not None:
+            previous.retire()
+        helper.start()
 
     def __enter__(self):
         return self.start()

@@ -9,6 +9,9 @@
 | `owner.py` | `Browser`, native helper startup/commands, sandbox attestation, cached `session()`, native cleanup |
 | `session.py` | `BrowserSession.dispatch()` and `close()`, selected page, exact refs, frame scans, focus, native effects, observations, terminal state |
 | `request.py` | Closed request grammar and sanitized format rules |
+| `lifetime.py` | Native bounded requests and private repair attempts, irreversible dispatch authority, accepted state publication |
+| `recovery.py` | Authenticated owner RPC and validated generation/endpoint descriptors |
+| `generation.py` | Captured native helper retirement and explicit-endpoint replacement supervisor lifecycle |
 | `_errors.py` | Ordinary rejection and required inspection-failure classes |
 | `_geometry.py` | Pure polygon clipping and coordinate projection |
 | `_cdp.py` | Private CDP transport, command acknowledgment, document observation |
@@ -23,7 +26,9 @@
 
 Trusted host `BrowserRun` creates and verifies exact run-owned browser container. `Browser.start()` validates discovery, uses native `_run_browser_command` to inspect `chrome://sandbox`, restores blank page, and marks owner ready. Native helper remains separate from action connection. Bootstrap smoke uses existing `Browser.navigate()` and native snapshot without constructing a model action session.
 
-`Browser.session(target_id=None)` creates one cached `BrowserSession` after startup. Trusted explicit page ID must exist. Without an ID, initial page enumeration selects first current page. Repeated calls retain same session, refs, selection, and connection. Conflicting explicit ID rejects. Only successful `switch_tab` changes selection after initialization. Popups never auto-select.
+`Browser.session(target_id=None)` creates one cached `BrowserSession` after startup. Trusted explicit page ID must exist. Without an ID, initial page enumeration selects first current page. Repeated calls retain same session, refs, selection, and connection. Conflicting explicit ID rejects. Only successful `switch_tab` changes selection within a browser generation. Owned replacement initializes the new generation’s fresh page and reports state loss. Popups never auto-select.
+
+Each supervised request resolves complete operations within private frame/ref/CDP state. A dispatch fence checks irreversible request authority at the actual CDP send; revocation also shuts down its raw sockets. Late results, fatal callbacks and cleanup cannot publish into a continuing request. Cleanup may finish for captured old resources without restoring authority.
 
 Session resolves complete operations within its own frame/ref/CDP state. Click and type retain exact original-node binding through reveal, current visibility, iframe owners, coordinate projection, and hit testing. Typing checks editability and exact focus before replacement and insertion. Keypress resolves actual focus through cross-origin frames and closed author shadow roots, reveals it, and verifies focus again. Page-level keys invent no target. Known unrelated frame loss stays an explicit partial observation.
 
@@ -31,13 +36,17 @@ Every dispatch retains existing interruption, readiness, owner discovery, and sa
 
 Session close first latches terminal, then closes `Browser`. Owner marks unavailable, disconnects session transport, and cleans native helper in `finally`. Private disconnect never calls owner close. Repeated outer owner cleanup retains native cleanup behavior. Old captured session stays terminal after native adapter unbind and cannot use another run. Host `BrowserRun` separately removes exact container/profile and restores helper state.
 
-Native `_run_browser_command` keeps supported `BROWSER_CDP_URL`, pinned driver and supervisor, per-run temporary transport, and scrubbed subprocess environment. It uses no `--session` with `--cdp`, package auto-install, global patch, or fallback browser. Temporary command output files are removed after use. Observed action-driver transport loss is terminal even when HTTP discovery stays healthy. Auxiliary supervisor reconnect does not replace browser. Its broader failure policy remains deferred.
+Native `_run_browser_command` keeps supported `BROWSER_CDP_URL`, pinned driver and supervisor, per-run temporary transport, and scrubbed subprocess environment. It uses no `--session` with `--cdp`, package auto-install, global patch, or fallback browser. Temporary command output files are removed after use. Confirmed action-driver loss reconnects the same owned browser first, then requests replacement if configured. Each request and repair attempt owns its connection and state. Only a live accepted result publishes references or a new generation. Replacement verifies the actual sandbox through fenced CDP, invalidates references and reports lost tabs/session state without replay. A private owner status request lets a later call discover an already completed owned generation. Auxiliary supervisor reconnect policy remains unchanged. Replacement starts a separate native supervisor with the captured new endpoint and task; old cleanup never resolves an endpoint from process-global environment.
 
 ## Observations and deadlines
 
 Private CDP associates effect acknowledgments with selected root/session/loader and document readiness. Matching initial-document DOMContentLoaded permits early return while images or application data remain pending. Command-response, document-observation, short interaction-observation, capture, and cleanup deadlines remain independent. Settings and default durations live in [Docker operating reference](../../../../docker/signal-scout/README.md#settings-and-logs).
 
+Missing command replies and known inspection/context failures return incomplete facts with send/acknowledgment, phase, uncertainty and a bounded fresh capture or explicit capture unavailability. Missing reply alone does not trigger infrastructure repair. Whole-request timeout includes cleanup, requests cancellation and revokes dispatch authority; worker termination remains unconfirmed.
+
 Healthy observation expiry returns first current incomplete capture without replay. Only explicit `navigate` loading errors permit bounded retry of copied original URL. Retry revalidates permissions, original selected target, and owned connection. Blocked or stale recovery returns current incomplete observations without another effect. Same-document recovery after loading error remains incomplete. Click, type, keypress, back, and scroll never replay.
+
+Hermes may choose ordinary `reload` after page or renderer failure. Reload attaches the selected owned target and issues `Page.reload` before frame, isolated-world or AX inspection, then obtains bounded fresh observation. No universal automatic page reload is added.
 
 Ordinary actions capture compact AX and applicable selected-page facts. Explicit screenshot captures raw actual full viewport PNG in memory and validates dimensions. Popup screenshot retains popup dimensions. Adapter owns native multimodal packaging. No automatic screenshot, temporary image file, archive, extra inspection pass, or replacement target appears.
 

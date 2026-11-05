@@ -63,11 +63,11 @@ Select another operating file with `--config /absolute/path/scout.yaml`. Repeate
 
 Host helper locks one run, rejects existing containers, starts healthy helpers and creates one run-labelled browser. Exact Docker ID/project/service/run labels and newly owned Chromium listener are checked before passing endpoint to Scout. Launcher checks its child listener and sets main-window contents before readiness. Scout checks discovery and actual sandbox before browsing. Redirects and wrong or stale endpoints fail closed. Create/start failure cleanup resolves exact attempted name/project/service/run, verifies full ID and removes only current owner; foreign collisions/old runs remain untouched.
 
-Native owner retains pinned Hermes helper and private action session. [Browser runtime mechanics](../../plugins/signal-scout/scout_runtime/browser/README.md#native-owner-and-action-session) describe startup, control checks, and cleanup. Observed action-driver transport loss remains terminal even with healthy discovery. Auxiliary-supervisor policy remains deferred.
+Native owner retains pinned Hermes helper and private action session. [Browser runtime mechanics](../../plugins/signal-scout/scout_runtime/browser/README.md#native-owner-and-action-session) describe startup, control checks, and cleanup. Confirmed action-driver loss triggers the configured reconnect/replacement sequence. Missing replies and ordinary page failures return facts to Hermes. Existing auxiliary-supervisor reconnect policy remains unchanged.
 
-One run uses one fresh anonymous default context for tabs/popups; no incognito/additional contexts. Fresh container/process/profile every run; no replacement/restart. Normal/fatal end removes only owned browser/temporary state. Helpers/images/volumes remain; browser has no Hermes runtime/credentials or shared writable artifact mount.
+One run uses one fresh anonymous default context for tabs/popups; no incognito/additional contexts. Fresh container/process/profile every run and after owned replacement. Replacement invalidates all references and loses tabs and session state; the interrupted action is never replayed. Normal/fatal end removes only owned browser/temporary state. Helpers/images/volumes remain; browser has no Hermes runtime/credentials or shared writable artifact mount.
 
-**Cleanup is not guaranteed if Hermes, the launcher, Docker, or the host disappears. A browser may remain running and require manual cleanup. No watchdog, orphan adoption, automatic sweep, or recovery policy is implemented.**
+**Cleanup is not guaranteed if Hermes, the launcher, Docker, or the host disappears. A browser may remain running and require manual cleanup. No watchdog, orphan adoption, or automatic sweep is implemented. Recovery operates only while the current mission launcher retains exact ownership.**
 
 Inspect a leftover before removing it. These commands identify exact ownership; substitute the inspected full ID, never a wildcard or unrelated container:
 
@@ -106,8 +106,12 @@ Raw Compose `status`, `login`, `chat`, and helper commands receive the default f
 | --- | --- |
 | `logging.level/max_size_mb/backup_count` | INFO / 5 MiB / 3 |
 | `scout_diagnostics.max_record_bytes/max_pending_bytes` | 65536 / 1048576 bytes |
-| `agent.api_max_retries` | 2 application-level attempts per model request |
+| `agent.api_max_retries` | 6 native application attempts per model request: initial plus 5 retries |
 | `browser.command_timeout/scroll_pixels` | 60 seconds / 500 pixels |
+| `browser.request_timeout/capture_timeout` | 400 seconds for the whole request / 3 seconds for best-effort capture |
+| `timeouts.tools.sequential_call` | 420 seconds, native outer backstop |
+| `scout_recovery.strategy` | `reconnect_then_restart`; alternatives `reconnect` and `restart` |
+| `scout_recovery.reconnect_attempts/restart_attempts/attempt_timeout` | 2 / 1 / 30 seconds for each complete repair attempt |
 | `browser.observation_timeout` | 5 seconds after final effect acknowledgment |
 | `browser.interaction_observation_timeout` | 0.25 seconds for click/key navigation detection |
 | `browser.navigation_retries` | 1 additional explicit-navigation attempt after ordinary loading error |
@@ -120,9 +124,13 @@ Raw Compose `status`, `login`, `chat`, and helper commands receive the default f
 
 Command timeouts are integers from 1 through 120 seconds. Proxy/lifecycle timeouts range from 1 through 300 seconds. Log size ranges from 1 through 1024 MiB, backup count from 1 through 20, and level is DEBUG, INFO, WARNING, or ERROR.
 
-Hermes `agent.api_max_retries` counts total attempts in ordinary API retry loop. Value 1 means no retry. Value 2 allows one retry. Scout retains existing native backoff for transient main-model failures, including `ReadError` and connection failures. Retry sends pending model request with existing conversation, without restarting mission or completed browser actions. Native non-retryable errors, SDK behavior, and separate primary-transport recovery remain unchanged. Setting does not strictly cap every underlying wire request.
+Hermes `agent.api_max_retries` counts total native application attempts. Value 1 means no retry; value 6 allows initial request plus 5 retries. Scout retains native retries and backoff, and uses mission-scoped middleware plus the native classified-error hook to stop after the configured total, including responses that native validation rejects after transport returns. Exhaustion logs its application-attempt count and ends the mission with failure. Permanent authentication/configuration errors retain native classification. Retry preserves the pending request, conversation prefix and completed browser effects. SDK retries can produce additional wire requests; the application budget does not claim a wire-attempt limit.
 
 `browser.observation_timeout` and `browser.interaction_observation_timeout` require finite positive numbers no greater than 120 seconds. Interaction allowance cannot exceed document allowance. Each starts after applicable effect acknowledgment. Healthy expiry returns current `incomplete` observation without replay. Response, capture, and cleanup have separate bounds, so default 5 seconds is no total-tool SLA. `browser.navigation_retries` requires nonnegative integer, initially 1. Booleans and nonintegers fail. Only acknowledged explicit-navigation loading errors permit original-URL retry. [Observation mechanics](../../plugins/signal-scout/scout_runtime/browser/README.md#observations-and-deadlines) preserve current-target checks, bounded retry, and fatal boundaries.
+
+Whole-request expiry requests cooperative cancellation and revokes that request’s dispatch authority; it does not confirm worker termination or undo already sent commands. The native outer timeout must retain at least `capture_timeout + 1` seconds of headroom above `request_timeout`. Repair attempts include discovery, handshake, sandbox verification, observation and private cleanup. A live control connection with unavailable capture stays repaired; capture failure alone never causes a restart.
+
+Mission launch exposes an authenticated private Unix socket to Scout only. Fixed requests carry operation, expected generation and deadline; no model-supplied command, path or endpoint reaches Docker. Browser receives no socket, auth/log mount, host listener or Docker privilege. Abandoned RPC closes its socket, preventing late host publication; old cleanup remains bound to its captured generation. Startup settings, helper state and auth/log volumes remain owned by the original run.
 
 Viewport requires positive CDP signed-integer width/height and finite positive numeric scale, never booleans. Missing or invalid values fail parsing. Failed native sizing commands fail startup without fallback. Explicit screenshot captures actual full viewport in memory, including native popup size, without archive.
 
@@ -136,7 +144,7 @@ docker compose -f docker/signal-scout/compose.yaml up -d --force-recreate --wait
 
 Set `browser.mode: headed` in `config.yaml`, then start the next owned run without rebuilding. Chromium opens directly on the local Windows desktop through WSLg. No separate host browser, viewer login or viewer URL exists. Restore `headless` before the next production run.
 
-You can click and type in the actual Chromium window. Manual page changes can stale an original Scout reference. Closing this window closes the actual browser. Normal owned cleanup closes it too. No crash or reconnect policy is added.
+You can click and type in the actual Chromium window. Manual page changes can stale an original Scout reference. Closing this window closes the actual browser. A running mission follows its configured owned repair policy. Normal owned cleanup closes it too.
 
 Only an explicitly headed browser receives one read-only bind of the resolved WSLg Wayland socket. The host resolves the display input once and supplies this grant with the captured run configuration. Chromium uses its own private runtime directory. Host X11, the whole WSLg directory, PulseAudio and GPU devices are not shared. Headless does not discover or mount a display. This local-debug connection grants access to the host display service, so it differs from the old container-local display boundary. [Headed security contracts](../../plugins/signal-scout/security/README.md#download-sizing-and-headed-safeguards) define the exception.
 
