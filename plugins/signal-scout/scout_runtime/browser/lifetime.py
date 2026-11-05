@@ -381,7 +381,7 @@ class BrowserRequests:
         candidate._command('Page.navigate', {'url': 'chrome://sandbox'}, session)
         while True:
             candidate._authority.check()
-            status = candidate._command('Runtime.evaluate', {'expression': 'document.body.innerText',
+            status = candidate._command('Runtime.evaluate', {'expression': "document.body?.innerText || ''",
                                         'returnByValue': True}, session).get('result', {}).get('value', '')
             if all(re.search(re.escape(label) + r'\s+Yes\b', status) for label in (
                     'PID namespaces', 'Network namespaces', 'Seccomp-BPF sandbox')):

@@ -100,7 +100,7 @@ def test_MI_033_MI_035_actual_cli_failed_native_outcome_and_blocked_action(cli_s
         assert counts().get("cli-effects", 0) == effects
     if scenario == "exhaust":
         assert "Broken pipe" in result.stderr
-        assert result.stderr.count("Retrying API call in") == 1
+        assert result.stderr.count("Retrying API call in") == 5
     assert helper_state(stack) == before
     current = browser_runs(stack) - prior
     assert len(current) == 1
@@ -108,6 +108,29 @@ def test_MI_033_MI_035_actual_cli_failed_native_outcome_and_blocked_action(cli_s
     assert 'event=launcher_start' in saved and 'event=child_exit' in saved
     assert 'phase=pre_stop' in saved and 'phase=after_stop_attempt' in saved
     assert 'event=launcher_start' not in result.stderr and 'event=launcher_ready' not in result.stderr
+    assert_clean(stack)
+
+
+@pytest.mark.parametrize('scenario,expected', [('budgetsuccess', 0), ('budgetexhaust', 1)])
+def test_MI_036_actual_cli_mixed_invalid_response_uses_six_native_attempts(cli_stack, tmp_path, scenario, expected):
+    stack, command, counts, _ = cli_stack
+    before = helper_state(stack)
+    effects = counts().get('cli-effects', 0)
+    result = subprocess.run([*command, '--verbose', 'CLI fixture ' + scenario], text=True,
+                            capture_output=True, timeout=180)
+    receipt(tmp_path, result)
+    assert result.returncode == expected, result.stderr
+    admissions = re.findall(r'fixture application_attempt=(\d+) total=(\d+)', result.stderr)
+    assert admissions == [(str(number), '6') for number in range(1, 7)], result.stderr
+    if expected == 0:
+        assert result.stdout.strip() == 'Controlled sixth native attempt succeeded.'
+        assert 'application budget exhausted' not in result.stderr
+    else:
+        assert result.stdout == ''
+        assert result.stderr.count('Scout model application budget exhausted') == 1
+        assert 'attempts=6' in result.stderr and 'mission failed' in result.stderr
+    assert counts().get('cli-effects', 0) == effects + 1
+    assert helper_state(stack) == before
     assert_clean(stack)
 
 

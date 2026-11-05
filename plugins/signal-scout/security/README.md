@@ -42,7 +42,7 @@ Forced proxy includes loopback webpage HTTP, WebSocket, frame, fetch, and image 
 
 ## Lifetime and cleanup limits
 
-Normal and surfaced fatal termination removes exact run-owned browser/container/profile. Second claimant leaves first untouched. Helpers, images, auth, and log volumes remain. Launcher, Hermes, Docker, or host loss has no independent teardown guarantee. No watchdog, orphan adoption, automatic sweep, recovery, or restart policy exists. Operator must inspect exact ownership before deliberate cleanup. Auxiliary reconnect/degraded policy and selected-tab closure remain deferred.
+Normal and surfaced fatal termination removes exact run-owned browser/container/profile. Second claimant leaves first untouched. Helpers, images, auth, and log volumes remain. Launcher, Hermes, Docker, or host loss has no independent teardown guarantee. Confirmed control loss follows configurable same-browser reconnect and exact owned replacement within the running mission. Each replacement verifies the actual sandbox, invalidates references and reports lost tabs/session state; it preserves the captured configuration and browser protections. The mission-private authenticated Unix socket is mounted into Scout only, with no browser control/auth/log mount, public listener or Docker privilege. Abandoned requests cannot publish a later generation, and captured old cleanup cannot remove the current one. No watchdog, orphan adoption or automatic sweep exists. Operator must inspect exact ownership before deliberate cleanup. Auxiliary reconnect/degraded policy and selected-tab closure remain deferred.
 
 ## Logs and diagnostic boundaries
 

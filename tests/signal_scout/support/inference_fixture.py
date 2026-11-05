@@ -70,11 +70,14 @@ def _send(self, request, **kwargs):
     if _main_calls == 1:
         assert signal.getitimer(signal.ITIMER_REAL) == (0.0, 0.0), "Research inherited a process alarm"
         initial = json.dumps(body["input"], ensure_ascii=False)
-        for scenario in ("success", "exhaust", "fatal", "blocked", "cancel", "headed", "startupfail"):
+        for scenario in ("success", "exhaust", "fatal", "blocked", "cancel", "headed", "startupfail", "budgetsuccess", "budgetexhaust"):
             if "CLI fixture " + scenario in initial:
                 _scenario = scenario
                 break
         assert _scenario is not None
+        if _scenario in {'exhaust', 'budgetsuccess', 'budgetexhaust'}:
+            import agent.conversation_loop
+            agent.conversation_loop.jittered_backoff = lambda *_args, **_kwargs: 0
         assert initial.count("Start with Google search unless user supplies URL.") == 1
         assert "Follow links actually observed. Don’t invent deep URLs." in initial
         if _scenario == "startupfail":
@@ -113,6 +116,23 @@ def _send(self, request, **kwargs):
         assert len(matches) == 1
         reference = matches[0].rsplit("[", 1)[1][:-1]
         return _reply(request, body, [_tool("click", {"ref": reference}, "Inspect controlled source control")])
+    if _scenario in {'exhaust', 'budgetsuccess', 'budgetexhaust'}:
+        from hermes_cli.plugins import get_plugin_manager
+        guard = get_plugin_manager()._plugins['signal-scout'].module.model_requests
+        attempt = guard._request_attempt.get()
+        assert attempt is not None and attempt.binding.max_attempts == 6
+        assert attempt.number == _main_calls - 2
+        if _main_calls == 3:
+            _retry_body = deepcopy(body)
+        assert body == _retry_body, 'Native retry changed completed browser history'
+        logging.getLogger('tools.cli_fixture').info('fixture application_attempt=%s total=%s',
+                                                   attempt.number, attempt.binding.max_attempts)
+        assert attempt.number <= 6, 'Seventh application attempt escaped mission guard'
+        if _scenario.startswith('budget') and _main_calls == 3:
+            return _reply(request, body, [])
+        if _scenario == 'budgetsuccess' and attempt.number == 6:
+            return _reply(request, body, [_message('Controlled sixth native attempt succeeded.')])
+        return _broken(request)
     outputs = [item for item in body["input"] if item.get("type") == "function_call_output"]
     assert len(outputs) == (3 if _main_calls == 5 else 2)
     if _main_calls == 3:
