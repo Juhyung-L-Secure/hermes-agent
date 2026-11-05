@@ -106,3 +106,77 @@ print('owned generation replacement and native continuation verified')
             "from pathlib import Path; assert not [p for root in ('/tmp','/home') for p in Path(root).rglob('*') if p.name=='gate-fixture.bin' or p.suffix=='.crdownload']"])
         private_after = {key: value for key, value in counts().items() if key.startswith(('172.30.242.2:', '127.0.0.1:', '::1:'))}
         assert private_after == private_before
+
+
+def test_BR_003_AG_006_AG_010_abandoned_replacement_cannot_touch_adopted_generation(fixture_web):
+    stack, _, _, _ = fixture_web
+    with stack.browser_run() as run, RecoveryServer(run) as server:
+        stack.browser_probe(SETUP + FAKE_MAIN + r'''
+with Browser(config) as browser:
+    tab=open_fixture(browser);gate=browser.session(target_id=tab)
+    stale=reference(gate._inspect_snapshot(tab),'Below fold')
+    initial_endpoint=browser.endpoint
+    config['browser']['request_timeout']=30
+    config['scout_recovery'].update(attempt_timeout=60,reconnect_attempts=1)
+    killer=g._CDP(browser.endpoint,2,1,.25)
+    try:
+        killer.command('Browser.close')
+    except Exception:
+        pass
+    finally:
+        killer.abort()
+    parked=threading.Event();release=threading.Event();old=[];armed=[True];stops=[]
+    native_init=g._CDP.__init__
+    def init(self,*args,**kwargs):
+        authority=kwargs.get('authority',args[4] if len(args)>4 else None)
+        if authority is not None and '-restart-' in authority.call_id and armed[0]:
+            armed[0]=False;old.append(authority);parked.set()
+            assert release.wait(90),'Abandoned replacement attachment was not released'
+        return native_init(self,*args,**kwargs)
+    def plan(index,kwargs):
+        if index==1:
+            return response([tool({'action':'click','args':{'ref':stale}},call_id='abandoned-replacement')],content='')
+        result=model_result([m for m in kwargs['messages'] if m.get('role')=='tool'][-1])
+        if index==2:
+            assert parked.is_set() and result['status']=='incomplete',result
+            assert result['data']['worker']['access_revoked'] is True
+            assert old[0].revoked.is_set() and old[0].parent.revoked.is_set()
+            assert browser.generation==1 and not stops
+            config['browser']['request_timeout']=60
+            return response([tool({'action':'snapshot','args':{}},call_id='adopt-current')],content='')
+        if index==3:
+            assert result['status']=='incomplete' and result['data']['recovery']['kind']=='restarted',result
+            assert browser.generation==2 and browser.endpoint!=initial_endpoint
+            assert stale not in gate._refs and gate._selected!=tab
+            return response([tool({'action':'navigate','args':{'url':'http://public.test/evidence'}})],content='')
+        if index==4:
+            assert result['status']=='success',result
+            return response([tool({'action':'click','args':{'ref':reference(result['data']['snapshot'],'Below fold')}})],content='')
+        assert index==5 and result['status']=='success',result
+        endpoint,selected,refs,helper=browser.endpoint,gate._selected,dict(gate._refs),browser._generation_helper
+        release.set();assert old[0].done.wait(10) and old[0].parent.done.wait(10)
+        assert browser.endpoint==endpoint and browser.generation==2 and browser._generation_helper is helper
+        assert gate._selected==selected and gate._refs==refs and browser.ready and not browser.failed
+        assert not stops
+        observer=g._CDP(endpoint,2,1,.25)
+        try:
+            attached=observer.command('Target.attachToTarget',{'targetId':selected,'flatten':True})['sessionId']
+            assert observer.command('Runtime.evaluate',{'expression':'window.counts.click',
+                'returnByValue':True},attached)['result']['value']==1
+        finally:
+            observer.close()
+        return response()
+    try:
+        with patch.object(g._CDP,'__init__',init),fake_main(plan) as (agent,requests):
+            agent._api_max_retries=1
+            def stop():
+                stops.append(True);agent.interrupt(hard_cancel=True)
+            with adapter.bind_browser(gate,action_reference=action_reference,on_fatal=stop):
+                outcome=agent.run_conversation('Adopt current owned generation while abandoned replacement cannot regain authority.')
+                assert outcome.get('completed') and not outcome.get('interrupted'),outcome
+                assert not stops
+                stable_requests(requests)
+    finally:
+        release.set()
+''', *server.scout_options(), run=run, timeout=240)
+        assert run.generation == 2
