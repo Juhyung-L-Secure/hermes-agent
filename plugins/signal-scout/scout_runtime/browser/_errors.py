@@ -3,7 +3,7 @@ class ActionRejected(Exception):
 
 
 class BrowserFailure(RuntimeError):
-    """Report unavailable ordinary browser inspection without replaying an action."""
+    pass
 
 
 class _RequiredFrameUnavailable(ActionRejected):
@@ -13,12 +13,12 @@ class _RequiredFrameUnavailable(ActionRejected):
 
 
 class RequestRevoked(Exception):
-    """The request may clean up its transport but has no browser authority."""
+    pass
 
 
 class OwnershipFailure(RuntimeError):
-    """The live control endpoint no longer belongs to this browser generation."""
+    pass
 
 
 class ControlUnavailable(RuntimeError):
-    """The owned control endpoint could not be reached or discovered."""
+    pass

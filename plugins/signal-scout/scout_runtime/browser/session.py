@@ -399,13 +399,6 @@ class BrowserSession:
 
 
     def _dispatch(self, request):
-        """Execute one parsed proposal against the current owned target.
-
-        Ordinary outcomes return status/reason/execution_started/data. Recoverable
-        inspection failures return incomplete observations. Terminal ownership or
-        machinery failure closes this gate; revoked requests raise RequestRevoked.
-        Started never proves completed server-side effects.
-        """
         started, action, phase, began = False, "unknown", "preparation", time.monotonic()
         self._action_acknowledged = False
         def invoke(operation, *, phase_name="execution"):
