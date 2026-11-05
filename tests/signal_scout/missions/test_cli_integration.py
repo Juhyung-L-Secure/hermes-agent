@@ -113,6 +113,7 @@ def test_MI_033_MI_035_actual_cli_failed_native_outcome_and_blocked_action(cli_s
 
 @pytest.mark.parametrize('scenario,expected', [('budgetsuccess', 0), ('budgetexhaust', 1)])
 def test_MI_036_actual_cli_mixed_invalid_response_uses_six_native_attempts(cli_stack, tmp_path, scenario, expected):
+    """MI_035"""
     stack, command, counts, _ = cli_stack
     before = helper_state(stack)
     effects = counts().get('cli-effects', 0)

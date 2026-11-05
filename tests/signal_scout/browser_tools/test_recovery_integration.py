@@ -5,6 +5,7 @@ from tests.signal_scout.support.model_fixture import FAKE_MAIN
 
 
 def test_BR_003_BR_004_AG_006_native_timeout_and_acknowledged_observation_continue(fixture_web):
+    """AE_006"""
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + FAKE_MAIN + r'''
 with Browser(config) as browser:
@@ -125,6 +126,7 @@ with Browser(config) as browser:
 
 
 def test_BR_004_AG_006_delayed_reply_is_uncertain_and_does_not_repair(fixture_web):
+    """AE_006"""
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + FAKE_MAIN + r'''
 with Browser(config) as browser:

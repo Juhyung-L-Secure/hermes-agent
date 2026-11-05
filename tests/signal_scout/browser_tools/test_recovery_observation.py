@@ -5,6 +5,7 @@ from tests.signal_scout.support.model_fixture import FAKE_MAIN
 
 
 def test_AG_005_AG_006_acknowledged_input_then_stale_inspection_is_nonfatal(fixture_web):
+    """AE_006"""
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + FAKE_MAIN + r'''
 with Browser(config) as browser:

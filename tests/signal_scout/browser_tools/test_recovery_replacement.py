@@ -4,6 +4,7 @@ from repair_server import RecoveryServer
 
 
 def test_AG_010_SR_005_owned_replacement_continues_native_conversation(fixture_web):
+    """BR_004 BR_006"""
     stack, _, counts, _ = fixture_web
     private_before = {key: value for key, value in counts().items() if key.startswith(('172.30.242.2:', '127.0.0.1:', '::1:'))}
     with stack.browser_run() as run, RecoveryServer(run) as server:

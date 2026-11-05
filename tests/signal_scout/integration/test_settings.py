@@ -88,6 +88,7 @@ def test_BT_004_browser_command_uses_supplied_timeout(monkeypatch):
     browser.task = 'scout-timeout-unit'
     browser.settings = {'browser': {'command_timeout': 12}}
     browser.failed = False
+    browser._native_retired = False
     browser.endpoint = 'ws://owned-endpoint'
     monkeypatch.setenv('BROWSER_CDP_URL', browser.endpoint)
     monkeypatch.setattr(browser_tool, '_find_agent_browser', lambda: '/usr/local/bin/agent-browser')

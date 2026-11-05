@@ -130,6 +130,11 @@
           "layer": "e2e",
           "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
           "test": "test_BR_003_AG_006_whole_deadline_includes_owned_cleanup"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_replacement.py",
+          "test": "test_BR_003_AG_006_AG_010_abandoned_replacement_cannot_touch_adopted_generation"
         }
       ],
       "otherCoverage": [],
@@ -143,7 +148,28 @@
       "requiredCoverage": [
         "e2e"
       ],
-      "coverage": [],
+      "coverage": [
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_BR_004_AG_006_native_timeout_and_acknowledged_observation_continue"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_BR_004_AG_006_abandoned_send_cannot_affect_continuing_browser"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_004_AG_010_confirmed_loss_reconnects_same_browser_without_replay"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_replacement.py",
+          "test": "test_AG_010_SR_005_owned_replacement_continues_native_conversation"
+        }
+      ],
       "otherCoverage": [],
       "blocker": ""
     },
@@ -240,6 +266,11 @@
           "layer": "e2e",
           "file": "tests/signal_scout/browser_tools/test_native_integration.py",
           "test": "test_BR_006_native_identical_format_failures_keep_full_guide_and_corrected_effect"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_replacement.py",
+          "test": "test_AG_010_SR_005_owned_replacement_continues_native_conversation"
         }
       ],
       "otherCoverage": [],
@@ -370,7 +401,23 @@
       "requiredCoverage": [
         "e2e"
       ],
-      "coverage": [],
+      "coverage": [
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_BR_004_AG_006_native_timeout_and_acknowledged_observation_continue"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_004_AG_006_delayed_reply_is_uncertain_and_does_not_repair"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_observation.py",
+          "test": "test_AG_005_AG_006_acknowledged_input_then_stale_inspection_is_nonfatal"
+        }
+      ],
       "otherCoverage": [],
       "blocker": ""
     },
@@ -579,6 +626,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_actions.py",
           "test": "test_AG_002_AG_003_AG_004_AG_007_copied_request_and_policy_keep_original_effect"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_observation.py",
+          "test": "test_AG_004_AG_006_selected_crashed_renderer_reload_precedes_inspection"
         }
       ],
       "otherCoverage": [],
@@ -593,7 +645,18 @@
         "unit",
         "e2e"
       ],
-      "coverage": [],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_recovery_unit.py",
+          "test": "test_AG_005_AG_006_acknowledged_action_with_changed_observation_is_nonfatal"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_observation.py",
+          "test": "test_AG_005_AG_006_acknowledged_input_then_stale_inspection_is_nonfatal"
+        }
+      ],
       "otherCoverage": [],
       "blocker": ""
     },
@@ -656,6 +719,21 @@
           "layer": "e2e",
           "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
           "test": "test_BR_003_AG_006_whole_deadline_includes_owned_cleanup"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_recovery_client.py",
+          "test": "test_AG_006_AG_010_revoke_closes_actual_rpc_and_blocks_host_publish"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_observation.py",
+          "test": "test_AG_006_AG_010_expired_repair_attempt_cannot_touch_accepted_connection"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_replacement.py",
+          "test": "test_BR_003_AG_006_AG_010_abandoned_replacement_cannot_touch_adopted_generation"
         }
       ],
       "otherCoverage": [],
@@ -917,7 +995,53 @@
         "unit",
         "e2e"
       ],
-      "coverage": [],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_host_repair.py",
+          "test": "test_AG_010_SR_005_replace_preserves_captured_state_and_idempotence"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_host_repair.py",
+          "test": "test_AG_010_expiry_bounds_reply_and_blocks_overlap_until_cleanup"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_host_repair.py",
+          "test": "test_AG_010_SR_005_late_cleanup_cannot_remove_newer_generation"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_recovery_unit.py",
+          "test": "test_AG_006_AG_010_expired_reconnect_worker_cleans_only_its_attempt"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_recovery_unit.py",
+          "test": "test_AG_010_stalled_capture_after_reconnect_never_causes_restart"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_004_AG_010_confirmed_loss_reconnects_same_browser_without_replay"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_observation.py",
+          "test": "test_AG_006_AG_010_expired_repair_attempt_cannot_touch_accepted_connection"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_replacement.py",
+          "test": "test_AG_010_SR_005_owned_replacement_continues_native_conversation"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_replacement.py",
+          "test": "test_BR_003_AG_006_AG_010_abandoned_replacement_cannot_touch_adopted_generation"
+        }
+      ],
       "otherCoverage": [],
       "blocker": ""
     }

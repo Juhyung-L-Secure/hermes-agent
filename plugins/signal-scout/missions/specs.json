@@ -149,7 +149,28 @@
         "unit",
         "e2e"
       ],
-      "coverage": [],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_cli.py",
+          "test": "test_MI_035_attach_status_cannot_override_native_exit_or_cleanup"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_cli.py",
+          "test": "test_MI_035_creation_failure_and_deferred_cancel_clean_attempted_owner"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/missions/test_cli_integration.py",
+          "test": "test_MI_036_actual_cli_mixed_invalid_response_uses_six_native_attempts"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/missions/test_cli_integration.py",
+          "test": "test_MI_035_actual_sigint_and_rejected_second_cli_preserve_active_owner"
+        }
+      ],
       "otherCoverage": [],
       "blocker": ""
     },
@@ -273,6 +294,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/integration/test_recovery_model_retries.py",
           "test": "test_MI_036_mixed_native_invalid_response_allows_sixth_success_then_fresh_call_budget"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/missions/test_cli_integration.py",
+          "test": "test_MI_036_actual_cli_mixed_invalid_response_uses_six_native_attempts"
         }
       ],
       "otherCoverage": [],

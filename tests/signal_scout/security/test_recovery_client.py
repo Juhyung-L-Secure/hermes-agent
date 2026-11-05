@@ -23,7 +23,7 @@ def owner_channel():
     endpoint = endpoint.replace('172.30.242.3:9222', f"{network['browser_address']}:{network['relay_port']}")
     browser = SimpleNamespace(config=config, generation=1, endpoint=endpoint, repair_cleanup_timeout=1,
         recovery_status=lambda *_: endpoint, settle_creation=lambda *_: None,
-        report_repair_failure=lambda *_: None)
+        report_repair_failure=lambda *_: None, ensure_repair_diagnostics=lambda *_: None)
     with RecoveryServer(browser) as server:
         client = recovery.RecoveryClient('/tmp/scout-recovery/owner.sock', server.nonce, config)
         client.path = str(server.socket_directory / 'owner.sock')

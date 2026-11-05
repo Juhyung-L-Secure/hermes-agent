@@ -406,7 +406,38 @@
         "unit",
         "e2e"
       ],
-      "coverage": [],
+      "coverage": [
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_host_repair.py",
+          "test": "test_AG_010_SR_005_rejects_untrusted_or_stale_requests_before_mutation"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_host_repair.py",
+          "test": "test_SR_005_unacknowledged_create_keeps_empty_lookup_uncertain_until_late_candidate"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_host_repair.py",
+          "test": "test_SR_005_standalone_initial_start_keeps_helper_and_diagnostic_lifecycle"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_host_repair.py",
+          "test": "test_SR_005_mission_cancel_revokes_repair_before_scout_stop_wait"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_recovery_client.py",
+          "test": "test_SR_005_bootstrap_reaper_keeps_start_identity_captured_before_pid_recycle"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_replacement.py",
+          "test": "test_AG_010_SR_005_owned_replacement_continues_native_conversation"
+        }
+      ],
       "otherCoverage": [],
       "blocker": ""
     },
@@ -414,7 +445,7 @@
       "id": "SR_006",
       "subfeature": "browser-security",
       "title": "Persistent native browser download denial",
-      "contract": "Pinned Chrome for Testing loads root-owned/read-only /etc/opt/chrome_for_testing/policies/managed/scout.json with mandatory DownloadRestrictions: 3. The launcher supplies the installed policy without a startup policy-page readback. Native policy persists after bounded startup CDP closes, without a download override or policy-only run-lived connection. Real attachment, redirected attachment and generated-blob attempts in initial/new tabs and separate popups emit attempted-download and canceled-progress events and save no file after startup disconnect. Controlled transient policy-free images prove real attachment/redirect downloads enter native progress, then native UI cancels before payload. Ordinary HTML, image, audio and video loading remains available. Native policy blocks ordinary webpage downloads, not Save Page or print-to-PDF. No allow toggle, custom download filter or download destination is introduced. Sole fresh anonymous default context remains supported; arbitrary trusted CDP remains trusted outside the model-facing gate under AG_001\u2013AG_007.",
+      "contract": "Pinned Chrome for Testing loads root-owned/read-only /etc/opt/chrome_for_testing/policies/managed/scout.json with mandatory DownloadRestrictions: 3. The launcher supplies the installed policy without a startup policy-page readback. Native policy persists after bounded startup CDP closes, without a download override or policy-only run-lived connection. Real attachment, redirected attachment and generated-blob attempts in initial/new tabs and separate popups emit attempted-download and canceled-progress events and save no file after startup disconnect. Controlled transient policy-free images prove real attachment/redirect downloads enter native progress, then native UI cancels before payload. Ordinary HTML, image, audio and video loading remains available. Native policy blocks ordinary webpage downloads, not Save Page or print-to-PDF. No allow toggle, custom download filter or download destination is introduced. Sole fresh anonymous default context remains supported; arbitrary trusted CDP remains trusted outside the model-facing gate under AG_001–AG_007.",
       "requiredCoverage": [
         "e2e"
       ],
