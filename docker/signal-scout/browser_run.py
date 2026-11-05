@@ -33,6 +33,7 @@ DOCKER_COMMAND_TIMEOUT = 60
 @dataclass(frozen=True)
 class _PendingCreate:
     name: str
+    not_started: bool = False
 
 
 @dataclass(frozen=True)
@@ -243,12 +244,30 @@ class BrowserRun:
 
     def _resolve_pending_create(self, deadline, cancelled):
         pending = self.container
+        if pending.not_started:
+            self.container = None
+            return
         identifier = self._attempted_container(pending.name, self._remaining(deadline, cancelled))
         if identifier is not None:
             info = self.inspect_container(identifier, timeout=self._remaining(deadline, cancelled))
             if info.get('Name') != '/' + pending.name:
                 raise OwnershipError('Browser ownership verification failed.')
+        else:
+            raise RuntimeError('Browser creation completion remains unknown.')
         self.container = identifier
+
+    def _create_browser(self, name, *, timeout=DOCKER_COMMAND_TIMEOUT):
+        self.container = _PendingCreate(name)
+        try:
+            identifier = checked(self.compose + ['run', '--no-deps', '-d', '--name', name,
+                '--label', RUN_LABEL + '=' + self.run, 'browser'], timeout=timeout)
+        except (FileNotFoundError, PermissionError):
+            self.container = _PendingCreate(name, not_started=True)
+            raise
+        if not re.fullmatch('[0-9a-f]{64}', identifier):
+            raise RuntimeError('Browser creation identity unavailable.')
+        self.container = identifier
+        return identifier
 
     def settle_creation(self, deadline):
         if isinstance(self.container, _PendingCreate):
@@ -298,11 +317,8 @@ class BrowserRun:
                 self.container = None
             self._remaining(deadline, cancelled)
             phase = 'repair_create'
-            self.container = _PendingCreate(name)
             try:
-                candidate = checked(self.compose + ['run', '--no-deps', '-d', '--name', name,
-                    '--label', RUN_LABEL + '=' + self.run, 'browser'],
-                    timeout=self._remaining(deadline, cancelled))
+                candidate = self._create_browser(name, timeout=self._remaining(deadline, cancelled))
             except Exception:
                 self._resolve_pending_create(time.monotonic() +
                     self.config['scout_lifecycle']['control_connect_timeout'], lambda: False)
@@ -386,11 +402,8 @@ class BrowserRun:
             self._diagnostics = self._new_diagnostics(None)
             self.start_helpers()
             name = self.project + "-browser-active"
-            self.container = _PendingCreate(name)
             try:
-                self.container = checked(self.compose + ["run", "--no-deps", "-d",
-                    "--name", name, "--label", RUN_LABEL + "=" + self.run,
-                    "browser"])
+                self._create_browser(name)
             except BaseException:
                 # Compose can create then fail to start without returning its ID.
                 # Resolve only this attempted owner, never an existing/foreign run.

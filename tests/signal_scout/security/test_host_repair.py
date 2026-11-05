@@ -370,6 +370,98 @@ def test_SR_005_unresolved_create_retains_obligation_until_exact_reconciliation(
     assert ('remove', docker.created[0], None) in docker.events
 
 
+@pytest.mark.parametrize('fault', ['timeout', 'nonzero', 'malformed'])
+def test_SR_005_unacknowledged_create_keeps_empty_lookup_uncertain_until_late_candidate(owned, monkeypatch, fault):
+    run, docker = owned
+    original_checked = docker.checked
+    late = {}
+    visible = False
+
+    def create(identifier):
+        late[identifier] = docker.records.pop(identifier)
+        if fault == 'timeout':
+            raise lifecycle.subprocess.TimeoutExpired(['docker', 'compose', 'run'], 1)
+        if fault == 'nonzero':
+            raise RuntimeError('Scout container operation failed.')
+
+    def checked(command, **kwargs):
+        if command[:3] == ['docker', 'ps', '-aq'] and not visible:
+            return ''
+        result = original_checked(command, **kwargs)
+        return '' if 'run' in command and fault == 'malformed' else result
+
+    docker.on_create = create
+    monkeypatch.setattr(lifecycle, 'checked', checked)
+    server = repair.RecoveryServer(run).start()
+    result = call(server, request(server))
+    assert result['status'] == 'failed' and run.endpoint is None
+    pending, lock, helpers = run.container, run.lock, run._helper_state
+    assert isinstance(pending, lifecycle._PendingCreate) and pending.not_started is False
+    assert call(server, request(server))['status'] == 'failed'
+    assert len(docker.created) == 1 and run.container is pending
+    with pytest.raises(RuntimeError, match='completion remains unknown'):
+        server.close()
+    with pytest.raises(RuntimeError, match='completion remains unknown'):
+        run.close()
+    assert run.container is pending and run.lock == lock and run._helper_state is helpers
+    docker.records.update(late)
+    visible = True
+    server.close()
+    assert run.container == docker.created[0]
+    monkeypatch.setattr(run, '_restore_helpers', lambda: None)
+    run.close()
+    assert not docker.records and run.container is None and run.lock is None
+
+
+def test_SR_005_known_preexec_create_failure_can_settle_confirmed_absence(owned, monkeypatch):
+    run, docker = owned
+    original_checked = docker.checked
+
+    def checked(command, **kwargs):
+        if 'run' in command:
+            raise FileNotFoundError('Docker executable unavailable')
+        if command[:3] == ['docker', 'ps', '-aq']:
+            pytest.fail('Known pre-exec failure must not require Docker discovery')
+        return original_checked(command, **kwargs)
+
+    monkeypatch.setattr(lifecycle, 'checked', checked)
+    with repair.RecoveryServer(run) as server:
+        assert call(server, request(server))['status'] == 'failed'
+        assert run.container is None and run.endpoint is None and docker.created == []
+    monkeypatch.setattr(run, '_restore_helpers', lambda: None)
+    run.close()
+    assert run.lock is None and not docker.records
+
+
+def test_SR_005_actual_checked_preserves_unacknowledged_create_classification(monkeypatch):
+    run = lifecycle.BrowserRun.__new__(lifecycle.BrowserRun)
+    run.compose, run.run = ['docker', 'compose'], uuid.uuid4().hex
+    def failed(command, **kwargs):
+        return SimpleNamespace(returncode=1, stdout='', stderr='private raw Docker error')
+
+    monkeypatch.setattr(lifecycle.subprocess, 'run', failed)
+    with pytest.raises(RuntimeError, match='Scout container operation failed') as caught:
+        run._create_browser('owned')
+    assert 'private raw' not in str(caught.value)
+    assert isinstance(run.container, lifecycle._PendingCreate) and run.container.not_started is False
+
+    def timeout(command, **kwargs):
+        raise lifecycle.subprocess.TimeoutExpired(command, kwargs['timeout'])
+
+    monkeypatch.setattr(lifecycle.subprocess, 'run', timeout)
+    with pytest.raises(lifecycle.subprocess.TimeoutExpired):
+        run._create_browser('owned')
+    assert isinstance(run.container, lifecycle._PendingCreate) and run.container.not_started is False
+
+    def not_started(command, **kwargs):
+        raise FileNotFoundError('Docker executable unavailable')
+
+    monkeypatch.setattr(lifecycle.subprocess, 'run', not_started)
+    with pytest.raises(FileNotFoundError):
+        run._create_browser('owned')
+    assert isinstance(run.container, lifecycle._PendingCreate) and run.container.not_started is True
+
+
 @pytest.mark.parametrize('phase', ['readiness', 'create'])
 def test_SR_005_repair_failure_keeps_original_and_cleanup_tracebacks(owned, monkeypatch, phase):
     run, docker = owned
