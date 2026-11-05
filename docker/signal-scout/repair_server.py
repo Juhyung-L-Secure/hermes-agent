@@ -10,6 +10,7 @@ import struct
 import tempfile
 import threading
 import time
+import traceback
 import uuid
 
 MAX_FRAME = 4096
@@ -53,7 +54,7 @@ def _request(connection, nonce, timeout):
             or type(value['generation']) is not int or value['generation'] < 1
             or type(value['deadline']) not in (int, float) or not math.isfinite(value['deadline'])):
         raise ValueError
-    remaining = min(timeout, value['deadline'] - time.time())
+    remaining = min(deadline - time.monotonic(), value['deadline'] - time.time())
     if remaining <= 0:
         raise TimeoutError
     connection.setblocking(False)
@@ -216,10 +217,13 @@ class RecoveryServer:
                                      self.browser.endpoint if status == 'ready' else None,
                                      status == 'ready', reason)
         except OwnershipError:
+            self.browser.report_repair_failure('repair_' + request['operation'], traceback.format_exc())
             response = _response('failed', self.browser.generation, reason='ownership_mismatch')
         except RepairStopped:
+            self.browser.report_repair_failure('repair_' + request['operation'], traceback.format_exc())
             response = _response('failed', self.browser.generation, reason='attempt_expired')
         except Exception:
+            self.browser.report_repair_failure('repair_' + request['operation'], traceback.format_exc())
             response = _response('failed', self.browser.generation, reason='repair_failed')
         with self._lock:
             operation.response = response
@@ -256,6 +260,7 @@ class RecoveryServer:
                 thread.join(max(0, deadline - time.monotonic()))
         if any(thread is not None and thread.is_alive() for thread in threads):
             raise RuntimeError('Scout recovery cleanup did not finish.')
+        self.browser.settle_creation(deadline)
         if self._directory is not None:
             shutil.rmtree(self._directory)
             self._directory = None

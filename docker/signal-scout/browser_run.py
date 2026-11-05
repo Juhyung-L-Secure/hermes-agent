@@ -31,6 +31,11 @@ DOCKER_COMMAND_TIMEOUT = 60
 
 
 @dataclass(frozen=True)
+class _PendingCreate:
+    name: str
+
+
+@dataclass(frozen=True)
 class _DiagnosticOwner:
     source: object
     container: str | None
@@ -197,7 +202,7 @@ class BrowserRun:
         return self.inspect_container(self.container, timeout=timeout)
 
     def inspect_container(self, identifier, *, timeout=DOCKER_COMMAND_TIMEOUT):
-        if not identifier or not re.fullmatch("[0-9a-f]{64}", identifier):
+        if not isinstance(identifier, str) or not re.fullmatch("[0-9a-f]{64}", identifier):
             raise OwnershipError("Browser ownership verification failed.")
         info = json.loads(checked(["docker", "inspect", identifier], timeout=timeout))[0]
         labels = info.get("Config", {}).get("Labels") or {}
@@ -223,7 +228,7 @@ class BrowserRun:
 
     def recovery_status(self, deadline, cancelled):
         remaining = self._remaining(deadline, cancelled)
-        if self.container is None:
+        if self.container is None or isinstance(self.container, _PendingCreate):
             return None
         info = self.inspect_container(self.container, timeout=remaining)
         self._remaining(deadline, cancelled)
@@ -236,7 +241,27 @@ class BrowserRun:
             '--filter', 'label=com.docker.compose.service=browser',
             '--filter', 'label=' + RUN_LABEL + '=' + self.run], timeout=timeout) or None
 
-    def _retire(self, identifier, diagnostics, deadline, cancelled):
+    def _resolve_pending_create(self, deadline, cancelled):
+        pending = self.container
+        identifier = self._attempted_container(pending.name, self._remaining(deadline, cancelled))
+        if identifier is not None:
+            info = self.inspect_container(identifier, timeout=self._remaining(deadline, cancelled))
+            if info.get('Name') != '/' + pending.name:
+                raise OwnershipError('Browser ownership verification failed.')
+        self.container = identifier
+
+    def settle_creation(self, deadline):
+        if isinstance(self.container, _PendingCreate):
+            self._resolve_pending_create(deadline, lambda: False)
+            if self.container is not None:
+                self._diagnostics.close()
+                self._diagnostics = self._new_diagnostics(self.container)
+
+    def report_repair_failure(self, phase, error, *, diagnostics=None):
+        (self._diagnostics if diagnostics is None else diagnostics).capture(phase,
+            error=f'Browser repair generation={self.generation} phase={phase}.\n{error}')
+
+    def _retire(self, identifier, diagnostics, deadline, cancelled, *, close_diagnostics=True):
         reserve = min(self.config['scout_lifecycle']['shutdown_timeout'],
                       max(0, (deadline - time.monotonic()) / 2))
         deadline -= reserve
@@ -249,12 +274,15 @@ class BrowserRun:
         info = self.inspect_container(identifier, timeout=self._remaining(deadline, cancelled))
         diagnostics.capture('after_stop_attempt', info)
         checked(['docker', 'rm', identifier], timeout=self._remaining(deadline, cancelled))
-        diagnostics.close()
+        if close_diagnostics:
+            diagnostics.close()
 
     def replace_owned(self, expected_generation, deadline, cancelled, publish):
         if expected_generation != self.generation:
             return 'rejected', 'stale_generation'
         self._remaining(deadline, cancelled)
+        if isinstance(self.container, _PendingCreate):
+            self.settle_creation(deadline)
         previous, previous_diagnostics = self.container, self._diagnostics
         if previous is not None:
             self.inspect_container(previous, timeout=self._remaining(deadline, cancelled))
@@ -263,25 +291,30 @@ class BrowserRun:
         candidate = None
         diagnostics = None
         name = f'{self.project}-browser-{self.run}-{self.generation}'
+        phase = 'repair_retire'
         try:
             if previous is not None:
-                self._retire(previous, previous_diagnostics, deadline, cancelled)
+                self._retire(previous, previous_diagnostics, deadline, cancelled, close_diagnostics=False)
                 self.container = None
-            else:
-                previous_diagnostics.close()
             self._remaining(deadline, cancelled)
+            phase = 'repair_create'
+            self.container = _PendingCreate(name)
             try:
                 candidate = checked(self.compose + ['run', '--no-deps', '-d', '--name', name,
                     '--label', RUN_LABEL + '=' + self.run, 'browser'],
                     timeout=self._remaining(deadline, cancelled))
             except Exception:
-                candidate = self._attempted_container(name, self.config['scout_lifecycle']['control_connect_timeout'])
+                self._resolve_pending_create(time.monotonic() +
+                    self.config['scout_lifecycle']['control_connect_timeout'], lambda: False)
+                candidate = self.container
                 raise
             self.inspect_container(candidate, timeout=self._remaining(deadline, cancelled))
             self.container = candidate
             diagnostics = self._new_diagnostics(candidate, deadline=deadline)
+            previous_diagnostics.close()
             self._diagnostics = diagnostics
             diagnostics.start()
+            phase = 'repair_readiness'
             while True:
                 remaining = self._remaining(deadline, cancelled)
                 info = self.inspect_container(candidate, timeout=remaining)
@@ -300,18 +333,30 @@ class BrowserRun:
                             or parsed.password is not None or parsed.query or parsed.fragment
                             or not re.fullmatch('/devtools/browser/[A-Za-z0-9-]+', parsed.path)):
                         raise OwnershipError('Browser control ownership verification failed.')
+                    phase = 'repair_publish'
                     publish(endpoint)
                     diagnostics.owner = _DiagnosticOwner(self, candidate)
                     return 'ready', None
                 time.sleep(min(0.05, self._remaining(deadline, cancelled)))
         except Exception:
-            if candidate is not None:
-                cleanup_deadline = time.monotonic() + self.repair_cleanup_timeout
-                diagnostics = diagnostics or self._new_diagnostics(candidate)
-                self.container, self._diagnostics = candidate, diagnostics
-                self._retire(candidate, diagnostics, cleanup_deadline, lambda: False)
-                self.container = None
+            self.report_repair_failure(phase, traceback.format_exc())
+            try:
+                if candidate is not None:
+                    cleanup_deadline = time.monotonic() + self.repair_cleanup_timeout
+                    diagnostics = diagnostics or self._new_diagnostics(candidate)
+                    self.container, self._diagnostics = candidate, diagnostics
+                    self._retire(candidate, diagnostics, cleanup_deadline, lambda: False)
+                    self.container = None
+            except Exception:
+                error = traceback.format_exc()
+                self.report_repair_failure('repair_cleanup', error)
+                if previous_diagnostics is not self._diagnostics:
+                    self.report_repair_failure('repair_cleanup', error, diagnostics=previous_diagnostics)
+                raise
             raise
+        finally:
+            if not isinstance(self.container, _PendingCreate):
+                previous_diagnostics.close()
 
     def __enter__(self):
         path = Path(tempfile.gettempdir()) / (self.project + ".browser.lock")
@@ -341,6 +386,7 @@ class BrowserRun:
             self._diagnostics = self._new_diagnostics(None)
             self.start_helpers()
             name = self.project + "-browser-active"
+            self.container = _PendingCreate(name)
             try:
                 self.container = checked(self.compose + ["run", "--no-deps", "-d",
                     "--name", name, "--label", RUN_LABEL + "=" + self.run,
@@ -348,11 +394,7 @@ class BrowserRun:
             except BaseException:
                 # Compose can create then fail to start without returning its ID.
                 # Resolve only this attempted owner, never an existing/foreign run.
-                self.container = checked(["docker", "ps", "-aq", "--no-trunc",
-                    "--filter", "name=^/" + re.escape(name) + "$",
-                    "--filter", "label=com.docker.compose.project=" + self.project,
-                    "--filter", "label=com.docker.compose.service=browser",
-                    "--filter", "label=" + RUN_LABEL + "=" + self.run]) or None
+                self._resolve_pending_create(time.monotonic() + DOCKER_COMMAND_TIMEOUT, lambda: False)
                 if self.container:
                     self._diagnostics = self._new_diagnostics(self.container)
                     self._diagnostics.start()
@@ -398,6 +440,8 @@ class BrowserRun:
 
     def close(self):
         """Remove exact owned browser, optionally restore helpers; retain images/volumes."""
+        if isinstance(self.container, _PendingCreate):
+            self.settle_creation(time.monotonic() + self.repair_cleanup_timeout)
         try:
             if self.container is not None:
                 try:
@@ -419,17 +463,20 @@ class BrowserRun:
             try:
                 if self._diagnostics is not None:
                     self._diagnostics.close()
-                self._restore_helpers()
             finally:
-                try:
-                    if self._config_override is not None:
-                        self._config_override.unlink(missing_ok=True)
-                        self._config_override = None
-                        self.compose = self._base_compose[:]
-                finally:
-                    if self.lock is not None:
-                        os.close(self.lock)
-                        self.lock = None
+                if self.container is None:
+                    try:
+                        self._restore_helpers()
+                    finally:
+                        try:
+                            if self._config_override is not None:
+                                self._config_override.unlink(missing_ok=True)
+                                self._config_override = None
+                                self.compose = self._base_compose[:]
+                        finally:
+                            if self.lock is not None:
+                                os.close(self.lock)
+                                self.lock = None
 
     def __exit__(self, *_):
         self.close()

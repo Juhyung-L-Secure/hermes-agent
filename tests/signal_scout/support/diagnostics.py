@@ -18,13 +18,33 @@ print('\\n'.join(line for path in p.parent.glob('browser.log*') if path.is_file(
 """)
 
 
-def writer_identity(stack, run):
-    path = '/tmp/scout-browser-writer-' + run + '.json'
-    return json.loads(stack.exec_proxy(f"from pathlib import Path; print(Path({path!r}).read_text())"))
+def writer_identity(stack, run, *, token=None):
+    return json.loads(stack.exec_proxy(f"""
+from pathlib import Path
+import json, re, sys
+matches=[]
+expected_token={token!r}
+for path in Path('/tmp').glob('scout-browser-writer-*.json'):
+    token=path.stem.removeprefix('scout-browser-writer-')
+    if not re.fullmatch('[0-9a-f]{{32}}',token) or expected_token is not None and token!=expected_token:
+        continue
+    record=json.loads(path.read_text())
+    pid=record['pid']
+    try:
+        argv=Path(f'/proc/{{pid}}/cmdline').read_bytes().rstrip(b'\\0').decode().split('\\0')
+        start=Path(f'/proc/{{pid}}/stat').read_text().rsplit(')',1)[1].split()[19]
+    except FileNotFoundError:
+        continue
+    if argv==[sys.executable,'-m','scout_runtime.runtime_logging','--browser-writer',token] and start==record['start']:
+        matches.append(dict(record,token=token,run={run!r}))
+assert len(matches)==1, 'Expected one exact active diagnostic writer; supply captured token for multiple generations'
+print(json.dumps(matches[0]))
+"""))
 
 
 def assert_writer_stopped(stack, run, writer):
-    marker = '/tmp/scout-browser-writer-' + run + '.json'
+    assert writer['run'] == run
+    marker = '/tmp/scout-browser-writer-' + writer['token'] + '.json'
     pid, start = writer['pid'], writer['start']
     stack.exec_proxy(f"""
 from pathlib import Path

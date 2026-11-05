@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'plugins/signal-scout'))
@@ -60,6 +61,7 @@ def _parse(payload):
 class BrowserDiagnostics:
     def __init__(self, owner, verbose):
         self.owner, self.verbose = owner, verbose
+        self.writer_token = uuid.uuid4().hex
         self.limit = owner.config['scout_diagnostics']['max_record_bytes']
         self.capacity = owner.config['scout_diagnostics']['max_pending_bytes']
         self.level = getattr(logging, owner.config['logging']['level'])
@@ -88,7 +90,7 @@ class BrowserDiagnostics:
             self.redactor = subprocess.Popen([sys.executable, str(Path(__file__).resolve()), '--redact', str(self.limit)],
                 stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
             self.sink = subprocess.Popen(['docker', 'exec', '-i', self.proxy, '/usr/bin/python3', '-m',
-                'scout_runtime.runtime_logging', '--browser-writer', self.owner.run], stdin=subprocess.PIPE,
+                'scout_runtime.runtime_logging', '--browser-writer', self.writer_token], stdin=subprocess.PIPE,
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
             self.source = subprocess.Popen(['docker', 'logs', '--follow', self.owner.container],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
@@ -170,7 +172,7 @@ class BrowserDiagnostics:
 
     def capture(self, phase, info=None, *, error=None):
         if error is not None:
-            if self.owner.container is None or self.worker is None:
+            if self.owner.container is None or self.worker is None or self.closed:
                 self._warning()
                 return
             self._enqueue(_Record('launcher', 'startup_error', logging.ERROR, error,
@@ -324,7 +326,7 @@ class BrowserDiagnostics:
                 command = ['docker', 'exec', self.proxy, '/usr/bin/python3', '-c',
                     'from scout_runtime.runtime_logging import stop_browser_writer; import sys; '
                     'sys.exit(0 if stop_browser_writer(sys.argv[1], float(sys.argv[2])) else 1)',
-                    self.owner.run, str(remaining / 2)]
+                    self.writer_token, str(remaining / 2)]
                 subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                check=True, timeout=remaining)
         except Exception:

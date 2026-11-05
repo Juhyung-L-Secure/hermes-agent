@@ -7,6 +7,8 @@ from pathlib import Path
 import sys
 import subprocess
 import signal
+import queue
+import threading
 import time
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -321,6 +323,7 @@ def test_SR_023_MI_034_blocked_endpoint_does_not_block_source_or_bounded_close(m
     completed = tmp_path / 'source-drained'
     read_fd, write_fd = os.pipe()
     quiet = open(os.devnull, 'w')
+    commands = []
     if blocked != 'console':
         monkeypatch.setattr(diagnostics.sys, 'stderr', quiet)
     if blocked == 'console':
@@ -334,6 +337,7 @@ def test_SR_023_MI_034_blocked_endpoint_does_not_block_source_or_bounded_close(m
         monkeypatch.setattr(diagnostics.sys, 'stderr', SimpleNamespace(fileno=lambda: write_fd))
 
     def popen(command, **kwargs):
+        commands.append(command)
         if command[:2] == ['docker', 'logs']:
             message = dict(component='stderr', event='native_output', level='INFO',
                            text='record ' + 'z' * 64, facts={}, time=time.time())
@@ -354,6 +358,7 @@ def test_SR_023_MI_034_blocked_endpoint_does_not_block_source_or_bounded_close(m
         return process
 
     def run(command, **kwargs):
+        commands.append(command)
         if command[:2] == ['docker', 'inspect']:
             return subprocess.CompletedProcess(command, 0, json.dumps({'com.docker.compose.project': result.owner.project,
                 'com.docker.compose.service': 'proxy'}).encode(), b'')
@@ -381,6 +386,10 @@ def test_SR_023_MI_034_blocked_endpoint_does_not_block_source_or_bounded_close(m
         assert time.monotonic() - started < 6
         assert not result.worker.is_alive()
         assert all(process.poll() is not None for process in (result.source, result.redactor, result.sink))
+        starts = [command for command in commands if '--browser-writer' in command]
+        stops = [command for command in commands if any('stop_browser_writer' in part for part in command)]
+        assert starts[0][-1] == stops[0][-2] == result.writer_token
+        assert result.writer_token != result.owner.run
         if blocked == 'redactor':
             assert result.redactor.returncode == -9
         if blocked.startswith('redactor'):
@@ -395,3 +404,102 @@ def test_SR_023_MI_034_blocked_endpoint_does_not_block_source_or_bounded_close(m
         os.close(read_fd)
         os.close(write_fd)
         quiet.close()
+
+
+def test_SR_023_late_old_writer_stop_cannot_kill_or_unlink_new_writer(monkeypatch, tmp_path):
+    runtime = importlib.import_module('plugins.signal-scout.scout_runtime.runtime_logging')
+    settings = importlib.import_module('plugins.signal-scout.scout_runtime.settings')
+    old, new = observer(), observer()
+    assert old.owner.run == new.owner.run and old.writer_token != new.writer_token
+    assert len(old.writer_token) == len(new.writer_token) == 32
+    tokens = (old.writer_token, new.writer_token)
+    pids = {token: 9000000 + index for index, token in enumerate(tokens)}
+    by_pid = {pid: token for token, pid in pids.items()}
+    inputs = {token: queue.Queue() for token in tokens}
+    context = threading.local()
+    killed, errors, stopped = set(), [], []
+    native_read, native_pid = os.read, os.getpid
+    native_bytes, native_exists = Path.read_bytes, Path.exists
+    native_writer_path, native_handler = runtime._writer_path, runtime._rotating_handler
+    monkeypatch.setattr(settings, 'load_settings', lambda: old.owner.config)
+    monkeypatch.setattr(runtime, '_writer_path', lambda token: tmp_path / native_writer_path(token).name)
+    monkeypatch.setattr(runtime, '_rotating_handler', lambda component, config:
+                        native_handler(component, config, directory=tmp_path))
+    monkeypatch.setattr(runtime, '_process_start', lambda pid: str(pid))
+    monkeypatch.setattr(os, 'getpid', lambda: pids[context.token] if hasattr(context, 'token') else native_pid())
+    monkeypatch.setattr(os, 'read', lambda fd, size: inputs[context.token].get(timeout=3)
+                        if hasattr(context, 'token') else native_read(fd, size))
+
+    def read_bytes(path):
+        for pid, token in by_pid.items():
+            if str(path) == f'/proc/{pid}/cmdline':
+                return '\0'.join([sys.executable, '-m', 'scout_runtime.runtime_logging',
+                                  '--browser-writer', token]).encode() + b'\0'
+        return native_bytes(path)
+
+    def exists(path):
+        for pid in by_pid:
+            if str(path) == f'/proc/{pid}':
+                return pid not in killed
+        return native_exists(path)
+
+    def kill(pid, received_signal):
+        assert pid in by_pid and received_signal == signal.SIGKILL
+        killed.add(pid)
+        inputs[by_pid[pid]].put(b'')
+
+    monkeypatch.setattr(Path, 'read_bytes', read_bytes)
+    monkeypatch.setattr(Path, 'exists', exists)
+    monkeypatch.setattr(os, 'kill', kill)
+
+    def write(token):
+        context.token = token
+        try:
+            runtime.browser_writer(token)
+        except Exception as error:
+            errors.append(error)
+
+    def wait_for(predicate):
+        deadline = time.monotonic() + 3
+        while not predicate():
+            assert time.monotonic() < deadline
+            time.sleep(0.005)
+
+    parked, release = threading.Event(), threading.Event()
+
+    def delayed_stop():
+        parked.set()
+        assert release.wait(3)
+        stopped.append(runtime.stop_browser_writer(old.writer_token, 1))
+
+    writers = [threading.Thread(target=write, args=(token,)) for token in tokens]
+    late_stop = threading.Thread(target=delayed_stop)
+    log = tmp_path / 'browser.log'
+    try:
+        writers[0].start()
+        wait_for(lambda: runtime._writer_path(old.writer_token).exists())
+        late_stop.start()
+        assert parked.wait(3)
+        writers[1].start()
+        wait_for(lambda: runtime._writer_path(new.writer_token).exists())
+        inputs[new.writer_token].put((json.dumps('run=' + new.owner.run + ' new-before-old-stop') + '\n').encode())
+        wait_for(lambda: log.exists() and 'new-before-old-stop' in log.read_text())
+        release.set()
+        late_stop.join(3)
+        writers[0].join(3)
+        assert stopped == [True] and not late_stop.is_alive() and not writers[0].is_alive()
+        assert writers[1].is_alive() and runtime._writer_path(new.writer_token).exists()
+        assert pids[new.writer_token] not in killed
+        inputs[new.writer_token].put((json.dumps('run=' + new.owner.run + ' new-after-old-stop') + '\n').encode())
+        wait_for(lambda: 'new-after-old-stop' in log.read_text())
+        assert runtime.stop_browser_writer(new.writer_token, 1)
+        writers[1].join(3)
+        assert not writers[1].is_alive() and not runtime._writer_path(new.writer_token).exists()
+        assert errors == []
+    finally:
+        release.set()
+        for token in tokens:
+            inputs[token].put(b'')
+        for thread in (*writers, late_stop):
+            if thread.ident is not None:
+                thread.join(3)

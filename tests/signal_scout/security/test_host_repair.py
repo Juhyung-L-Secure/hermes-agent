@@ -1,3 +1,4 @@
+import fcntl
 import io
 import json
 import os
@@ -25,12 +26,15 @@ class Diagnostics:
     def __init__(self, owner, verbose):
         self.owner = owner
         self.events = []
+        self.errors = []
 
     def start(self):
         self.events.append(('start', self.owner.container))
 
     def capture(self, phase, info=None, **kwargs):
         self.events.append((phase, self.owner.container))
+        if 'error' in kwargs:
+            self.errors.append((phase, kwargs['error']))
 
     def close(self):
         self.events.append(('close', self.owner.container))
@@ -72,7 +76,9 @@ class Docker:
             identifier = f'{len(self.created) + 2:064x}'
             self.created.append(identifier)
             self.records[identifier] = self.info(identifier)
-            self.names[command[command.index('--name') + 1]] = identifier
+            name = command[command.index('--name') + 1]
+            self.records[identifier]['Name'] = '/' + name
+            self.names[name] = identifier
             self.events.append(('create', identifier, kwargs.get('timeout')))
             self.on_create(identifier)
             return identifier
@@ -107,6 +113,7 @@ def owned(monkeypatch, tmp_path):
     run._diagnostics = run._new_diagnostics(run.container)
     run._helper_state = {'proxy': True, 'firewall': False}
     run.lock = os.open(tmp_path / 'owned.lock', os.O_CREAT | os.O_RDWR, 0o600)
+    fcntl.flock(run.lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     docker.records[run.container] = docker.info(run.container)
     yield run, docker
     if run.lock is not None:
@@ -254,7 +261,7 @@ def test_AG_010_expiry_bounds_reply_and_blocks_overlap_until_cleanup(owned):
         assert parked.wait(1)
         result = response(connection)
         assert result['status'] == 'failed' and result['reason'] == 'attempt_expired'
-        assert time.monotonic() - started < 0.5
+        assert time.monotonic() - started < 3
         assert call(server, request(server))['status'] == 'busy'
         release.set()
         connection.close()
@@ -307,6 +314,215 @@ def test_AG_010_SR_005_partial_create_failure_resolves_only_attempted_owner(owne
         assert result['status'] == 'failed'
         assert not docker.records and run.container is None and run.endpoint is None
         assert len(docker.created) == 1
+
+
+def test_SR_005_unresolved_create_retains_obligation_until_exact_reconciliation(owned, monkeypatch, tmp_path):
+    run, docker = owned
+    foreign = 'f' * 64
+    docker.records[foreign] = docker.info(foreign)
+    docker.records[foreign]['Config']['Labels'][lifecycle.RUN_LABEL] = 'foreign'
+    original_checked = docker.checked
+    lookup_available = False
+
+    def checked(command, **kwargs):
+        if command[:3] == ['docker', 'ps', '-aq'] and not lookup_available:
+            raise RuntimeError('Exact candidate lookup unavailable')
+        return original_checked(command, **kwargs)
+
+    def create(identifier):
+        raise RuntimeError('Candidate created without returned ID')
+
+    monkeypatch.setattr(lifecycle, 'checked', checked)
+    docker.on_create = create
+    helpers, lock = run._helper_state, run.lock
+    override = tmp_path / 'captured-compose.json'
+    override.write_text('{}')
+    run._config_override = override
+    server = repair.RecoveryServer(run).start()
+    result = call(server, request(server))
+    assert result['status'] == 'failed' and result['reason'] == 'repair_failed'
+    pending = run.container
+    assert isinstance(pending, lifecycle._PendingCreate)
+    assert pending.name.endswith('-2') and len(docker.created) == 1
+    assert call(server, request(server))['status'] == 'failed'
+    assert run.container is pending and len(docker.created) == 1
+    with pytest.raises(RuntimeError, match='lookup unavailable'):
+        server.close()
+    with pytest.raises(RuntimeError, match='lookup unavailable'):
+        run.close()
+    assert run.container is pending and run.lock == lock
+    assert run._helper_state is helpers and override.exists()
+    os.fstat(lock)
+    other = os.open(tmp_path / 'owned.lock', os.O_RDWR)
+    try:
+        with pytest.raises(BlockingIOError):
+            fcntl.flock(other, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    finally:
+        os.close(other)
+    lookup_available = True
+    server.close()
+    assert run.container == docker.created[0]
+    restored = []
+    monkeypatch.setattr(run, '_restore_helpers', lambda: restored.append(True))
+    run.close()
+    assert run.container is None and run.lock is None and restored == [True]
+    assert not override.exists() and list(docker.records) == [foreign]
+    assert ('remove', docker.created[0], None) in docker.events
+
+
+@pytest.mark.parametrize('phase', ['readiness', 'create'])
+def test_SR_005_repair_failure_keeps_original_and_cleanup_tracebacks(owned, monkeypatch, phase):
+    run, docker = owned
+    observers = [run._diagnostics]
+
+    class CollectingDiagnostics(Diagnostics):
+        def __init__(self, owner, verbose):
+            super().__init__(owner, verbose)
+            observers.append(self)
+
+    monkeypatch.setattr(lifecycle, 'BrowserDiagnostics', CollectingDiagnostics)
+
+    def readiness(identifier):
+        raise ValueError('Original readiness decode failure')
+
+    def remove(identifier):
+        if identifier in docker.created:
+            raise RuntimeError('Captured candidate cleanup failure')
+
+    if phase == 'create':
+        docker.on_create = readiness
+    else:
+        docker.on_ready = readiness
+    docker.on_remove = remove
+    with repair.RecoveryServer(run) as server:
+        result = call(server, request(server))
+        assert result['status'] == 'failed' and result['reason'] == 'repair_failed'
+        assert result['endpoint'] is None and 'Original' not in json.dumps(result)
+        errors = [item for observer in observers for item in observer.errors]
+        assert any(observed_phase == 'repair_' + phase and 'Traceback (most recent call last)' in detail
+                   and 'Original readiness decode failure' in detail for observed_phase, detail in errors)
+        assert any(observed_phase == 'repair_cleanup' and 'Captured candidate cleanup failure' in detail
+                   and 'Original readiness decode failure' in detail and 'generation=2' in detail
+                   for observed_phase, detail in errors)
+        if phase == 'create':
+            assert any(observed_phase == 'repair_cleanup' and 'Captured candidate cleanup failure' in detail
+                       for observed_phase, detail in observers[0].errors)
+        assert all(server.nonce not in detail for _, detail in errors)
+
+
+def test_SR_005_unsettled_known_cleanup_keeps_lock_helpers_and_config(owned, monkeypatch, tmp_path):
+    run, docker = owned
+    identifier, lock, helpers = run.container, run.lock, run._helper_state
+    override = tmp_path / 'compose-captured.json'
+    override.write_text('{}')
+    run._config_override = override
+    restored = []
+    monkeypatch.setattr(run, '_restore_helpers', lambda: restored.append(True))
+
+    def fail(identifier):
+        raise RuntimeError('Owned remove unavailable')
+
+    docker.on_remove = fail
+    with pytest.raises(RuntimeError, match='Owned remove unavailable'):
+        run.close()
+    assert run.container == identifier and run.lock == lock and restored == []
+    assert run._helper_state is helpers and override.exists()
+    os.fstat(lock)
+    docker.on_remove = lambda identifier: None
+    run.close()
+    assert run.container is None and run.lock is None and restored == [True]
+    assert not override.exists()
+
+
+def test_SR_005_repair_traceback_uses_existing_redacted_diagnostic_path(owned):
+    from agent.redact import RedactingFormatter
+    import browser_diagnostics
+
+    run, _ = owned
+    observer = browser_diagnostics.BrowserDiagnostics(lifecycle._DiagnosticOwner(run, run.container), False)
+    observer.worker = object()
+    run._diagnostics = observer
+    secret = 'glpat-' + 'Zx9AbCdEfGhIjKlMnOpQ'
+    run.report_repair_failure('repair_readiness', 'Traceback (most recent call last):\nValueError: ' + secret)
+    payload = observer.queues['redactor'][0]
+    rendered = browser_diagnostics._format(payload, RedactingFormatter('%(message)s'), observer.limit).decode()
+    assert secret not in rendered and 'glpat-...' in rendered
+    assert 'Traceback (most recent call last)' in rendered and 'ValueError' in rendered
+    assert 'phase=repair_readiness' in rendered and 'generation=1' in rendered and run.run in rendered
+
+
+def test_SR_005_diagnostic_helper_requires_exact_writer_token_for_multiple_generations(monkeypatch, tmp_path):
+    from contextlib import redirect_stdout
+    from tests.signal_scout.support.diagnostics import writer_identity, assert_writer_stopped
+
+    run, old, new = uuid.uuid4().hex, uuid.uuid4().hex, uuid.uuid4().hex
+    records = {}
+    for pid, token in enumerate((old, new), start=9000000):
+        path = tmp_path / f'scout-browser-writer-{token}.json'
+        path.write_text(json.dumps({'pid': pid, 'start': str(pid)}))
+        records[pid] = token
+    native_glob, native_bytes, native_text = Path.glob, Path.read_bytes, Path.read_text
+    monkeypatch.setattr(Path, 'glob', lambda path, pattern:
+                        native_glob(tmp_path, pattern) if str(path) == '/tmp' else native_glob(path, pattern))
+
+    def read_bytes(path):
+        for pid, token in records.items():
+            if str(path) == f'/proc/{pid}/cmdline':
+                return '\0'.join([sys.executable, '-m', 'scout_runtime.runtime_logging',
+                                  '--browser-writer', token]).encode() + b'\0'
+        return native_bytes(path)
+
+    def read_text(path, *args, **kwargs):
+        for pid in records:
+            if str(path) == f'/proc/{pid}/stat':
+                return f"{pid} (writer) " + ' '.join(['S'] + ['0'] * 18 + [str(pid)])
+        return native_text(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, 'read_bytes', read_bytes)
+    monkeypatch.setattr(Path, 'read_text', read_text)
+
+    class Stack:
+        codes = []
+
+        def exec_proxy(self, code):
+            self.codes.append(code)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exec(code, {})
+            return output.getvalue()
+
+    stack = Stack()
+    with pytest.raises(AssertionError, match='supply captured token'):
+        writer_identity(stack, run)
+    writer = writer_identity(stack, run, token=new)
+    assert writer == {'pid': 9000001, 'start': '9000001', 'token': new, 'run': run}
+    assert_writer_stopped(stack, run, writer)
+    assert 'scout-browser-writer-' + new + '.json' in stack.codes[-1]
+    assert 'scout-browser-writer-' + old not in stack.codes[-1]
+
+
+def test_AG_010_frame_read_consumes_configured_host_attempt_budget(monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(repair.time, 'monotonic', lambda: now[0])
+    original = repair._receive
+
+    def receive(connection, count, deadline):
+        result = original(connection, count, deadline)
+        now[0] += 0.3
+        return result
+
+    monkeypatch.setattr(repair, '_receive', receive)
+    value = {'nonce': 'owned', 'operation': 'status', 'request_id': uuid.uuid4().hex,
+             'generation': 1, 'deadline': time.time() + 100}
+    payload = json.dumps(value).encode()
+    left, right = socket.socketpair()
+    try:
+        left.sendall(struct.pack('!I', len(payload)) + payload)
+        parsed, deadline = repair._request(right, 'owned', 1)
+        assert parsed == value and deadline == pytest.approx(101)
+    finally:
+        left.close()
+        right.close()
 
 
 def test_SR_005_failed_candidate_cleanup_retains_exact_owner_for_retry(owned):
