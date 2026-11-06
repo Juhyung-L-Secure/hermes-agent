@@ -834,6 +834,21 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_triage_policy.py",
           "test": "test_BR_003_AG_006_outer_abandonment_fences_before_old_request_returns"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_AG_006_AG_010_repair_time_charged_before_abandoned_worker_finishes"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_AG_006_AG_010_finished_root_keeps_live_child_containment_obligation"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_AG_006_AG_010_overlapping_settlement_cannot_drop_new_repair_charge"
         }
       ],
       "otherCoverage": [],
@@ -1170,6 +1185,21 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_triage_policy.py",
           "test": "test_AG_005_AG_010_new_capture_fault_outranks_earlier_reconnect_proof"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_AG_006_AG_010_repair_time_charged_before_abandoned_worker_finishes"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_AG_006_AG_010_finished_root_keeps_live_child_containment_obligation"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_AG_006_AG_010_overlapping_settlement_cannot_drop_new_repair_charge"
         }
       ],
       "otherCoverage": [],

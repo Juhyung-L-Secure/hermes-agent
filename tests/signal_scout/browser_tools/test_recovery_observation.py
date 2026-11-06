@@ -17,7 +17,7 @@ with Browser(config) as browser:
             inserted.append(params['text'])
         if self.authority is not None and inserted and method=='Runtime.evaluate' and armed[0]:
             armed[0]=False
-            return original(self,method,{**params,'contextId':-1},session)
+            return original(self,method,{**params,'contextId':-1},session,**kwargs)
         return original(self,method,params,session,**kwargs)
     def plan(index,kwargs):
         if index==1:
@@ -108,7 +108,7 @@ with Browser(config) as browser:
             armed[0]=False;old.append(authority);parked.set()
             assert release.wait(20)
     def command(self,method,params=None,session=None,**kwargs):
-        if self.authority is not None and self.authority.parent is None and method=='Input.dispatchMouseEvent' and lost[0]:
+        if self.authority is not None and self.authority.parent is None and method=='DOM.getContentQuads' and lost[0]:
             lost[0]=False;self.abort()
         return native_command(self,method,params,session,**kwargs)
     def verify(self):

@@ -67,7 +67,7 @@ with Browser(config) as browser:
     def command(self,method,params=None,session=None,**kwargs):
         if position=='before_gate' and method=='Input.dispatchMouseEvent' and armed[0]:
             armed[0]=False;park(self.authority)
-        return original_command(self,method,params,session)
+        return original_command(self,method,params,session,**kwargs)
     def init(self,*args,**kwargs):
         original_init(self,*args,**kwargs)
         native=self.connection.send
@@ -103,14 +103,15 @@ with Browser(config) as browser:
             assert result['data']['worker']=={'cancel_requested':True,'access_revoked':True,'termination_confirmed':False}
             assert browser.command('eval','window.counts.click')['result']==0
             return response([tool({'action':'click','args':{'ref':ref}},call_id='fresh')],content='')
-        assert index==3 and result['status']=='success',result
-        assert browser.command('eval','window.counts.click')['result']==1
+        assert index==3 and result['status']==('success' if position=='before_gate' else 'rejected'),result
+        expected=1 if position=='before_gate' else 0
+        assert browser.command('eval','window.counts.click')['result']==expected
         selected=gate._selected;refs=dict(gate._refs)
         release.set();assert old[0].done.wait(10)
         assert old[0].revoked.is_set()
         assert gate._selected==selected and gate._refs==refs
         assert browser.ready and not browser.failed
-        assert browser.command('eval','window.counts.click')['result']==1
+        assert browser.command('eval','window.counts.click')['result']==expected
         return response()
     ref=reference(gate._inspect_snapshot(tab),'Below fold')
     try:
@@ -314,7 +315,7 @@ with Browser(config) as browser:
     original=g._CDP.command;armed=[True];events=[];old_ref=reference(gate._inspect_snapshot(tab),'Below fold')
     endpoint=browser.endpoint;task=browser.task
     def command(self,method,params=None,session=None,**kwargs):
-        if self.authority is not None and method=='Input.dispatchMouseEvent' and armed[0]:
+        if self.authority is not None and method=='DOM.getContentQuads' and armed[0]:
             armed[0]=False;self.connection.close()
         if self.authority is not None and method in {'Page.navigate','Page.reload'}:
             events.append(method)

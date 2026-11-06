@@ -209,10 +209,10 @@ def test_AG_010_pending_remote_work_keeps_cumulative_repair_clock(boundary, monk
     manager.remote_pending, manager.remote_pending_since = True, 10
     clock[0] = 12
     assert manager._remaining_repair() == 1
-    manager._owner_budget({'budget': {'remaining_replacements': 1, 'pending': True}})
+    manager._owner_budget({'budget': {'remaining_replacements': 1, 'pending': True}}, lifetime.RequestAuthority('status'))
     clock[0] = 14
     assert manager._remaining_repair() == 0
-    manager._owner_budget({'budget': {'remaining_replacements': 1, 'pending': False}})
+    manager._owner_budget({'budget': {'remaining_replacements': 1, 'pending': False}}, lifetime.RequestAuthority('status'))
     assert manager.repair_elapsed == 6 and manager.remote_pending_since is None
     clock[0] = 20
     assert manager._remaining_repair() == 0
@@ -370,3 +370,107 @@ def test_AE_006_AG_005_neutral_missing_reply_preserves_uncertainty_without_disab
     down.admit(1, 'Input.dispatchMouseEvent', facts.Intent.PRESS)
     down.revoke('worker_timeout')
     assert triage.decide(down.snapshot(), triage.BrowserUse.READY).browser_use == 'unavailable'
+
+
+def test_AG_006_AG_010_repair_time_charged_before_abandoned_worker_finishes(boundary, monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(lifetime.time, 'monotonic', lambda: now[0])
+    boundary.browser.settings['scout_recovery']['max_repair_seconds'] = 5
+    manager = lifetime.BrowserRequests(boundary.session)
+    root = lifetime.RequestAuthority('root')
+    child = lifetime.RequestAuthority('repair', parent=root)
+    manager._begin_repair(child)
+    now[0] = 3
+    assert manager._remaining_repair() == 2
+    child.revoke('worker_timeout')
+    assert not child.done.is_set()
+    assert manager._remaining_repair() == 2
+    now[0] = 4
+    child.done.set()
+    manager._end_repair()
+    manager._end_repair()
+    assert manager.repair_elapsed == 3 and manager._remaining_repair() == 2
+    manager._owner_budget({'budget': {'remaining_replacements': 0, 'pending': False}}, root)
+    manager._owner_budget({'budget': {'remaining_replacements': 2, 'pending': False}}, root)
+    assert manager.replacements_remaining == 0
+    root.revoke('outer_timeout')
+    with pytest.raises(lifetime.RequestRevoked):
+        manager._owner_budget({'budget': {'remaining_replacements': 1, 'pending': True}}, root)
+    assert manager.remote_pending is False
+
+
+@pytest.mark.parametrize('current_generation,expected', [(1, 'fatal'), (2, 'success')])
+def test_AG_006_AG_010_finished_root_keeps_live_child_containment_obligation(boundary, monkeypatch, current_generation, expected):
+    gate = boundary.session
+    monkeypatch.setattr(lifetime._RequestBrowser, 'verify_control', lambda _: None)
+    monkeypatch.setattr(session_module.BrowserSession, '_disconnect', lambda _: None)
+    def connect(self, timeout=None):
+        self._cdp, _ = transport()
+    monkeypatch.setattr(session_module.BrowserSession, '_connect', connect)
+    manager = gate._requests = lifetime.BrowserRequests(gate)
+    root = lifetime.RequestAuthority('completed-root', generation=1)
+    child = lifetime.RequestAuthority('late-child', parent=root)
+    child.revoke('repair_timeout')
+    root.done.set()
+    manager.abandoned.append(root)
+    assert gate.request({'action': 'snapshot', 'args': {}})['status'] == 'success'
+    assert manager.abandoned == [root]
+    with pytest.raises(lifetime.RequestRevoked):
+        child.attach(SimpleNamespace(abort=lambda: (_ for _ in ()).throw(OSError('Close failed'))))
+    assert child.contained is False
+    boundary.browser.generation = current_generation
+    stops = []
+    result = gate.request({'action': 'snapshot', 'args': {}}, on_terminal=lambda _: stops.append(True))
+    assert result['status'] == expected
+    assert stops == ([True] if expected == 'fatal' else [])
+
+
+def test_AG_006_AG_010_overlapping_settlement_cannot_drop_new_repair_charge(boundary, monkeypatch):
+    import threading
+
+    now = [0.0]
+    monkeypatch.setattr(lifetime.time, 'monotonic', lambda: now[0])
+    boundary.browser.settings['scout_recovery']['max_repair_seconds'] = 5
+    manager = lifetime.BrowserRequests(boundary.session)
+    old = lifetime.RequestAuthority('old')
+    fresh = lifetime.RequestAuthority('fresh')
+    manager._begin_repair(old)
+    parked, release, entering = threading.Event(), threading.Event(), threading.Event()
+    def old_done():
+        parked.set()
+        assert release.wait(5)
+        return True
+    monkeypatch.setattr(old.done, 'is_set', old_done)
+    now[0] = 3
+    errors = []
+    def settle():
+        try:
+            manager._end_repair()
+        except Exception as error:
+            errors.append(error)
+    def admit():
+        entering.set()
+        try:
+            manager._begin_repair(fresh)
+        except Exception as error:
+            errors.append(error)
+    previous = threading.Thread(target=settle)
+    incoming = threading.Thread(target=admit)
+    previous.start()
+    try:
+        assert parked.wait(5)
+        incoming.start()
+        assert entering.wait(5)
+        release.set()
+        previous.join(5)
+        incoming.join(5)
+        assert not previous.is_alive() and not incoming.is_alive() and errors == []
+        assert set(manager.repair_pending) == {fresh}
+        assert manager.repair_elapsed == 3
+        now[0] = 4
+        assert manager._remaining_repair() == 1
+    finally:
+        release.set()
+        previous.join(5)
+        if incoming.ident is not None:
+            incoming.join(5)

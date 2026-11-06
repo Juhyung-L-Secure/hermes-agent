@@ -205,7 +205,7 @@ class _RequestBrowser:
 class BrowserRequests:
     def __init__(self, session):
         self.session = session
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()
         self.active = None
         self.closed = False
         self.use = BrowserUse.READY
@@ -214,7 +214,7 @@ class BrowserRequests:
         self.remote_pending = False
         self.remote_pending_since = None
         self.abandoned = []
-        self.repair_pending = []
+        self.repair_pending = {}
         self.replacements_remaining = session._browser.settings['scout_recovery']['max_replacements']
 
     def abandon(self, *, parent_tid, reason='abandoned'):
@@ -235,29 +235,47 @@ class BrowserRequests:
             active.revoke('binding_closed')
         self.session.close()
 
-    def _remaining_repair(self):
+    def _settle_repairs(self):
         now = time.monotonic()
-        pending = []
-        for began, child in self.repair_pending:
-            if child.done.is_set():
+        for child, began in tuple(self.repair_pending.items()):
+            if child.done.is_set() or child.revoked.is_set() and child.snapshot().contained:
                 self.repair_elapsed += now - began
-                if self.remote_pending and self.remote_pending_since is None:
-                    self.remote_pending_since = now
-            else:
-                pending.append((began, child))
-        self.repair_pending = pending
-        spent = self.repair_elapsed + sum(now - began for began, _ in pending)
-        if self.remote_pending_since is not None:
-            spent += now - self.remote_pending_since
-        return max(0, self.session._browser.settings['scout_recovery']['max_repair_seconds'] - spent)
+                del self.repair_pending[child]
+        if not self.repair_pending and self.remote_pending and self.remote_pending_since is None:
+            self.remote_pending_since = now
+        return now
 
-    def _owner_budget(self, response):
-        budget = response.get('budget', {})
-        self.replacements_remaining = budget.get('remaining_replacements', self.replacements_remaining)
-        self.remote_pending = budget.get('pending', False)
-        if not self.remote_pending and self.remote_pending_since is not None:
-            self.repair_elapsed += time.monotonic() - self.remote_pending_since
-            self.remote_pending_since = None
+    def _begin_repair(self, child):
+        with self.lock, child.gate:
+            child.check()
+            now = self._settle_repairs()
+            if self.remote_pending_since is not None:
+                self.repair_elapsed += now - self.remote_pending_since
+                self.remote_pending_since = None
+            self.repair_pending[child] = now
+
+    def _end_repair(self):
+        with self.lock:
+            self._settle_repairs()
+
+    def _remaining_repair(self):
+        with self.lock:
+            now = self._settle_repairs()
+            spent = self.repair_elapsed + sum(now - began for began in self.repair_pending.values())
+            if self.remote_pending_since is not None:
+                spent += now - self.remote_pending_since
+            return max(0, self.session._browser.settings['scout_recovery']['max_repair_seconds'] - spent)
+
+    def _owner_budget(self, response, authority):
+        with self.lock, authority.gate:
+            authority.check()
+            budget = response.get('budget', {})
+            self.replacements_remaining = min(self.replacements_remaining,
+                budget.get('remaining_replacements', self.replacements_remaining))
+            self.remote_pending = budget.get('pending', False)
+            if not self.remote_pending and self.remote_pending_since is not None:
+                self.repair_elapsed += time.monotonic() - self.remote_pending_since
+                self.remote_pending_since = None
 
     def _decision(self, private, authority, result):
         failure = result['data'].get('failure', {})
@@ -304,7 +322,8 @@ class BrowserRequests:
             if any(not owned.contained and owned.generation == root._browser.generation
                    for previous in self.abandoned for owned in (previous, *previous.children)):
                 self.use = BrowserUse.UNCONTAINED
-            self.abandoned = [previous for previous in self.abandoned if not previous.done.is_set()]
+            self.abandoned = [previous for previous in self.abandoned
+                              if not previous.done.is_set() or any(not child.done.is_set() for child in previous.children)]
             if self.closed:
                 return root._result('fatal', 'Browser binding is closing or closed.')
             if self.active is not None:
@@ -416,6 +435,8 @@ class BrowserRequests:
                     self.replacement_required = False
                     self.use = BrowserUse.READY
                 root._refs, root._selected = private._refs, private._selected
+                if any(not child.done.is_set() for child in authority.children):
+                    self.abandoned.append(authority)
                 result = self._finish(private, authority, result)
                 return result
         except RequestRevoked:
@@ -502,7 +523,7 @@ class BrowserRequests:
                                 set_interrupt(False)
                                 child.done.set()
 
-                began = time.monotonic()
+                self._begin_repair(child)
                 try:
                     outcome = run_bounded_sync(reconnect, timeout, label='scout-browser-reconnect',
                                                on_timeout=lambda child=child: child.revoke('repair_timeout'))
@@ -536,10 +557,7 @@ class BrowserRequests:
                         return private._result('incomplete', 'Browser control reconnected; capture unavailable.',
                                                started=failed['execution_started'], data=proof['data'])
                 finally:
-                    if child.done.is_set():
-                        self.repair_elapsed += time.monotonic() - began
-                    else:
-                        self.repair_pending.append((began, child))
+                    self._end_repair()
         return private._result('incomplete', 'Browser control unavailable; original action was not replayed.',
                                started=failed['execution_started'], data={**failed['data'],
                                    'recovery': {'kind': 'unavailable', 'reconnect_failures': diagnostics,
@@ -553,7 +571,7 @@ class BrowserRequests:
             authority.phase = 'owner_status'
             response = browser.recovery.request('status', browser.generation, authority,
                                                 browser.settings['scout_recovery']['attempt_timeout'])
-            self._owner_budget(response)
+            self._owner_budget(response, authority)
             if response['status'] == 'ready':
                 owned = response['owned']
                 if owned.generation == browser.generation:
@@ -601,7 +619,7 @@ class BrowserRequests:
         if owned is None and private._browser.recovery is not None:
             status = private._browser.recovery.request('status', private._browser.generation,
                                                        authority, policy['attempt_timeout'])
-            self._owner_budget(status)
+            self._owner_budget(status, authority)
             if status['status'] == 'ready' and status['owned'].generation > private._browser.generation:
                 owned = status['owned']
             elif status['status'] == 'unavailable':
@@ -643,10 +661,12 @@ class BrowserRequests:
                             proof['owner'] = status
                             return None
                     if descriptor is None:
-                        self.remote_pending = True
+                        with self.lock, child.gate:
+                            child.check()
+                            self.remote_pending = True
                         response = candidate._browser.recovery.request('restart', expected_generation,
                                                                         child, timeout)
-                        self._owner_budget(response)
+                        self._owner_budget(response, child)
                         if response['status'] != 'ready':
                             proof['owner'] = response
                             return None
@@ -689,10 +709,7 @@ class BrowserRequests:
                             set_interrupt(False)
                             child.done.set()
 
-            began = time.monotonic()
-            if self.remote_pending_since is not None:
-                self.repair_elapsed += began - self.remote_pending_since
-                self.remote_pending_since = None
+            self._begin_repair(child)
             try:
                 outcome = run_bounded_sync(restart, timeout, label='scout-browser-restart',
                                            on_timeout=lambda child=child: child.revoke('repair_timeout'))
@@ -729,13 +746,7 @@ class BrowserRequests:
                 _log(logging.ERROR, 'Browser replacement failed attempt=%s', attempt + 1, exc_info=True)
                 failures.append(type(error).__name__)
             finally:
-                if child.done.is_set():
-                    now = time.monotonic()
-                    self.repair_elapsed += now - began
-                    if self.remote_pending and self.remote_pending_since is None:
-                        self.remote_pending_since = now
-                else:
-                    self.repair_pending.append((began, child))
+                self._end_repair()
         return private._result('incomplete', 'Browser infrastructure repair exhausted.',
             started=failed['execution_started'], data={**failed['data'],
             'failure': {'kind': 'control_lost'}, 'recovery': {'kind': 'exhausted', 'failures': failures, 'restart_denied': True}})
