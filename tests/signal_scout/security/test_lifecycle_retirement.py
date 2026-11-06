@@ -4,8 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from tests.signal_scout.support.unit_browser import transport
-
 lifetime = importlib.import_module('plugins.signal-scout.scout_runtime.browser.lifetime')
 session_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
 
@@ -263,6 +261,174 @@ def test_AG_006_triage_failure_shutdown_releases_manager_lock(boundary, monkeypa
         assert stops == [True]
     finally:
         release.set()
+        caller.join(5)
+        if checker is not None:
+            checker.join(5)
+
+
+@pytest.mark.parametrize('fault_timing', ['pending_at_detach', 'settled_before_detach'])
+@pytest.mark.parametrize('admission', ['browser', 'tool', 'model'])
+def test_BR_003_BR_004_AG_006_MI_035_final_detach_owns_late_revoker(boundary, native_plugin, monkeypatch, fault_timing, admission):
+    import json
+    from hermes_cli.plugins import get_plugin_manager
+    from tests.signal_scout.support.model import dispatch
+    from tests.signal_scout.support.model_fixture import FAKE_MAIN
+
+    gate = boundary.session
+    published, detach = threading.Event(), threading.Event()
+    abort_entered, abort_release = threading.Event(), threading.Event()
+    outputs, errors, stops = [], [], []
+    native_finish = lifetime.BrowserRequests._finish
+    def finish(self, private, authority, result, **kwargs):
+        value = native_finish(self, private, authority, result, **kwargs)
+        if (threading.get_ident() == caller.ident and authority.call_id == 'late-final'
+                and not published.is_set()):
+            published.set()
+            assert detach.wait(10)
+        return value
+    def connect(self, timeout=None):
+        def abort():
+            abort_entered.set()
+            assert abort_release.wait(10)
+            raise OSError('Revoker failed after result publication')
+        resource = SimpleNamespace(abort=abort, close=lambda: None, capture_deadline=None)
+        self._authority.attach(resource)
+        self._cdp = resource
+    monkeypatch.setattr(lifetime.BrowserRequests, '_finish', finish)
+    monkeypatch.setattr(lifetime._RequestBrowser, 'verify_control', lambda _: None)
+    monkeypatch.setattr(session_module.BrowserSession, '_connect', connect)
+    monkeypatch.setattr(session_module.BrowserSession, '_disconnect', lambda self: setattr(self, '_cdp', None))
+    def original():
+        try:
+            outputs.append(gate.request({'action': 'snapshot', 'args': {}}, call_id='late-final',
+                                        on_terminal=lambda _: stops.append('original')))
+        except Exception as error:
+            errors.append(error)
+    caller = threading.Thread(target=original)
+    abandoner = None
+    caller.start()
+    try:
+        assert published.wait(5)
+        manager = gate._requests
+        old = manager.active
+        def abandon():
+            try:
+                manager.abandon(parent_tid=caller.ident, reason='native_outer_timeout')
+            except Exception as error:
+                errors.append(error)
+        abandoner = threading.Thread(target=abandon)
+        abandoner.start()
+        assert abort_entered.wait(5)
+        if fault_timing == 'settled_before_detach':
+            abort_release.set()
+            abandoner.join(5)
+            assert not abandoner.is_alive()
+        detach.set()
+        caller.join(5)
+        assert not caller.is_alive() and manager.active is None and errors == []
+        if fault_timing == 'pending_at_detach':
+            assert manager.abandoned == [old] and outputs[0]['status'] == 'incomplete'
+            assert stops == []
+            abort_release.set()
+            abandoner.join(5)
+        else:
+            assert manager.abandoned == [] and outputs[0]['status'] == 'fatal'
+            assert outputs[0]['data']['triage']['mission'] == 'stop' and stops == ['original']
+        assert not abandoner.is_alive() and old.contained is False and errors == []
+        if admission == 'browser':
+            result = gate.request({'action': 'snapshot', 'args': {}}, on_terminal=lambda _: stops.append('next'))
+            assert result['status'] == 'fatal'
+        else:
+            scope = {'json': json}
+            exec(FAKE_MAIN, scope)
+            mission = importlib.import_module('plugins.signal-scout.scout_runtime.mission')
+            state = mission.MissionControl(mission.MissionRequest('Report available findings.'), {
+                'research_model_requests': 10, 'research_seconds': 100, 'finalization_model_requests': 2,
+                'finalization_seconds': 10, 'max_consecutive_failures': 5})
+            state.require_report('Research allowance reached.')
+            models = get_plugin_manager()._plugins['signal-scout'].module.model_requests
+            with scope['fake_main'](lambda *_: pytest.fail('Lost revoker admitted provider')) as (agent, requests):
+                with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(),
+                        on_fatal=lambda: agent.interrupt(hard_cancel=True), control=state), \
+                     models.bind_model_requests(agent, max_attempts=1, control=state):
+                    if admission == 'tool':
+                        result = json.loads(dispatch({'action': 'snapshot', 'args': {}}))
+                        assert result['status'] == 'fatal' and result['data']['triage']['mission'] == 'stop'
+                    else:
+                        result = agent.run_conversation('Report available findings.')
+                        assert not result.get('completed') and state.hard_stopped
+                    assert requests == []
+        assert boundary.effects == [('snapshot', {})]
+    finally:
+        detach.set()
+        abort_release.set()
+        caller.join(5)
+        if abandoner is not None:
+            abandoner.join(5)
+
+
+@pytest.mark.parametrize('abort_fails', [False, True])
+def test_AG_006_AG_010_retired_bootstrap_cleanup_preserves_new_generation(boundary, monkeypatch, abort_fails):
+    gate = boundary.session
+    abort_entered, abort_release, acquired = threading.Event(), threading.Event(), threading.Event()
+    outputs, errors, disposed = [], [], []
+    def abort():
+        disposed.append(1)
+        abort_entered.set()
+        assert abort_release.wait(10)
+        if abort_fails:
+            raise OSError('Retired bootstrap transport close failed')
+    gate._cdp = SimpleNamespace(abort=abort)
+    def restart(self, private, authority, failed):
+        private._browser.endpoint, private._browser.generation = 'ws://new-owned-browser', 2
+        private._refs, private._selected = {'fresh': 'fresh-node'}, 'owned-page'
+        return private._result('incomplete', data={'recovery': {'kind': 'restarted', 'generation': 2}})
+    def accept(replacement):
+        boundary.browser.endpoint = replacement.endpoint
+        boundary.browser.generation = replacement.generation
+    def connect(self, timeout=None):
+        resource = SimpleNamespace(abort=lambda: None, close=lambda: None, capture_deadline=None)
+        self._authority.attach(resource)
+        self._cdp = resource
+    monkeypatch.setattr(lifetime.BrowserRequests, '_restart', restart)
+    monkeypatch.setattr(lifetime._RequestBrowser, 'verify_control', lambda _: None)
+    monkeypatch.setattr(session_module.BrowserSession, '_connect', connect)
+    monkeypatch.setattr(session_module.BrowserSession, '_disconnect', lambda self: setattr(self, '_cdp', None))
+    monkeypatch.setattr(boundary.browser, 'accept_replacement', accept)
+    def request():
+        try:
+            outputs.append(gate.request({'action': 'restart', 'args': {}}))
+        except Exception as error:
+            errors.append(error)
+    caller = threading.Thread(target=request)
+    caller.start()
+    checker = None
+    try:
+        assert abort_entered.wait(5)
+        def inspect_owner():
+            with gate._requests.lock:
+                assert gate._cdp is None
+                acquired.set()
+        checker = threading.Thread(target=inspect_owner)
+        checker.start()
+        assert acquired.wait(5)
+        assert gate.request({'action': 'snapshot', 'args': {}})['status'] == 'rejected'
+        abort_release.set()
+        caller.join(5)
+        checker.join(5)
+        assert not caller.is_alive() and errors == [] and disposed == [1]
+        result = outputs[0]
+        assert result['data']['triage']['browser_use'] == 'ready'
+        assert result['data']['triage']['mission'] == 'continue'
+        if abort_fails:
+            assert result['data']['retired_cleanup'] == {'state': 'failed', 'generation': 1}
+        else:
+            assert 'retired_cleanup' not in result['data']
+        assert boundary.browser.generation == 2 and gate._refs == {'fresh': 'fresh-node'}
+        assert gate.request({'action': 'snapshot', 'args': {}})['status'] == 'success'
+        assert boundary.browser.endpoint == 'ws://new-owned-browser' and disposed == [1]
+    finally:
+        abort_release.set()
         caller.join(5)
         if checker is not None:
             checker.join(5)

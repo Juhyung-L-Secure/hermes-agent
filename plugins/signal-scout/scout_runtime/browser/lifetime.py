@@ -462,6 +462,21 @@ class BrowserRequests:
                         result = {**result, 'status': 'incomplete',
                                   'data': {**result['data'], 'cleanup': {'state': 'failed'}}}
                 finally:
+                    retired = None
+                    with self.lock, authority.gate:
+                        if (self.active is authority and not authority.revoked.is_set()
+                                and private._browser.generation > root._browser.generation):
+                            retired, retired_generation = root._cdp, root._browser.generation
+                            root._cdp = None
+                    if retired is not None:
+                        try:
+                            retired.abort()
+                        except Exception:
+                            _log(logging.ERROR, 'Retired browser transport cleanup failed generation=%s',
+                                 retired_generation, exc_info=True)
+                            if result is not None:
+                                result = {**result, 'data': {**result['data'], 'retired_cleanup': {
+                                    'state': 'failed', 'generation': retired_generation}}}
                     with authority.lifecycle_lock:
                         set_interrupt(False)
                         authority.done.set()
@@ -472,32 +487,45 @@ class BrowserRequests:
                                        on_timeout=expire)
             with self.lock:
                 if self.active is not authority:
-                    return authority.feedback()
-                if bounded.timed_out or authority.revoked.is_set():
+                    result = authority.feedback()
+                elif bounded.timed_out or authority.revoked.is_set():
                     _log(logging.ERROR, 'Browser request access revoked phase=%s', authority.facts().phase)
-                    self.abandoned.append(authority)
                     result = authority.feedback()
                 else:
                     result = bounded.value
                     if private._browser.generation != root._browser.generation:
                         root._browser.accept_replacement(private._browser)
-                        if root._cdp is not None:
-                            root._cdp.abort()
-                            root._cdp = None
                         root._sessions = {}
                         self.replacement_required = False
                         self.use = BrowserUse.READY
                     root._refs, root._selected = private._refs, private._selected
-                    if not authority.lifecycle_settled():
-                        self.abandoned.append(authority)
-            return self._finish(private, authority, result, on_terminal=notify_stop)
+            result = self._finish(private, authority, result, on_terminal=notify_stop)
         except RequestRevoked:
             authority.revoke('cancelled')
-            return self._finish(private, authority, authority.feedback(), on_terminal=notify_stop)
+            result = self._finish(private, authority, authority.feedback(), on_terminal=notify_stop)
         finally:
+            stop_at_detach = False
+            failed_at_detach = False
             with self.lock:
                 if self.active is authority:
+                    if authority.revoked.is_set():
+                        result = self._finish(private, authority, authority.feedback())
+                    if authority not in self.abandoned:
+                        self.abandoned.append(authority)
+                    self._settle_lifecycle()
+                    failed_at_detach = self.use is BrowserUse.UNCONTAINED
+                    if failed_at_detach and not stop_sent.is_set():
+                        stop_sent.set()
+                        stop_at_detach = True
                     self.active = None
+            if stop_at_detach and on_terminal is not None:
+                on_terminal(None)
+        if failed_at_detach:
+            return {**result, 'status': 'fatal', 'reason': 'Browser execution containment failed.',
+                    'data': {**result['data'], 'triage': {**result['data'].get('triage', {}),
+                        'browser_use': 'uncontained', 'mission': 'stop', 'allowed_operations': [],
+                        'operational_failure': True}}}
+        return result
 
     @staticmethod
     def _fork(root, authority, *, keep_refs=True):

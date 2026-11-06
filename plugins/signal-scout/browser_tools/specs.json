@@ -155,6 +155,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
           "test": "test_BR_003_AG_006_abandon_registers_revoker_before_releasing_active_owner"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
+          "test": "test_BR_003_BR_004_AG_006_MI_035_final_detach_owns_late_revoker"
         }
       ],
       "otherCoverage": [],
@@ -198,6 +203,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_triage_policy.py",
           "test": "test_BR_004_AG_006_AG_010_MI_035_late_child_gates_all_admission"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
+          "test": "test_BR_003_BR_004_AG_006_MI_035_final_detach_owns_late_revoker"
         }
       ],
       "otherCoverage": [],
@@ -764,7 +774,7 @@
       "id": "AG_006",
       "subfeature": "browser-action-gate",
       "title": "Bounded requests and abandoned-worker access revocation",
-      "contract": "Configurable command and whole-request deadlines bound serial requests including observation and cleanup. Root admission gate atomically orders revoke against child repair/command admission, recording admission before potentially blocking I/O without holding cancellation gate across network I/O or socket shutdown. Already admitted sends may remain in flight after cancellation. Whole expiry freezes original facts, revokes authority and requests cooperative cancellation without claiming thread termination or remote rollback. Late workers cannot publish refs/results/generation, stop newer bindings or clean newer resources. Default capture is unavailable after expiry; fresh authorized request is required. No automatic replay or universal page-recovery checklist is added. Revocation registers before exposing abandonment and remains owned until every shutdown actor settles; worker completion alone cannot retire that obligation or settle repair time. Retirement snapshots completed lifecycle states before checking faults and prunes only those snapshots. Uncontained current or future owned generations stop admission; only strictly older retired generations are ignored. Existing model and tool admission also consume late containment faults, including during report-only mode, before starting new work; in-flight inference termination is not claimed.",
+      "contract": "Configurable command and whole-request deadlines bound serial requests including observation and cleanup. Root admission gate atomically orders revoke against child repair/command admission, recording admission before potentially blocking I/O without holding cancellation gate across network I/O or socket shutdown. Already admitted sends may remain in flight after cancellation. Whole expiry freezes original facts, revokes authority and requests cooperative cancellation without claiming thread termination or remote rollback. Late workers cannot publish refs/results/generation, stop newer bindings or clean newer resources. Default capture is unavailable after expiry; fresh authorized request is required. No automatic replay or universal page-recovery checklist is added. Revocation registers before exposing abandonment and remains owned until every shutdown actor settles; worker completion alone cannot retire that obligation or settle repair time. Retirement snapshots completed lifecycle states before checking faults and prunes only those snapshots. Uncontained current or future owned generations stop admission; only strictly older retired generations are ignored. Existing model and tool admission also consume late containment faults, including during report-only mode, before starting new work; in-flight inference termination is not claimed. Final active-owner detachment transfers every authority through lifecycle settlement, including revocation registered after initial result classification.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -899,6 +909,16 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
           "test": "test_AG_006_triage_failure_shutdown_releases_manager_lock"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
+          "test": "test_BR_003_BR_004_AG_006_MI_035_final_detach_owns_late_revoker"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
+          "test": "test_AG_006_AG_010_retired_bootstrap_cleanup_preserves_new_generation"
         }
       ],
       "otherCoverage": [],
@@ -1155,7 +1175,7 @@
       "id": "AG_010",
       "subfeature": "infrastructure-recovery",
       "title": "Code-directed reconnect and owned browser replacement",
-      "contract": "Confirmed control loss may automatically reconnect the same exactly owned browser within cumulative repair time. Fresh replacement requires explicit model restart action through the fixed browser_scout schema and authenticated exact host ownership. Host charges actual replacement admission once per stable operation ID before side effects; failed/ambiguous attempts retain charge; duplicate, busy/status and lost-reply adoption cannot charge or launch twice. Pending owned creation must reconcile before another create. Generation is identity, not attempt count. Successful replacement clears browser-instance restrictions/refs and discloses state loss, never resets mission totals. Spent allowance leaves healthy browser usable. Unavailable browser with denied/spent/permanent repair enters bounded report-only; ownership/protection never permits foreign attachment or cleanup. Initial engineering defaults allow two actual mission replacement admissions and 120 cumulative repair seconds; pending authenticated host work remains charged until settled.",
+      "contract": "Confirmed control loss may automatically reconnect the same exactly owned browser within cumulative repair time. Fresh replacement requires explicit model restart action through the fixed browser_scout schema and authenticated exact host ownership. Host charges actual replacement admission once per stable operation ID before side effects; failed/ambiguous attempts retain charge; duplicate, busy/status and lost-reply adoption cannot charge or launch twice. Pending owned creation must reconcile before another create. Generation is identity, not attempt count. Successful replacement clears browser-instance restrictions/refs and discloses state loss, never resets mission totals. Spent allowance leaves healthy browser usable. Unavailable browser with denied/spent/permanent repair enters bounded report-only; ownership/protection never permits foreign attachment or cleanup. Initial engineering defaults allow two actual mission replacement admissions and 120 cumulative repair seconds; pending authenticated host work remains charged until settled. Retired bootstrap transport detaches under the owner lock and disposes outside it within the existing request deadline; failed retired-generation disposal is disclosed without discarding newer owned state.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -1255,6 +1275,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
           "test": "test_AG_006_AG_010_repair_clock_waits_for_overlapping_revokers"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
+          "test": "test_AG_006_AG_010_retired_bootstrap_cleanup_preserves_new_generation"
         }
       ],
       "otherCoverage": [],
