@@ -13,9 +13,9 @@ with Browser(config) as browser:
     gate=browser.session(target_id=tab)
     original=g._CDP.command;native_init=g._CDP.__init__
     sent=[];failing=[True]
-    def command(self,method,params=None,session=None):
+    def command(self,method,params=None,session=None,**kwargs):
         if method=='Page.navigate': sent.append(params['url'])
-        return original(self,method,params,session)
+        return original(self,method,params,session,**kwargs)
     def init(self,*args,**kwargs):
         native_init(self,*args,**kwargs);self.timeout=.25
         receive=self.connection.recv
@@ -64,7 +64,7 @@ with Browser(config) as browser:
     def park(authority):
         old.append(authority);parked.set()
         assert release.wait(20),'Old request was never released'
-    def command(self,method,params=None,session=None):
+    def command(self,method,params=None,session=None,**kwargs):
         if position=='before_gate' and method=='Input.dispatchMouseEvent' and armed[0]:
             armed[0]=False;park(self.authority)
         return original_command(self,method,params,session)
@@ -227,11 +227,11 @@ with Browser(config) as browser:
     config['browser']['request_timeout']=20
     parked=threading.Event();release=threading.Event();old=[];armed=[True]
     native_command=g._CDP.command
-    def command(self,method,params=None,session=None):
+    def command(self,method,params=None,session=None,**kwargs):
         if method=='Input.dispatchMouseEvent' and armed[0]:
             armed[0]=False;old.append(self.authority);parked.set()
             assert release.wait(20)
-        return native_command(self,method,params,session)
+        return native_command(self,method,params,session,**kwargs)
     ref=reference(gate._inspect_snapshot(tab),'Below fold')
     def plan(index,kwargs):
         if index==1:
@@ -313,12 +313,12 @@ with Browser(config) as browser:
     tab=open_fixture(browser);gate=browser.session(target_id=tab)
     original=g._CDP.command;armed=[True];events=[];old_ref=reference(gate._inspect_snapshot(tab),'Below fold')
     endpoint=browser.endpoint;task=browser.task
-    def command(self,method,params=None,session=None):
+    def command(self,method,params=None,session=None,**kwargs):
         if self.authority is not None and method=='Input.dispatchMouseEvent' and armed[0]:
             armed[0]=False;self.connection.close()
         if self.authority is not None and method in {'Page.navigate','Page.reload'}:
             events.append(method)
-        return original(self,method,params,session)
+        return original(self,method,params,session,**kwargs)
     def plan(index,kwargs):
         if index==1:
             return response([tool({'action':'click','args':{'ref':old_ref}})],content='')

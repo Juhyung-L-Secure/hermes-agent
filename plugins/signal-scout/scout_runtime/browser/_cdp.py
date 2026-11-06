@@ -9,6 +9,8 @@ import time
 
 from websockets.sync.client import connect
 
+from .facts import Intent, command_intent
+
 
 logger = logging.getLogger(__name__)
 
@@ -152,9 +154,6 @@ class _CDP:
     def __init__(self, endpoint, timeout, observation_timeout, interaction_observation_timeout, authority=None):
         self.authority = authority
         self.capture_deadline = None
-        self.facts = {}
-        self.effect_sent = self.effect_replies = 0
-        self.effect_acknowledged = False
         self.timeout = timeout
         self.observation_timeout = observation_timeout
         self.interaction_observation_timeout = interaction_observation_timeout
@@ -166,6 +165,22 @@ class _CDP:
                                   close_timeout=timeout, ping_interval=None, max_size=None)
         if authority is not None:
             authority.attach(self)
+
+    @property
+    def facts(self):
+        authority = self.authority or getattr(self, '_local_authority', None)
+        commands = authority.facts().commands if authority is not None else ()
+        return commands[-1].public() if commands else {}
+
+    @property
+    def effect_replies(self):
+        authority = self.authority or getattr(self, '_local_authority', None)
+        return sum(ticket.acknowledged for ticket in authority.facts().mutations) if authority is not None else 0
+
+    @property
+    def effect_acknowledged(self):
+        authority = self.authority or getattr(self, '_local_authority', None)
+        return authority.facts().action_acknowledged if authority is not None else False
 
     def _log(self, level, message, *args, **kwargs):
         try:
@@ -217,7 +232,7 @@ class _CDP:
             self._event(response)
         return response
 
-    def command(self, method, params=None, session=None):
+    def command(self, method, params=None, session=None, *, intent=None):
         self.sequence += 1
         command_id = self.sequence
         message = {"id": command_id, "method": method, "params": params or {}}
@@ -235,20 +250,19 @@ class _CDP:
             observation.sent = True
             observation.effects.add(command_id)
         authority = self.authority
-        facts = {'id': command_id, 'method': method, 'send_started': False,
-                 'sent': False, 'response_received': False}
-        self.facts = facts
-        if authority is not None:
-            authority.last_command = facts
+        if authority is None:
+            from .lifetime import RequestAuthority
+
+            authority = getattr(self, '_local_authority', None)
+            if authority is None:
+                authority = self._local_authority = RequestAuthority('direct-cdp')
+        ticket = authority.admit(command_id, method, command_intent(method, params or {}) if intent is None else intent)
         try:
             if authority is not None:
                 authority.check()
             self._log(logging.INFO, "Browser command send id=%s method=%s session=%s", command_id, method, session)
-            facts['send_started'] = True
             self.connection.send(json.dumps(message))
-            facts['sent'] = True
-            if effect:
-                self.effect_sent = self.effect_sent + 1
+            authority.record(ticket, sent=True)
             if authority is not None:
                 authority.check()
             wait_state = "command_response"
@@ -259,7 +273,7 @@ class _CDP:
                         self._log(logging.INFO, "Browser late response id=%s waiting_id=%s", response["id"], command_id)
                     continue
                 response_received = True
-                facts["response_received"] = True
+                authority.record(ticket, response_received=True)
                 if response.get("sessionId") != session:
                     raise ValueError("Invalid browser response session.")
                 if "error" in response:
@@ -267,6 +281,7 @@ class _CDP:
                     if not isinstance(error, dict):
                         raise ValueError("Invalid browser protocol error.")
                     protocol_code, protocol_message = error.get("code"), error.get("message")
+                    authority.record(ticket, response_valid=True)
                     raise _ProtocolError(error)
                 result = response["result"]
                 if not isinstance(result, dict):
@@ -296,9 +311,9 @@ class _CDP:
                         observation.expected = result["loaderId"]
                 replied = time.monotonic()
                 if effect:
-                    self.effect_replies = self.effect_replies + 1
                     observation.replies.add(command_id)
                     observation.acknowledged = replied
+                authority.record(ticket, response_valid=True, acknowledged="exceptionDetails" not in result)
                 self._log(logging.INFO, "Browser command reply id=%s method=%s session=%s elapsed_ms=%d response_received=True",
                     command_id, method, session, int((replied - began) * 1000))
                 return result
@@ -314,7 +329,6 @@ class _CDP:
     def observe(self, effect, baseline, inspect, capture, *, explicit=False, interaction=False):
         if self._observation is not None:
             raise RuntimeError("Browser observation is already active.")
-        self.effect_acknowledged = False
         observation = _Observation(baseline, explicit, interaction, navigation=not interaction)
         connection = self.connection
         self._observation = observation
@@ -323,7 +337,8 @@ class _CDP:
             observation.executing = False
             if not observation.effects or observation.replies != observation.effects:
                 raise ValueError("Browser effect acknowledgment unavailable.")
-            self.effect_acknowledged = True
+            authority = self.authority or self._local_authority
+            authority.action_acknowledged = True
             began = observation.acknowledged
             deadline = began + self.observation_timeout
             observation.deadline = deadline

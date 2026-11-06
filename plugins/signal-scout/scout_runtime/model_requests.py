@@ -67,14 +67,9 @@ def _execute(*, request, next_call, session_id='', api_request_id='', **_):
     if not matched:
         return next_call(request)
     _request_attempt.set(attempt)
-    if binding.control is not None:
-        from .mission import MissionLimit
-
-        try:
-            binding.control.before_model_request(api_request_id)
-        except MissionLimit:
-            binding.agent.interrupt(hard_cancel=True)
-            raise
+    if binding.control is not None and not binding.control.before_model_request(api_request_id):
+        binding.agent.interrupt(hard_cancel=True)
+        return None
     try:
         return next_call(request)
     except Exception:

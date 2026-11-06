@@ -8,7 +8,7 @@ import os
 import signal
 import sys
 
-from ..scout_runtime.mission import MissionOutcome, MissionRequest
+from ..scout_runtime.mission import MissionControl, MissionOutcome, MissionRequest
 from .console import MissionConsole
 from ..scout_runtime.settings import load_settings
 from ..scout_runtime.runtime_logging import configure_logging
@@ -30,11 +30,12 @@ def research(request, config, console):
     action_reference = adapter.load_action_reference()
     provider, model = config["model"]["provider"], config["model"]["default"]
     runtime = resolve_runtime_provider(requested=provider, target_model=model)
+    control = MissionControl(request, config["scout_mission"])
     agent = AIAgent(model=model, provider=provider, requested_provider=provider,
         api_mode=runtime["api_mode"], base_url=runtime["base_url"], api_key=runtime["api_key"],
         credential_pool=runtime.get("credential_pool"), enabled_toolsets=["signal_scout_browser"],
         reasoning_config={"effort": config["agent"]["reasoning_effort"]},
-        max_iterations=sys.maxsize, run_budget_seconds=0, fallback_model=[],
+        max_iterations=config["scout_mission"]["research_model_requests"] + config["scout_mission"]["finalization_model_requests"], run_budget_seconds=0, fallback_model=[],
         quiet_mode=True, save_trajectories=False, skip_context_files=True,
         skip_memory=True, skip_background_review=True, step_callback=console.step,
         status_callback=console.status, tool_start_callback=console.tool_start,
@@ -45,13 +46,19 @@ def research(request, config, console):
         with Browser(config) as browser:
             session = browser.session()
             with adapter.bind_browser(session, on_fatal=partial(agent.interrupt, hard_cancel=True),
-                                      action_reference=action_reference), \
-                 plugin.model_requests.bind_model_requests(agent, max_attempts=config["agent"]["api_max_retries"]):
-                return agent.run_conversation(guidance + "\n\nBrowser action reference:\n" + action_reference
+                                      action_reference=action_reference, control=control), \
+                 plugin.model_requests.bind_model_requests(agent, max_attempts=config["agent"]["api_max_retries"], control=control):
+                result = agent.run_conversation(guidance + "\n\nBrowser action reference:\n" + action_reference
                                               + "\n\nResearch mission:\n" + request.text)
+                return control.finish(result)
     except KeyboardInterrupt:
         agent.interrupt(hard_cancel=True)
         raise
+    except Exception:
+        import logging
+
+        logging.getLogger(__name__).exception("Scout native research failed")
+        return control.finish()
     finally:
         agent.close()
 
@@ -88,7 +95,7 @@ def main(argv=None):
             import hermes_logging
 
             hermes_logging.drain_log_queue(timeout=1)
-    if outcome == MissionOutcome.SUCCESS:
+    if isinstance(answer, str) and answer.strip():
         print(answer, flush=True)
     return outcome
 

@@ -287,7 +287,7 @@ def test_MI_035_attach_status_cannot_override_native_exit_or_cleanup(monkeypatch
     from types import SimpleNamespace
 
     browser = SimpleNamespace(project="test", run="owned", compose=["compose"],
-        config={"browser": {"mode": "headless"}, "scout_lifecycle": {"shutdown_timeout": 5}},
+        config={"scout_mission": {"research_seconds": 100, "finalization_seconds": 10}, "browser": {"mode": "headless"}, "scout_lifecycle": {"shutdown_timeout": 5}},
         scout_environment=lambda: {}, __enter__=lambda: None, close=lambda: None)
     monkeypatch.setattr(host, "BrowserRun", lambda *_args, **_kwargs: browser)
     monkeypatch.setattr(host, 'RecoveryServer', lambda _: SimpleNamespace(
@@ -350,7 +350,7 @@ def test_MI_035_creation_failure_and_deferred_cancel_clean_attempted_owner(monke
             os.kill(os.getpid(), signal.SIGINT)
 
     browser = SimpleNamespace(project="test", run="owned", compose=["compose"],
-        config={"browser": {"mode": "headless"}, "scout_lifecycle": {"shutdown_timeout": 5}},
+        config={"scout_mission": {"research_seconds": 100, "finalization_seconds": 10}, "browser": {"mode": "headless"}, "scout_lifecycle": {"shutdown_timeout": 5}},
         scout_environment=lambda: {}, __enter__=enter, close=lambda: closed.append("browser"))
     monkeypatch.setattr(host, "BrowserRun", lambda *_args, **_kwargs: browser)
     monkeypatch.setattr(host, 'RecoveryServer', lambda _: SimpleNamespace(

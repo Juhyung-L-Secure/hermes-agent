@@ -45,7 +45,24 @@ def parse_settings(contents):
         recovery = config.setdefault('scout_recovery', {
             'strategy': 'reconnect_then_restart', 'reconnect_attempts': 2,
             'restart_attempts': 1, 'attempt_timeout': 30})
-        if (set(recovery) != {'strategy', 'reconnect_attempts', 'restart_attempts', 'attempt_timeout'}
+        recovery.setdefault('max_replacements', 2)
+        recovery.setdefault('max_repair_seconds', 120)
+        mission = config.setdefault('scout_mission', {})
+        defaults = {'max_consecutive_failures': 5, 'research_model_requests': 100,
+                    'research_seconds': 3600, 'finalization_model_requests': 2, 'finalization_seconds': 60}
+        for key, value in defaults.items():
+            mission.setdefault(key, value)
+        if set(mission) != set(defaults):
+            raise ValueError
+        for key in ('max_consecutive_failures', 'research_model_requests', 'finalization_model_requests'):
+            if type(mission[key]) is not int or not 1 <= mission[key] <= 10000:
+                raise ValueError
+        for value in (mission['research_seconds'], mission['finalization_seconds'], recovery['max_repair_seconds']):
+            if type(value) not in (int, float) or not math.isfinite(value) or not 0 < value <= 86400:
+                raise ValueError
+        if type(recovery['max_replacements']) is not int or not 0 <= recovery['max_replacements'] <= 100:
+            raise ValueError
+        if (set(recovery) != {'strategy', 'reconnect_attempts', 'restart_attempts', 'attempt_timeout', 'max_replacements', 'max_repair_seconds'}
                 or recovery['strategy'] not in {'reconnect', 'restart', 'reconnect_then_restart'}):
             raise ValueError
         for key in ('reconnect_attempts', 'restart_attempts'):

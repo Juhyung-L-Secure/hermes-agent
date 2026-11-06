@@ -95,7 +95,7 @@ def _send(self, request, **kwargs):
             import importlib
             evidence = importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
             native = evidence.BrowserSession._command
-            def command(self, method, params=None, session=None):
+            def command(self, method, params=None, session=None,**kwargs):
                 if method == 'Page.navigate':
                     return native(self, 'Scout.requiredBrowserFailure', {}, session)
                 return native(self, method, params, session)

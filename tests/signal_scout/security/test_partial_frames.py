@@ -15,7 +15,7 @@ def test_AE_007_snapshot_skips_missing_branch_and_continues_siblings(code):
     missing = True
     worlds = []
 
-    def command(method, params=None, session=None):
+    def command(method, params=None, session=None,**kwargs):
         if method == 'Target.getTargets':
             return {'targetInfos': [{'targetId': 'tab', 'type': 'page'}]}
         if method == 'Target.attachToTarget':
@@ -71,7 +71,7 @@ class _FramePeer:
         self.commands = []
         self.contexts = {'root': 10, 'child': 20, 'sibling': 30, 'new': 40}
 
-    def command(self, method, params=None, session=None):
+    def command(self, method, params=None, session=None,**kwargs):
         self.commands.append((method, params, session))
         if method == 'Target.getTargets':
             return {'targetInfos': [{'targetId': 'tab', 'type': 'page', 'title': 'Rice', 'url': 'http://public.test/'}]}
@@ -213,7 +213,7 @@ def test_AE_007_pending_remote_roots_distinguish_excluded_descendants_and_unknow
     native = peer.command
     if descendant:
         peer.gone.add('child')
-    def command(method, params=None, session=None):
+    def command(method, params=None, session=None,**kwargs):
         if method == 'Target.getTargets':
             return {'targetInfos': [*native(method)['targetInfos'], {'targetId': 'private-remote', 'type': 'iframe'}]}
         if method == 'Target.attachToTarget' and params['targetId'] == 'private-remote':

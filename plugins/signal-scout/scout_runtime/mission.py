@@ -26,10 +26,6 @@ class MissionOutcome(IntEnum):
         return cls.FAILURE
 
 
-class MissionLimit(RuntimeError):
-    pass
-
-
 class MissionControl:
     def __init__(self, request, policy, *, clock=None):
         import time
@@ -60,16 +56,17 @@ class MissionControl:
         self.check()
         if request_id in self.requests:
             if self.mode == 'stopped':
-                raise MissionLimit('Scout finalization allowance exhausted.')
-            return
+                return False
+            return True
         count = sum(mode == self.mode for mode in self.requests.values())
         if self.mode == 'research' and count >= self.policy['research_model_requests']:
             self.require_report('Research model request allowance reached.')
             count = 0
         if self.mode == 'stopped' or (self.mode == 'report_only' and count >= self.policy['finalization_model_requests']):
             self.mode = 'stopped'
-            raise MissionLimit('Scout finalization allowance exhausted.')
+            return False
         self.requests[request_id] = self.mode
+        return True
 
     def accept(self, result):
         decision = result['data'].get('triage', {})
@@ -95,7 +92,8 @@ class MissionControl:
         if not incomplete:
             return result
         answer = result.get('final_response')
-        if not isinstance(answer, str) or not answer.strip():
+        if (result.get('completed') is not True or result.get('failed') or result.get('interrupted')
+                or not isinstance(answer, str) or not answer.strip()):
             findings = [message['content'] for message in result.get('messages', [])
                         if message.get('role') == 'assistant' and not message.get('tool_calls')
                         and isinstance(message.get('content'), str) and message['content'].strip()]

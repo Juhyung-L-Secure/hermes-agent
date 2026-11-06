@@ -146,9 +146,7 @@ def test_SR_022_browser_failure_uses_saved_native_logs_redaction_and_best_effort
         token = 'glpat-' + 'Zx9AbCdEfGhIjKlMnOpQ'
         cdp = cdp_module._CDP.__new__(cdp_module._CDP)
         cdp.timeout, cdp.sequence, cdp._observation = 30, 0, None
-        cdp.authority, cdp.capture_deadline, cdp.facts = None, None, {}
-        cdp.effect_sent = cdp.effect_replies = 0
-        cdp.effect_acknowledged = False
+        cdp.authority, cdp.capture_deadline = None, None
         cdp.observation_timeout, cdp.interaction_observation_timeout = 5, .25
         sent = []
         def receive(**_):
@@ -183,8 +181,9 @@ def test_SR_022_browser_failure_uses_saved_native_logs_redaction_and_best_effort
         gate = browser.session(target_id='owned')
         result = gate.dispatch({'action':'navigate','args':{'url':'https://bulk-params-marker.test/'},
                                 'activity':'bulk-activity-marker'})
-        assert result == {'status':'fatal','reason':'Browser action failed.','execution_started':True,'data':{}}
-        assert closed == [True] and gate._terminal and browser.failed and not browser.ready
+        assert result['status']=='incomplete' and result['execution_started'] is True
+        assert result['data']['failure']['kind']=='unknown'
+        assert closed == [] and not gate._terminal and browser.ready and not browser.failed
         assert 'native browser detail' not in repr(result) + repr(gate)
         hermes_logging.flush_log_queue()
         handlers = hermes_logging.rotating_file_handlers()
@@ -203,8 +202,8 @@ def test_SR_022_browser_failure_uses_saved_native_logs_redaction_and_best_effort
                 assert 'Zx9AbCdEfGhIjKlMnOpQ' not in text and 'bulk-' not in text
         print(json.dumps(result, sort_keys=True))
     """))
-    assert json.loads(result.stdout) == {'status':'fatal','reason':'Browser action failed.',
-                                        'execution_started':True,'data':{}}
+    feedback=json.loads(result.stdout)
+    assert feedback['status']=='incomplete' and feedback['data']['failure']['kind']=='unknown'
     assert 'Zx9AbCdEfGhIjKlMnOpQ' not in result.stderr + result.stdout
     assert 'scout logging write failed' in result.stderr if write_failure else 'native browser detail' in result.stderr
 

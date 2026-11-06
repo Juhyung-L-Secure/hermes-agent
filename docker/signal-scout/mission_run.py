@@ -8,6 +8,7 @@ import re
 import signal
 import subprocess
 import sys
+import time
 
 from browser_run import BrowserRun, COMPOSE, CONFIG, DOCKER_COMMAND_TIMEOUT, checked
 from repair_server import RecoveryServer
@@ -70,6 +71,8 @@ class MissionRun:
 
     def run(self):
         code = 1
+        policy = self.browser.config["scout_mission"]
+        deadline = time.monotonic() + policy["research_seconds"] + policy["finalization_seconds"]
         try:
             print("Scout starting browser.", file=sys.stderr, flush=True)
             with defer_creation_cancellation():
@@ -94,10 +97,13 @@ class MissionRun:
                 stdin=subprocess.PIPE, text=True, start_new_session=True)
             self.child.stdin.write(json.dumps({"text": self.request.text}))
             self.child.stdin.close()
-            attached = self.child.wait()
+            attached = self.child.wait(timeout=max(0, deadline - time.monotonic()))
             info = self._scout()
             code = 0 if (attached == 0 and info is not None and not info["State"]["Running"]
                          and info["State"]["ExitCode"] == 0) else 1
+        except subprocess.TimeoutExpired:
+            print("Partial research report\n\nResearch incomplete. Absolute mission deadline reached.", flush=True)
+            code = 1
         except KeyboardInterrupt:
             print("Scout cancellation requested.", file=sys.stderr, flush=True)
             code = 130

@@ -12,13 +12,13 @@ with Browser(config) as browser:
     tab=open_fixture(browser);gate=browser.session(target_id=tab)
     ref=reference(gate._inspect_snapshot(tab),'Query')
     original=g._CDP.command;inserted=[];armed=[True]
-    def command(self,method,params=None,session=None):
+    def command(self,method,params=None,session=None,**kwargs):
         if method=='Input.insertText':
             inserted.append(params['text'])
         if self.authority is not None and inserted and method=='Runtime.evaluate' and armed[0]:
             armed[0]=False
             return original(self,method,{**params,'contextId':-1},session)
-        return original(self,method,params,session)
+        return original(self,method,params,session,**kwargs)
     def plan(index,kwargs):
         if index==1:
             return response([tool({'action':'type','args':{'ref':ref,'text':'one acknowledged value'}})],content='')
@@ -59,11 +59,11 @@ with Browser(config) as browser:
         pass
     gate._disconnect()
     original=g._CDP.command;commands=[];reloads=[]
-    def command(self,method,params=None,session=None):
+    def command(self,method,params=None,session=None,**kwargs):
         if self.authority is not None:
             commands.append(method)
             if method=='Page.reload': reloads.append(session)
-        return original(self,method,params,session)
+        return original(self,method,params,session,**kwargs)
     def plan(index,kwargs):
         if index==1:
             return response([tool({'action':'reload','args':{}})],content='')
@@ -107,10 +107,10 @@ with Browser(config) as browser:
         if authority is not None and authority.parent is not None and armed[0]:
             armed[0]=False;old.append(authority);parked.set()
             assert release.wait(20)
-    def command(self,method,params=None,session=None):
+    def command(self,method,params=None,session=None,**kwargs):
         if self.authority is not None and self.authority.parent is None and method=='Input.dispatchMouseEvent' and lost[0]:
             lost[0]=False;self.abort()
-        return native_command(self,method,params,session)
+        return native_command(self,method,params,session,**kwargs)
     def verify(self):
         if stage=='discovery': park(self.authority)
         return native_verify(self)

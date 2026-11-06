@@ -12,5 +12,6 @@ ACTION_FIELDS = {
     'list_tabs': frozenset([]),
     'switch_tab': frozenset(['target_id']),
     'close': frozenset([]),
+    'restart': frozenset(),
 }
 ACTION_MODES = frozenset({"blocked", "allowed"})

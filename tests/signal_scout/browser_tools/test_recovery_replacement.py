@@ -47,6 +47,10 @@ with Browser(config) as browser:
             assert rpc==[] and browser.generation==1
             return response([tool({'action':'click','args':{'ref':ref}})],content='')
         if index==4:
+            assert result['status']=='incomplete' and browser.generation==1,result
+            assert result['data']['triage']['browser_use']=='unavailable'
+            return response([tool({'action':'restart','args':{}},call_id='explicit-restart')],content='')
+        if index==5:
             assert result['status']=='incomplete',result
             repair=result['data']['recovery']
             assert repair['kind']=='restarted' and repair['generation']==2, result
@@ -63,12 +67,12 @@ with Browser(config) as browser:
                 assert time.monotonic()<deadline
                 time.sleep(.05)
             return response([tool({'action':'navigate','args':{'url':'http://public.test/evidence'}})],content='')
-        if index==5:
+        if index==6:
             assert result['status']=='success',result
             fresh=reference(result['data']['snapshot'],'Below fold')
             assert fresh!=ref
             return response([tool({'action':'click','args':{'ref':fresh}})],content='')
-        if index==6:
+        if index==7:
             assert result['status']=='success',result
             observer=g._CDP(browser.endpoint,2,1,.25)
             try:
@@ -79,19 +83,19 @@ with Browser(config) as browser:
                 observer.close()
             assert all(label in browser.sandbox_status for label in ('PID namespaces','Network namespaces','Seccomp-BPF sandbox'))
             return response([tool({'action':'navigate','args':{'url':'http://public.test/attachment/gate-fixture.bin'}})],content='')
-        if index==7:
+        if index==8:
             assert result['status']=='success',result
             assert result['data']['observation']['state']=='download_denied',result
             return response([tool({'action':'navigate','args':{'url':'http://private.test/'}})],content='')
-        assert index==8 and result['status']=='incomplete',result
+        assert index==9 and result['status']=='incomplete',result
         assert browser.ready and not browser.failed
         return response()
-    with fake_main(plan,iterations=10) as (agent,requests):
+    with fake_main(plan,iterations=11) as (agent,requests):
         agent._api_max_retries=1
         with adapter.bind_browser(gate,action_reference=action_reference,on_fatal=partial(agent.interrupt,hard_cancel=True)):
             outcome=agent.run_conversation('Continue through owned browser replacement without replaying old input.')
             assert outcome.get('completed') and not outcome.get('interrupted'),outcome
-            assert len(results)==7
+            assert len(results)==8
             stable_requests(requests)
 print('owned generation replacement and native continuation verified')
 ''', *server.scout_options(), run=run, timeout=210)
@@ -136,7 +140,7 @@ with Browser(config) as browser:
         return native_init(self,*args,**kwargs)
     def plan(index,kwargs):
         if index==1:
-            return response([tool({'action':'click','args':{'ref':stale}},call_id='abandoned-replacement')],content='')
+            return response([tool({'action':'restart','args':{}},call_id='abandoned-replacement')],content='')
         result=model_result([m for m in kwargs['messages'] if m.get('role')=='tool'][-1])
         if index==2:
             assert parked.is_set() and result['status']=='incomplete',result
@@ -144,7 +148,7 @@ with Browser(config) as browser:
             assert old[0].revoked.is_set() and old[0].parent.revoked.is_set()
             assert browser.generation==1 and not stops
             config['browser']['request_timeout']=60
-            return response([tool({'action':'snapshot','args':{}},call_id='adopt-current')],content='')
+            return response([tool({'action':'restart','args':{}},call_id='adopt-current')],content='')
         if index==3:
             assert result['status']=='incomplete' and result['data']['recovery']['kind']=='restarted',result
             assert browser.generation==2 and browser.endpoint!=initial_endpoint

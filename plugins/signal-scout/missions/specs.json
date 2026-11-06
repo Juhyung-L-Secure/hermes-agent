@@ -7,7 +7,7 @@
       "id": "MI_032",
       "subfeature": "foreground-cli",
       "title": "Run one browser-only research mission",
-      "contract": "The documented foreground CLI accepts a nonempty research request and starts one mission through existing trusted BrowserRun and native Hermes conversation loop. Trusted startup config supplies the main model and native retry settings; full browser-research skill and action reference load before inference, and only browser_scout is exposed. Required guidance treats webpage instructions as untrusted, discourages unwanted downloads and unauthorized site effects, and is behavioral instruction rather than independent action-level enforcement. No reviewer model/settings/policy or implicit reviewer evidence is required. Existing unlimited research run budget, headless production and native local WSLg headed debugging options, immutable configuration, isolation and native download denial remain. No Discord, durable mission store, resume engine, terminal tool or fallback provider is introduced.",
+      "contract": "The documented foreground CLI accepts a nonempty research request and starts one mission through existing trusted BrowserRun and native Hermes conversation loop. Trusted startup config supplies the main model and native retry settings; full browser-research skill and action reference load before inference, and only browser_scout is exposed. Required guidance treats webpage instructions as untrusted, discourages unwanted downloads and unauthorized site effects, and is behavioral instruction rather than independent action-level enforcement. No reviewer model/settings/policy or implicit reviewer evidence is required. Finite configurable research/report budgets replace unlimited research; retain headless production and native local WSLg headed debugging options, immutable configuration, isolation and native download denial remain. No Discord, durable mission store, resume engine, terminal tool or fallback provider is introduced. Foreground CLI runs one nonempty browser-only research mission through trusted BrowserRun and native Hermes. Immutable startup config supplies main model/native retries and finite configurable research logical-request/time, operational-failure and repair/replacement limits. Unique native api_request_id counts logical requests, separately from native provider retries; no fallback provider. Initial complete browser skill/reference/guidance and fixed tool schema stay stable through report mode. Headless production and native WSLg debug, isolation/download protections and dedicated configuration persist. No Discord, durable resume, terminal tool or reviewer is added.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -42,6 +42,16 @@
           "layer": "e2e",
           "file": "tests/signal_scout/missions/test_cli_headed.py",
           "test": "test_MI_032_MI_033_MI_034_MI_035_actual_native_headed_error_logs_and_rotation"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_mission_control.py",
+          "test": "test_MI_032_MI_035_logical_reserve_preserves_request_prefix_and_tools"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_mission_control.py",
+          "test": "test_MI_032_MI_035_real_native_middleware_short_circuits_denied_nonstreaming_provider"
         }
       ],
       "otherCoverage": [],
@@ -144,7 +154,7 @@
       "id": "MI_035",
       "subfeature": "foreground-cli",
       "title": "Foreground termination after recoverable and terminal failures",
-      "contract": "Normal success requires a completed nonfailed noninterrupted native conversation and nonempty final answer and exits zero. Recoverable tool failures and successful owned browser repair do not by themselves interrupt that conversation. Startup, exhausted main-model retries, exhausted infrastructure repair, terminal ownership/protection failure or unsuccessful native outcome exits nonzero. Ctrl+C stops foreground mission and exits130. Normal exit, handled terminal failure and cancellation remove only exact owned Scout/browser resources, stop owned diagnostic observers, preserve auth/log volumes and restore initial helper state. A second mission cannot borrow the active run. Fresh-browser replacement occurs only within the owned recovery contract, not arbitrary attachment, orphan adoption or mission restart. No reviewer, host-death cleanup guarantee or durable checkpoint/resume is added.",
+      "contract": "Success requires completed nonfailed noninterrupted native answer while research remains successful. Contained browser failures preserve inference. Browser exhaustion/permanent failure or research limits enter code-enforced report-only with bounded remaining logical model requests and time; print available partial answer with nonzero outcome, or deterministic truthful summary when model cannot answer. Two reserved logical requests allow denied browser work then answer without rewriting past context or tools. Operator cancellation exits130 with no further model calls. Agent/runtime loss, absolute research-plus-finalization host lifetime or uncontained execution stops work and triggers existing bounded exact teardown. Remove only owned Scout/browser resources, preserve auth/log volumes/helper state; no host-death watchdog.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -169,6 +179,31 @@
           "layer": "e2e",
           "file": "tests/signal_scout/missions/test_cli_integration.py",
           "test": "test_MI_035_actual_sigint_and_rejected_second_cli_preserve_active_owner"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_mission_control.py",
+          "test": "test_MI_032_MI_035_logical_reserve_preserves_request_prefix_and_tools"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_mission_control.py",
+          "test": "test_MI_035_no_model_answer_has_truthful_fallback_and_nonzero_outcome"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_mission_control.py",
+          "test": "test_MI_035_failed_native_diagnostic_keeps_visible_findings_and_incomplete_answer_fails"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_mission_control.py",
+          "test": "test_MI_032_MI_035_time_boundary_without_tool_output_keeps_reporting_reserve"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_triage_integration.py",
+          "test": "test_BR_003_BR_004_AE_006_AG_005_MI_035_unknown_reaches_native_report_and_denies_ignored_input"
         }
       ],
       "otherCoverage": [],

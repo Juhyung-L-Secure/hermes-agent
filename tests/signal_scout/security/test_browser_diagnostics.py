@@ -117,16 +117,15 @@ def test_SR_022_actual_gate_phases_preserve_result_and_terminal_closure(boundary
     with caplog.at_level(logging.INFO):
         result = boundary.session.dispatch(request)
     started = phase in {'execution','observation','explicit_snapshot'}
-    assert result == {'status':'fatal','reason':'Browser action failed.','execution_started':started,'data':{}}
+    assert result['status']=='incomplete' and result['execution_started'] is started
+    assert result['data']['failure']['kind']=='unknown'
     record, = [r for r in caplog.records if r.name == session_module.__name__]
     assert f"action={request['action']}" in record.getMessage()
     assert f"phase={'execution' if phase == 'explicit_snapshot' else 'preparation' if phase == 'inspection' else phase}" in record.getMessage()
     assert 'elapsed_ms=0' in record.getMessage() and record.exc_info[1] is error
     assert record.exc_info[2] is not None and record.levelno == logging.ERROR
     assert 'bulk-' not in caplog.text and 'exception' not in repr(result)
-    assert boundary.closed == [True] and boundary.session._terminal
-    assert boundary.session.dispatch({'action':'snapshot','args':{}})['status'] == 'fatal'
-    assert boundary.closed == [True]
+    assert not boundary.closed and not boundary.session._terminal and boundary.browser.ready
 
 
 def test_SR_022_evidence_conversion_logs_original_before_suppression(caplog):
@@ -135,10 +134,9 @@ def test_SR_022_evidence_conversion_logs_original_before_suppression(caplog):
     original = ValueError('original local evidence error')
     def fail():
         raise original
-    with caplog.at_level(logging.INFO), pytest.raises(session_module.BrowserFailure) as caught:
+    with caplog.at_level(logging.INFO), pytest.raises(ValueError) as caught:
         evidence._run(fail)
-    assert str(caught.value) == 'Required browser evidence check failed.' and browser.failed
-    assert caught.value.__suppress_context__ and 'original' not in repr(caught.value)
+    assert caught.value is original and not browser.failed
     record, = [r for r in caplog.records if r.name == session_module.__name__]
     assert record.exc_info[1] is original and record.exc_info[2] is not None
     assert 'elapsed_ms=' in record.getMessage() and record.levelno == logging.ERROR
@@ -157,7 +155,7 @@ def test_SR_022_runtime_detail_survives_actual_evidence_conversion(caplog, metho
         lambda: evidence._call(frame, 'object', expression))
     with caplog.at_level(logging.INFO), pytest.raises(session_module.BrowserFailure) as caught:
         evidence._run(operation)
-    assert str(caught.value) == 'Required browser evidence check failed.' and browser.failed
+    assert str(caught.value) == 'Required browser evidence check failed.' and not browser.failed
     assert 'native evaluator failure' in caplog.text and 'fixture JavaScript cause' in caplog.text
     assert 'bulk-' not in caplog.text and 'fixture JavaScript cause' not in repr(caught.value)
     assert any(r.name == session_module.__name__ and r.exc_info for r in caplog.records)
@@ -221,10 +219,11 @@ def test_SR_022_post_started_stale_retains_native_detail_and_fatal_closure(bound
     monkeypatch.setattr(boundary.session, '_execute', execute)
     with caplog.at_level(logging.INFO):
         result = boundary.session.dispatch({'action':'navigate','args':{'url':'https://example.test/'},'activity':'Inspect'})
-    assert result == {'status':'fatal','reason':'Browser action failed.','execution_started':True,'data':{}}
+    assert result['status']=='incomplete' and result['execution_started'] is True
+    assert result['data']['failure']['kind']=='context_changed'
     assert 'No node with given id found' in caplog.text
     assert any(r.name == session_module.__name__ and r.levelno == logging.ERROR for r in caplog.records)
-    assert boundary.closed == [True]
+    assert not boundary.closed and boundary.browser.ready
 
 
 @pytest.mark.parametrize('boundary_name', ['gate','evidence','cdp','protocol','runtime','navigation'])
@@ -246,14 +245,14 @@ def test_SR_022_broken_logging_cannot_replace_failure_or_cleanup(boundary, monke
         raise original
     if boundary_name == 'gate':
         boundary.session._execute = fail
-        assert boundary.session.dispatch({'action':'navigate','args':{'url':'https://example.test/'},'activity':'Inspect'}) == {
-            'status':'fatal','reason':'Browser action failed.','execution_started':False,'data':{}}
-        assert boundary.closed == [True]
+        result=boundary.session.dispatch({'action':'navigate','args':{'url':'https://example.test/'},'activity':'Inspect'})
+        assert result['status']=='incomplete' and result['data']['failure']['kind']=='control_lost'
+        assert not boundary.closed and boundary.browser.ready
     elif boundary_name == 'evidence':
         evidence = session_module.BrowserSession(boundary.browser)
-        with pytest.raises(session_module.BrowserFailure, match='Required browser evidence check failed.'):
+        with pytest.raises(OSError) as caught:
             evidence._run(fail)
-        assert boundary.browser.failed
+        assert caught.value is original and not boundary.browser.failed
     elif boundary_name == 'cdp':
         cdp, _ = transport(send_error=original)
         with pytest.raises(OSError) as caught:

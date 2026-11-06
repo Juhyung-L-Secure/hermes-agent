@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 import json
 import logging
+import math
 import os
 import re
 import socket
@@ -42,7 +43,7 @@ class RecoveryClient:
         began, phase = time.monotonic(), 'connect'
         deadline = time.monotonic() + timeout
         request = {'nonce': self.nonce, 'operation': operation, 'generation': generation,
-                   'request_id': uuid.uuid4().hex, 'deadline': time.time() + timeout}
+                   'request_id': uuid.uuid5(uuid.NAMESPACE_OID, self.nonce + operation + authority.call_id).hex, 'deadline': time.time() + timeout}
         payload = json.dumps(request, separators=(',', ':')).encode()
         connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         authority.own_socket(connection)
@@ -78,14 +79,22 @@ class RecoveryClient:
             phase = 'response_body'
             response = json.loads(receive(size))
             if (not isinstance(response, dict)
-                    or set(response) != {'status', 'generation', 'endpoint', 'restarted', 'reason'}
+                    or set(response) not in ({'status', 'generation', 'endpoint', 'restarted', 'reason'},
+                        {'status', 'generation', 'endpoint', 'restarted', 'reason', 'budget'})
                     or response['status'] not in {'ready', 'unavailable', 'busy', 'failed', 'rejected'}
                     or type(response['generation']) is not int or response['generation'] < generation
                     or type(response['restarted']) is not bool
                     or response['reason'] not in {None, 'ownership_mismatch', 'stale_generation',
                         'attempt_expired', 'repair_in_progress', 'invalid_request', 'request_conflict',
-                        'expired_or_closed', 'repair_failed', 'closing'}):
+                        'expired_or_closed', 'repair_failed', 'closing', 'allowance_exhausted'}):
                 raise ValueError
+            if 'budget' in response:
+                budget = response['budget']
+                if (not isinstance(budget, dict) or set(budget) != {'remaining_replacements', 'repair_seconds_remaining'}
+                        or type(budget['remaining_replacements']) is not int or budget['remaining_replacements'] < 0
+                        or type(budget['repair_seconds_remaining']) not in (int, float)
+                        or not math.isfinite(budget['repair_seconds_remaining']) or budget['repair_seconds_remaining'] < 0):
+                    raise ValueError
             if response['status'] == 'ready':
                 network = self.settings['scout_network']
                 validate_endpoint(response['endpoint'], network['browser_address'], network['relay_port'])

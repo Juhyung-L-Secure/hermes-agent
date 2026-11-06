@@ -114,7 +114,7 @@ def recovery_boundary(boundary, monkeypatch, outcomes, retries=1):
             value = next(pending)
             if isinstance(value,Exception):
                 raise value
-            boundary.session._cdp.effect_acknowledged = True
+            boundary.session._authority.action_acknowledged = True
             return observed(cdp_module._NavigationOutcome(value), boundary.session._navigation_page(boundary.session._cdp))
         value = invoke(effect)
         if boundary.session._cdp is None:
@@ -201,14 +201,16 @@ def test_AG_008_timeout_observation_distinguishes_control_loss_and_terminal_iden
     connection=boundary.session._cdp
     monkeypatch.setattr(boundary.session,'_execute',execute)
     result=boundary.session.dispatch(request)
-    recoverable = failure in {'snapshot', 'frames', 'control'}
+    recoverable = failure not in {'interrupt_before', 'interrupt_after', 'browser_after'}
     assert result['status'] == ('incomplete' if recoverable else 'fatal')
     assert result['execution_started'] is True and 'private' not in repr(result)
     assert boundary.effects == [('navigate', {'url':'http://public.test/original'})]
     if recoverable:
-        assert result['data']['failure']['kind'] == 'control_lost'
+        assert result['data']['failure']['kind'] == ('ownership' if failure in {'missing_connection','changed_connection','connection_after'} else 'control_lost')
         assert result['data']['capture']['state'] == 'unavailable'
         assert not boundary.closed and boundary.browser.ready
+        if failure in {'missing_connection','changed_connection','connection_after'}:
+            return
         boundary.browser.verify_control = lambda: None
         boundary.session._inspect_snapshot = lambda _: '- heading "Fresh after control feedback"'
         boundary.session._page = lambda _: cdp_module._Page(
@@ -379,9 +381,9 @@ def test_AG_008_page_capture_binds_ax_url_readiness_to_one_document(changed):
         calls.append(('tab',scan.frames['root'].document));return {}
     adapter._accessibility=accessibility
     adapter._snapshot_text=lambda *args: '- heading "Coherent AX"'
-    adapter._evaluate=lambda *args: {'value':{'url':'http://public.test/current','readyState':'loading'}}
+    adapter._evaluate=lambda *args, **kwargs: {'value':{'url':'http://public.test/current','readyState':'loading'}}
     if changed:
-        with pytest.raises(session_module.BrowserFailure,match='Required browser evidence check failed.'):
+        with pytest.raises(session_module.BrowserFailure,match='Browser document changed during observation.'):
             adapter._page('tab')
         assert not browser.failed
     else:
@@ -464,7 +466,7 @@ def test_AG_008_explicit_redirect_requires_observed_successor_identity(started,e
 def test_AG_008_AE_007_root_readiness_and_partial_child_capture(unavailable):
     browser=SimpleNamespace(failed=False)
     adapter=session_module.BrowserSession(browser)
-    def command(method,params=None,session=None):
+    def command(method,params=None,session=None,**kwargs):
         if method=='Target.getTargets':
             targets=[{'targetId':'tab','type':'page'}]
             if unavailable=='other-tab-iframe': targets.append({'targetId':'foreign','type':'iframe'})
@@ -540,9 +542,9 @@ def test_AG_008_retry_rejection_and_control_loss_return_facts_terminal_identity_
         return result
     monkeypatch.setattr(boundary.session, '_execute', execute)
     result = boundary.session.dispatch(request)
-    assert result['status'] == ('incomplete' if change in {'blocked','control'} else 'fatal')
+    assert result['status'] == ('fatal' if change == 'interrupt' else 'incomplete')
     assert result['execution_started'] is True
     assert boundary.effects == [('navigate', {'url':'http://public.test/original'})]
-    assert bool(boundary.closed) is (change in {'connection','interrupt'})
+    assert bool(boundary.closed) is (change == 'interrupt')
     if change == 'blocked':
         assert result['data']['snapshot'] == '- heading "Current incomplete observation"'

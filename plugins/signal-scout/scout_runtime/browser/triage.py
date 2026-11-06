@@ -1,0 +1,48 @@
+from dataclasses import dataclass
+from enum import StrEnum
+
+from .facts import EffectFacts
+
+
+class BrowserUse(StrEnum):
+    READY = 'ready'
+    UNAVAILABLE = 'unavailable'
+    BLOCKED = 'blocked'
+
+
+@dataclass(frozen=True)
+class RequestFacts:
+    kind: str | None
+    effects: EffectFacts
+    secondary: tuple[str, ...] = ()
+    contained: bool = True
+
+
+@dataclass(frozen=True)
+class TriageDecision:
+    browser_use: BrowserUse
+    mission: str
+    operational_failure: bool
+
+    def public(self, *, restart_available):
+        allowed = ['ordinary_browser_actions', 'close'] if self.browser_use is BrowserUse.READY else ['close']
+        if restart_available and self.browser_use is not BrowserUse.BLOCKED:
+            allowed.append('restart')
+        return {'browser_use': self.browser_use.value, 'mission': self.mission,
+                'allowed_operations': allowed, 'operational_failure': self.operational_failure}
+
+
+def decide(facts, previous):
+    if not facts.contained:
+        return TriageDecision(BrowserUse.BLOCKED, 'stop', True)
+    kinds = (facts.kind, *facts.secondary)
+    if previous is BrowserUse.BLOCKED or any(kind in {'ownership', 'protection'} for kind in kinds):
+        return TriageDecision(BrowserUse.BLOCKED, 'report_only', True)
+    if facts.effects.unresolved_input:
+        return TriageDecision(BrowserUse.UNAVAILABLE, 'continue', True)
+    if any(kind in {'cleanup_unavailable', 'unknown', 'control_lost'} for kind in kinds) or facts.kind in {'unknown', 'control_lost', 'worker_timeout'}:
+        return TriageDecision(BrowserUse.UNAVAILABLE, 'continue', True)
+    if facts.kind == 'command_timeout' and facts.effects.mutations and not facts.effects.action_acknowledged:
+        return TriageDecision(BrowserUse.UNAVAILABLE, 'continue', True)
+    local = facts.kind in {None, 'context_changed', 'frame_unavailable', 'inspection_failed', 'command_timeout'}
+    return TriageDecision(previous, 'continue', not local)

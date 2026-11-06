@@ -23,15 +23,17 @@ def test_AG_006_revoked_notice_cannot_change_after_worker_resumes():
     authority = lifetime.RequestAuthority('old-request')
     authority.started = True
     authority.phase = 'execution'
-    authority.last_command = {'method': 'Input.dispatchMouseEvent', 'sent': False}
+    intent = importlib.import_module('plugins.signal-scout.scout_runtime.browser.facts').Intent
+    ticket = authority.admit(1, 'Input.dispatchMouseEvent', intent.PRESS)
     authority.revoke('worker_timeout')
     before = authority.feedback()
     authority.phase = 'cleanup'
-    authority.last_command['sent'] = True
+    authority.record(ticket, sent=True)
     authority.revoke('later_failure')
     assert authority.feedback() == before
     assert before['data']['failure']['phase'] == 'execution'
     assert before['data']['failure']['command']['sent'] is False
+
 
 
 @pytest.mark.parametrize('section,key,value', [
@@ -71,16 +73,26 @@ def test_AG_006_acknowledged_typing_survives_release_timeout(boundary, monkeypat
     monkeypatch.setattr(gate, '_scroll', lambda *_: None)
     monkeypatch.setattr(gate, '_point', lambda *_: (1, 1))
     monkeypatch.setattr(gate, '_type_target', lambda *_: (frame, 'owned-object'))
-    monkeypatch.setattr(gate, '_call', lambda *_: None)
+    monkeypatch.setattr(gate, '_call', lambda *_, **__: None)
     monkeypatch.setattr(gate, '_focus', lambda *_: (binding, None))
+    monkeypatch.setattr(gate, '_inspect_snapshot', lambda _: '- heading "Current state"')
     inserted = []
     def command(method, params=None, session=None):
         if method == 'Input.insertText':
             inserted.append(params['text'])
         elif method == 'Runtime.releaseObject':
-            gate._cdp.facts = {'method': method, 'sent': True, 'response_received': False}
+            from tests.signal_scout.support.unit_browser import transport
+            cdp, _ = transport()
+            try:
+                cdp.command(method, params, session)
+            except TimeoutError:
+                pass
+            gate._cdp = cdp
+            index = gate._authority.admit(1, method, importlib.import_module('plugins.signal-scout.scout_runtime.browser.facts').Intent.READ)
+            gate._authority.record(index, sent=True)
             raise TimeoutError('controlled release reply timeout')
     monkeypatch.setattr(gate, '_command', command)
+    authority = gate._authority = importlib.import_module('plugins.signal-scout.scout_runtime.browser.lifetime').RequestAuthority('typing')
     result = gate.dispatch({'action': 'type', 'args': {'ref': '@s1', 'text': 'exact text'}})
     assert inserted == ['exact text']
     assert result['status'] == 'incomplete'
@@ -139,6 +151,7 @@ def test_AG_006_first_half_acknowledgment_does_not_certify_compound_action(bound
     gate._cdp = cdp
     baseline = cdp_module._DocumentKey('owned', 'root', 'loader', 1)
     def execute(_action, _args, invoke):
+        cdp.authority = gate._authority
         def effect():
             cdp.command(methods[0], {'type': 'down'}, 'owned')
             cdp.command(methods[1], {'type': 'up'}, 'owned')
@@ -146,7 +159,8 @@ def test_AG_006_first_half_acknowledgment_does_not_certify_compound_action(bound
     monkeypatch.setattr(gate, '_execute', execute)
     result = gate.dispatch({'action': 'keypress', 'args': {'key': 'Enter'}})
     assert len(sent) == 1
-    assert cdp.effect_sent == cdp.effect_replies == 1
+    assert sum(ticket.sent for ticket in cdp.authority.facts().commands) == 1
+    assert sum(ticket.acknowledged for ticket in cdp.authority.facts().commands) == 1
     assert cdp.effect_acknowledged is False
     assert result['status'] == 'incomplete'
     assert result['data']['failure']['kind'] == 'control_lost'
@@ -165,7 +179,7 @@ def test_AG_005_AG_006_acknowledged_action_with_changed_observation_is_nonfatal(
     }
     def execute(_action, _args, invoke):
         invoke(lambda: boundary.effects.append('one acknowledged action'))
-        gate._action_acknowledged = True
+        gate._authority.action_acknowledged = True
         return invoke(lambda: (_ for _ in ()).throw(errors[kind]), phase_name='observation')
     monkeypatch.setattr(gate, '_execute', execute)
     monkeypatch.setattr(gate, '_inspect_snapshot', lambda _: '- heading "Fresh changed context"')

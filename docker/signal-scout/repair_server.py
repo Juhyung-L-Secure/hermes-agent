@@ -94,7 +94,9 @@ class RecoveryServer:
         self._closing = threading.Event()
         self._lock = threading.Lock()
         self._active = None
-        self._completed = None
+        self._receipts = {}
+        self._repair_seconds = 0.0
+        self._repair_started = None
         self._clients = set()
         self._handlers = set()
         self._listener = None
@@ -155,17 +157,27 @@ class RecoveryServer:
             with self._lock:
                 if self._closing.is_set():
                     response = _response('unavailable', self.browser.generation, reason='closing')
+                elif request['request_id'] in self._receipts:
+                    previous = self._receipts[request['request_id']]
+                    if any(request[key] != previous.request[key] for key in ('operation', 'generation')):
+                        response = _response('rejected', self.browser.generation, reason='request_conflict')
+                    else:
+                        response = previous.response or _response('busy', self.browser.generation, reason='repair_in_progress')
                 elif self._active is not None:
                     response = _response('busy', self.browser.generation, reason='repair_in_progress')
-                elif self._completed is not None and self._completed[0] == request['request_id']:
-                    previous, response = self._completed[1:]
-                    if any(request[key] != previous[key] for key in ('operation', 'generation')):
-                        response = _response('rejected', self.browser.generation, reason='request_conflict')
                 elif request['operation'] == 'restart' and request['generation'] != self.browser.generation:
                     response = _response('rejected', self.browser.generation, reason='stale_generation')
+                elif request['operation'] == 'restart' and (len(self._receipts) >= self.browser.config['scout_recovery']['max_replacements']
+                        or self._repair_seconds >= self.browser.config['scout_recovery']['max_repair_seconds']):
+                    response = _response('rejected', self.browser.generation, reason='allowance_exhausted')
                 else:
+                    if request['operation'] == 'restart':
+                        deadline = min(deadline, time.monotonic() + self.browser.config['scout_recovery']['max_repair_seconds'] - self._repair_seconds)
                     operation = _Operation(request, connection, deadline)
                     self._active = operation
+                    if request['operation'] == 'restart':
+                        self._receipts[request['request_id']] = operation
+                        self._repair_started = time.monotonic()
                     operation.worker = threading.Thread(target=self._work, args=(operation,), daemon=True,
                                                         name='scout-recovery-operation')
                     operation.worker.start()
@@ -183,6 +195,10 @@ class RecoveryServer:
             response = _response('rejected', self.browser.generation, reason='expired_or_closed')
         finally:
             try:
+                with self._lock:
+                    active_seconds = time.monotonic() - self._repair_started if self._repair_started is not None else 0
+                    response = {**response, 'budget': {'remaining_replacements': max(0, self.browser.config['scout_recovery']['max_replacements'] - len(self._receipts)),
+                        'repair_seconds_remaining': max(0, self.browser.config['scout_recovery']['max_repair_seconds'] - self._repair_seconds - active_seconds)}}
                 payload = json.dumps(response, separators=(',', ':')).encode()
                 connection.settimeout(0.1)
                 connection.sendall(struct.pack('!I', len(payload)) + payload)
@@ -229,7 +245,8 @@ class RecoveryServer:
         with self._lock:
             operation.response = response
             if request['operation'] == 'restart':
-                self._completed = request['request_id'], request, response
+                self._repair_seconds += time.monotonic() - self._repair_started
+                self._repair_started = None
             self._active = None
             operation.finished.set()
 

@@ -12,6 +12,7 @@ from ._cdp import _CDP, _DocumentKey, _NavigationOutcome, _ObservedEffect, _Page
 from ._errors import ActionRejected, BrowserFailure, _RequiredFrameUnavailable, RequestRevoked, OwnershipFailure, ControlUnavailable
 from ._geometry import _clip, _project
 from .request import _FormatRejected, copy_request
+from .facts import Intent
 
 
 logger = logging.getLogger(__name__)
@@ -235,7 +236,7 @@ class BrowserSession:
               (this.isContentEditable || this.localName==='textarea' ||
                (this.localName==='input' && !['hidden','file','button','submit','reset',
                  'image','checkbox','radio','range','color'].includes(this.type)));
-        }""")
+        }""", intent=Intent.READ)
         if not editable:
             self._command("Runtime.releaseObject", {"objectId": obj}, frame.session)
             raise ActionRejected("Browser typing target is not editable.")
@@ -289,7 +290,8 @@ class BrowserSession:
         if action == 'reload':
             target = self._session(tab)
             invoke(lambda: self._command('Page.reload', {}, target))
-            self._action_acknowledged = True
+            if self._authority is not None:
+                self._authority.action_acknowledged = True
             return {'snapshot': invoke(lambda: self._inspect_snapshot(tab), phase_name='observation'),
                     'target_id': tab}
         scan = self._frames(tab)
@@ -324,18 +326,19 @@ class BrowserSession:
         elif action == "type":
             frame, obj = self._type_target(binding, frames)
             try:
-                invoke(lambda: self._call(frame, obj, "function() { this.focus(); }"))
+                invoke(lambda: self._call(frame, obj, "function() { this.focus(); }", intent=Intent.MUTATE))
                 if self._focus(tab, frames)[0] != binding:
                     raise BrowserFailure("Exact browser typing focus changed.")
                 invoke(lambda: self._call(frame, obj, """function() {
                     if (this.isContentEditable) this.textContent='';
                     else { this.select && this.select(); this.value=''; }
                     this.dispatchEvent(new Event('input', {bubbles:true}));
-                }"""))
+                }""", intent=Intent.MUTATE))
                 if self._focus(tab, frames)[0] != binding:
                     raise BrowserFailure("Exact browser typing focus changed.")
                 command("Input.insertText", {"text": args["text"]})
-                self._action_acknowledged = True
+                if self._authority is not None:
+                    self._authority.action_acknowledged = True
             finally:
                 self._command("Runtime.releaseObject", {"objectId": obj}, frame.session)
         elif action == "keypress":
@@ -357,7 +360,7 @@ class BrowserSession:
                 baseline=self._document_key(frames))
         elif action == "scroll":
             pixels = self._scroll_pixels * (1 if args["direction"] == "down" else -1)
-            invoke(lambda: self._evaluate(root, f"window.scrollBy(0, {pixels})"))
+            invoke(lambda: self._evaluate(root, f"window.scrollBy(0, {pixels})", intent=Intent.MUTATE))
         elif action == "switch_tab":
             invoke(lambda: self._command("Target.activateTarget", {"targetId": tab}))
             self._selected = tab
@@ -370,12 +373,13 @@ class BrowserSession:
         elif action == "get_images":
             images = invoke(lambda: self._evaluate(root, """[...document.images].map(img => ({
                 src:img.src, alt:img.alt, width:img.naturalWidth, height:img.naturalHeight
-            })).filter(img => img.src && !img.src.startsWith('data:'))"""))["value"]
+            })).filter(img => img.src && !img.src.startsWith('data:'))""", intent=Intent.READ))["value"]
             return {"images": images, "target_id": tab,
                     **({"inspection": scan.summary()} if scan.omitted else {})}
         else:
             raise BrowserFailure("Browser action execution unavailable.")
-        self._action_acknowledged = True
+        if self._authority is not None:
+            self._authority.action_acknowledged = True
         return {"snapshot": invoke(lambda: self._inspect_snapshot(self._selected), phase_name="observation"),
                 "target_id": self._selected}
 
@@ -394,13 +398,30 @@ class BrowserSession:
 
 
     def dispatch(self, request):
-        request, rejected = self._prepare(request)
-        return rejected if rejected is not None else self._dispatch(request)
+        from .lifetime import RequestAuthority
+
+        previous = self._authority
+        was_terminal = self._terminal
+        if previous is None:
+            self._authority = RequestAuthority('direct-session')
+        result = None
+        try:
+            request, rejected = self._prepare(request)
+            result = rejected if rejected is not None else self._dispatch(request)
+        except RequestRevoked:
+            result = self._fatal('Browser action interrupted.', self._authority.started)
+        finally:
+            self._authority = previous
+        if previous is None and result['status'] == 'fatal' and not was_terminal:
+            self._browser.close()
+        return result
 
 
     def _dispatch(self, request):
         started, action, phase, began = False, "unknown", "preparation", time.monotonic()
-        self._action_acknowledged = False
+        self._authority.action_acknowledged = False
+        self._failure_facts = None
+        self._secondary_failures = []
         def invoke(operation, *, phase_name="execution"):
             nonlocal started, phase
             if self._permissions.get(action, "blocked") == "blocked":
@@ -432,9 +453,6 @@ class BrowserSession:
                 data=self._effect_data(current, action, request["args"]))
         try:
             self._live()
-            if self._cdp is not None:
-                self._cdp.effect_acknowledged = False
-                self._cdp.effect_sent = self._cdp.effect_replies = 0
             action = request["action"]
             connection = self._cdp
             if action == 'close':
@@ -448,6 +466,8 @@ class BrowserSession:
             attempts = 1 + self._navigation_retries if action == "navigate" else 1
             for attempt in range(attempts):
                 phase = "preparation"
+                if self._authority is not None:
+                    self._authority.phase = phase
                 try:
                     args = request["args"]
                     self._browser.verify_control()
@@ -484,13 +504,7 @@ class BrowserSession:
             return self._failure('command_timeout', phase, started)
         except (ConnectionClosed, ControlUnavailable, OSError):
             diagnostic()
-            return self._result('incomplete', 'Browser control connection unavailable.', started=started,
-                                data={'failure': {'kind': 'control_lost', 'phase': phase,
-                                      'command': dict(self._cdp.facts) if self._cdp is not None else {},
-                                      'action_acknowledged': self._action_acknowledged or
-                                          bool(self._cdp is not None and self._cdp.effect_acknowledged),
-                                      'remote_effects': 'unknown' if started else 'not_started'},
-                                      'capture': {'state': 'unavailable'}})
+            return self._failure('control_lost', phase, started, capture=False)
         except BrowserFailure as error:
             diagnostic()
             return self._failure('inspection_failed', phase, started)
@@ -514,54 +528,58 @@ class BrowserSession:
             diagnostic()
             if error.stale or error.frame_unavailable:
                 return self._failure('context_changed' if error.stale else 'frame_unavailable', phase, started)
-            return self._fatal("Browser action failed.", started)
+            return self._failure("unknown", phase, started, capture=False)
         except OwnershipFailure:
             diagnostic()
-            return self._fatal('Browser ownership verification failed.', started)
+            return self._failure('ownership', phase, started, capture=False)
         except Exception:
             diagnostic()
-            return self._fatal("Browser action failed.", started)
+            return self._failure("unknown", phase, started, capture=False)
 
 
-    def _failure(self, kind, phase, started):
+    def _failure(self, kind, phase, started, *, capture=True):
         connection = self._cdp
-        facts = dict(connection.facts) if connection is not None else {}
-        sent = connection.effect_sent if connection is not None else 0
-        acknowledged = connection.effect_replies if connection is not None else 0
-        action_ack = self._action_acknowledged or bool(connection is not None and connection.effect_acknowledged)
-        data = {'failure': {'kind': kind, 'phase': phase, 'command': facts,
-                           'action_acknowledged': action_ack,
-                           'effect_commands_sent': sent, 'effect_commands_acknowledged': acknowledged,
-                           'remote_effects': 'unknown' if started and not action_ack else 'acknowledged' if action_ack else 'not_started'},
+        facts = self._authority.facts()
+        self._failure_facts = facts
+        data = {'failure': {'kind': kind, **facts.public(), 'phase': phase},
                 'capture': {'state': 'unavailable'}}
-        if connection is not None:
+        if capture and connection is not None:
             connection.capture_deadline = time.monotonic() + self._browser.settings['browser']['capture_timeout']
             try:
+                self._browser.verify_control()
                 snapshot = self._inspect_snapshot(self._selected)
                 data.update(snapshot=snapshot, target_id=self._selected)
                 data['capture'] = {'state': 'fresh'}
             except RequestRevoked:
                 raise
-            except Exception:
+            except OwnershipFailure:
+                self._secondary_failures.append('ownership')
+                logger.exception('Browser recovery capture ownership failed')
+            except Exception as error:
+                self._secondary_failures.append('capture_unavailable' if isinstance(error, (TimeoutError, ActionRejected, BrowserFailure)) else 'unknown')
                 logger.exception('Browser recovery capture unavailable')
             finally:
                 connection.capture_deadline = None
         reason = ('Browser observation command reply deadline reached after action acknowledgment.'
-                  if phase == 'observation' and action_ack else 'Browser command reply deadline reached.')
+                  if phase == 'observation' and facts.action_acknowledged else 'Browser command reply deadline reached.')
         if kind != 'command_timeout':
             reason = {'context_changed': 'Browser context changed; action completion is uncertain.',
-                      'frame_unavailable': 'Browser frame unavailable; action completion is uncertain.'}.get(
+                      'frame_unavailable': 'Browser frame unavailable; action completion is uncertain.',
+                      'control_lost': 'Browser control connection unavailable.',
+                      'ownership': 'Browser ownership verification failed.',
+                      'unknown': 'Unknown browser failure; operation completion is uncertain.'}.get(
                           kind, 'Browser inspection unavailable.')
         return self._result('incomplete', reason, started=started, data=data)
 
 
-    def _command(self, method, params=None, session=None):
+    def _command(self, method, params=None, session=None, *, intent=None):
         self._live()
         if not self._browser.ready or self._browser.failed:
             raise BrowserFailure("Browser evidence unavailable.")
         if self._cdp is None:
             self._connect()
-        return self._cdp.command(method, params, session)
+        self._cdp.authority = self._authority
+        return self._cdp.command(method, params, session, intent=intent)
 
 
     def _connect(self, timeout=None):
@@ -589,7 +607,7 @@ class BrowserSession:
                     int((time.monotonic() - began) * 1000), exc_info=True)
             except Exception:
                 pass
-            raise BrowserFailure("Required browser evidence check failed.") from None
+            raise
 
 
     def _session(self, target):
@@ -599,9 +617,9 @@ class BrowserSession:
         return self._sessions[target]
 
 
-    def _evaluate(self, frame, expression, *, value=True):
+    def _evaluate(self, frame, expression, *, value=True, intent=Intent.UNKNOWN):
         result = self._command("Runtime.evaluate", {"expression": expression,
-            "contextId": frame.context, "returnByValue": value}, frame.session)
+            "contextId": frame.context, "returnByValue": value}, frame.session, intent=intent)
         if "exceptionDetails" in result:
             raise BrowserFailure("Required browser evidence check failed.")
         return result["result"]
@@ -649,7 +667,7 @@ class BrowserSession:
                 context = self._command("Page.createIsolatedWorld", {"frameId": frame_id,
                     "worldName": "scout-evidence"}, session)["executionContextId"]
                 frame = _Frame(target, session, context, 0, raw["loaderId"], parent)
-                doc = self._evaluate(frame, "document", value=False)["objectId"]
+                doc = self._evaluate(frame, "document", value=False, intent=Intent.READ)["objectId"]
                 frame.document = self._command("DOM.describeNode", {"objectId": doc}, session)["node"]["backendNodeId"]
                 self._command("Runtime.releaseObject", {"objectId": doc}, session)
             except _ProtocolError as error:
@@ -729,9 +747,9 @@ class BrowserSession:
         return frame, obj
 
 
-    def _call(self, frame, obj, function, args=(), *, value=True):
+    def _call(self, frame, obj, function, args=(), *, value=True, intent=Intent.UNKNOWN):
         result = self._command("Runtime.callFunctionOn", {"objectId": obj,
-            "functionDeclaration": function, "arguments": list(args), "returnByValue": value}, frame.session)
+            "functionDeclaration": function, "arguments": list(args), "returnByValue": value}, frame.session, intent=intent)
         if "exceptionDetails" in result:
             raise BrowserFailure("Required browser evidence check failed.")
         return result["result"].get("value") if value else result["result"]
@@ -742,7 +760,7 @@ class BrowserSession:
         chain = []
         while True:
             frame = frames[frame_id]
-            obj = self._evaluate(frame, "document.activeElement", value=False)
+            obj = self._evaluate(frame, "document.activeElement", value=False, intent=Intent.READ)
             while obj.get("objectId"):
                 node = self._command("DOM.describeNode", {"objectId": obj["objectId"]}, frame.session)["node"]
                 self._command("Runtime.releaseObject", {"objectId": obj["objectId"]}, frame.session)
@@ -756,7 +774,7 @@ class BrowserSession:
                     if not root_obj:
                         raise ActionRejected("Exact keyboard focus is unavailable.")
                     try:
-                        obj = self._call(frame, root_obj, "function() { return this.activeElement; }", value=False)
+                        obj = self._call(frame, root_obj, "function() { return this.activeElement; }", value=False, intent=Intent.READ)
                     finally:
                         self._command("Runtime.releaseObject", {"objectId": root_obj}, frame.session)
                     if obj.get("objectId"):
@@ -780,7 +798,7 @@ class BrowserSession:
             owner = self._command("DOM.getFrameOwner", {"frameId": current}, parent.session)["backendNodeId"]
             frame, obj = self._resolve(self._binding(binding.tab, parent_id, parent, owner), frames)
             try:
-                if not self._call(frame, obj, "function() { return this.isConnected && this.ownerDocument===document && this.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}); }"):
+                if not self._call(frame, obj, "function() { return this.isConnected && this.ownerDocument===document && this.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}); }", intent=Intent.READ):
                     raise ActionRejected("Original browser target is hidden.")
             finally:
                 self._command("Runtime.releaseObject", {"objectId": obj}, frame.session)
@@ -790,7 +808,7 @@ class BrowserSession:
         self._owners_visible(binding, frames)
         frame, obj = self._resolve(binding, frames)
         try:
-            visible = self._call(frame, obj, "function() { return this.isConnected && this.ownerDocument===document && this.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}); }")
+            visible = self._call(frame, obj, "function() { return this.isConnected && this.ownerDocument===document && this.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}); }", intent=Intent.READ)
             if not visible:
                 raise ActionRejected("Original browser target is hidden.")
             self._command("DOM.scrollIntoViewIfNeeded", {"objectId": obj}, frame.session)
@@ -805,7 +823,7 @@ class BrowserSession:
 
 
     def _hit(self, frame, point):
-        scroll = self._evaluate(frame, "({x:scrollX,y:scrollY})")["value"]
+        scroll = self._evaluate(frame, "({x:scrollX,y:scrollY})", intent=Intent.READ)["value"]
         try:
             # DOM.getNodeForLocation takes document CSS coordinates, unlike quads.
             return self._command("DOM.getNodeForLocation", {
@@ -820,12 +838,12 @@ class BrowserSession:
         self._owners_visible(binding, frames)
         frame, obj = self._resolve(binding, frames)
         try:
-            visible = self._call(frame, obj, "function() { return this.isConnected && this.ownerDocument===document && this.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}); }")
+            visible = self._call(frame, obj, "function() { return this.isConnected && this.ownerDocument===document && this.checkVisibility({checkOpacity:true,checkVisibilityCSS:true}); }", intent=Intent.READ)
             if not visible:
                 raise ActionRejected("Original browser target is hidden.")
             quads = self._command("DOM.getContentQuads", {"objectId": obj}, frame.session)["quads"]
             root = next(key for key, value in frames.items() if value.parent is None)
-            viewport = self._evaluate(frames[root], "({width:innerWidth,height:innerHeight})")["value"]
+            viewport = self._evaluate(frames[root], "({width:innerWidth,height:innerHeight})", intent=Intent.READ)["value"]
             for quad in quads:
                 points = [tuple(quad[i:i + 2]) for i in range(0, 8, 2)]
                 transforms = []
@@ -835,7 +853,7 @@ class BrowserSession:
                     current = frames[current].parent
                 while frames[current].parent:
                     local = frames[current]
-                    size = self._evaluate(local, "({width:innerWidth,height:innerHeight})")["value"]
+                    size = self._evaluate(local, "({width:innerWidth,height:innerHeight})", intent=Intent.READ)["value"]
                     points = _clip(points, size["width"], size["height"])
                     parent_id = local.parent
                     parent = frames[parent_id]
@@ -872,7 +890,7 @@ class BrowserSession:
                 if hit_obj:
                     try:
                         if self._call(frame, obj, "function(hit) { while(hit) { if(hit===this) return true; hit=hit.parentNode ?? hit.host; } return false; }",
-                                      [{"objectId": hit_obj}]):
+                                      [{"objectId": hit_obj}], intent=Intent.READ):
                             return point
                     finally:
                         self._command("Runtime.releaseObject", {"objectId": hit_obj}, frame.session)
@@ -949,7 +967,7 @@ class BrowserSession:
             key = self._document_key(frames)
             root = frames[key.frame]
             chunks = self._accessibility(scan)
-            page = self._evaluate(root, "({url:location.href,readyState:document.readyState})")["value"]
+            page = self._evaluate(root, "({url:location.href,readyState:document.readyState})", intent=Intent.READ)["value"]
             after = self._frames(target_id)
             if key != self._document_key(after.frames):
                 raise BrowserFailure("Browser document changed during observation.")
@@ -977,7 +995,7 @@ class BrowserSession:
 
     def _capture(self, root):
         try:
-            viewport = self._evaluate(root, "({width:innerWidth,height:innerHeight,scale:devicePixelRatio})")["value"]
+            viewport = self._evaluate(root, "({width:innerWidth,height:innerHeight,scale:devicePixelRatio})", intent=Intent.READ)["value"]
             raw = self._command("Page.captureScreenshot", {"format": "png", "captureBeyondViewport": False}, root.session)
         except _ProtocolError as error:
             if error.frame_unavailable:

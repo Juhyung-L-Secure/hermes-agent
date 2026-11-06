@@ -61,11 +61,14 @@ browser:
     list_tabs: allowed
     switch_tab: allowed
     close: allowed
+    restart: allowed
   viewport:
     width: 1280
     height: 720
     device_scale_factor: 1
 scout_recovery:
+  max_replacements: 2
+  max_repair_seconds: 120
   strategy: reconnect_then_restart
   reconnect_attempts: 2
   restart_attempts: 1
@@ -87,3 +90,10 @@ scout_network:
   proxy_port: 3128
   control_port: 9222
   relay_port: 9223
+
+scout_mission:
+  max_consecutive_failures: 5
+  research_model_requests: 100
+  research_seconds: 3600
+  finalization_model_requests: 2
+  finalization_seconds: 60

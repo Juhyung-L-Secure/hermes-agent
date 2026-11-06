@@ -181,6 +181,8 @@ def test_AG_010_SR_005_rejects_untrusted_or_stale_requests_before_mutation(owned
     run, docker = owned
     with repair.RecoveryServer(run) as server:
         result = call(server, request(server, **change))
+        budget = result.pop('budget')
+        assert budget['remaining_replacements'] == run.config['scout_recovery']['max_replacements']
         assert result == {'status': 'rejected', 'generation': 1, 'endpoint': None,
                           'restarted': False, 'reason': reason}
     assert docker.events == [] and run.generation == 1
@@ -557,6 +559,7 @@ def test_SR_005_real_diagnostics_keep_reconciled_and_no_browser_retry_tracebacks
 
     run, docker = owned
     original_container = run.container
+    run.config['scout_recovery']['max_replacements'] = 4
     run.config['scout_recovery']['attempt_timeout'] = 8
     run.config['scout_lifecycle']['shutdown_timeout'] = 2
     run.config['scout_lifecycle']['control_connect_timeout'] = 0.2
@@ -929,7 +932,7 @@ def test_SR_005_mission_closes_repair_before_browser_and_keeps_failed_cleanup_ow
 def test_AG_010_mission_mounts_control_only_after_browser_ready(monkeypatch):
     events, commands = [], []
     browser = SimpleNamespace(project='test', run='owned', compose=['compose'], generation=1,
-        config={'browser': {'mode': 'headless'}, 'scout_lifecycle': {'shutdown_timeout': 1}},
+        config={'scout_mission': {'research_seconds': 100, 'finalization_seconds': 10}, 'browser': {'mode': 'headless'}, 'scout_lifecycle': {'shutdown_timeout': 1}},
         scout_environment=lambda: {'BROWSER_CDP_URL': 'ws://initial'},
         __enter__=lambda: events.append('browser-ready'), close=lambda: events.append('browser-close'))
     monkeypatch.setattr(host, 'BrowserRun', lambda *_args, **_kwargs: browser)
@@ -965,3 +968,36 @@ def test_AG_010_mission_mounts_control_only_after_browser_ready(monkeypatch):
     assert '/private/socket:/tmp/scout-recovery:ro' in creation
     assert 'BROWSER_CDP_URL=ws://initial' in creation
     assert os.environ.get('BROWSER_CDP_URL') != 'ws://initial'
+
+
+def test_AG_010_SR_005_mission_ledger_charges_failed_attempts_and_all_duplicate_ids(owned):
+    run, docker = owned
+    run.config['scout_recovery']['max_replacements'] = 2
+    docker.on_ready = lambda _: (_ for _ in ()).throw(RuntimeError('Readiness failure'))
+    with repair.RecoveryServer(run) as server:
+        first = request(server)
+        assert call(server, first)['status'] == 'failed'
+        assert call(server, first)['budget']['remaining_replacements'] == 1
+        second = request(server)
+        assert call(server, second)['status'] == 'failed'
+        assert call(server, first)['status'] == 'failed'
+        denied = call(server, request(server))
+        assert denied['reason'] == 'allowance_exhausted'
+        assert denied['budget']['remaining_replacements'] == 0
+        assert len(docker.created) == 2 and len(server._receipts) == 2
+        assert call(server, request(server, operation='status'))['status'] == 'unavailable'
+
+
+def test_AG_010_SR_005_spent_allowance_keeps_healthy_browser_and_lost_reply_adoptable(owned):
+    run, docker = owned
+    run.config['scout_recovery']['max_replacements'] = 1
+    with repair.RecoveryServer(run) as server:
+        operation = request(server)
+        first = call(server, operation)
+        assert first['status'] == 'ready' and first['generation'] == 2
+        assert first['budget']['remaining_replacements'] == 0
+        status = call(server, request(server, operation='status'))
+        assert status['status'] == 'ready' and status['endpoint'] == first['endpoint']
+        assert call(server, operation)['endpoint'] == first['endpoint']
+        assert call(server, request(server))['reason'] == 'allowance_exhausted'
+        assert len(docker.created) == 1 and run.container in docker.records

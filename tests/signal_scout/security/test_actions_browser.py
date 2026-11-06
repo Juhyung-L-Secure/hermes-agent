@@ -120,7 +120,7 @@ with Browser(config) as browser:
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
     captures=[];native=adapter._command
-    def command(method,params=None,session=None):
+    def command(method,params=None,session=None,**kwargs):
         if method=='Page.captureScreenshot': captures.append(method)
         return native(method,params,session)
     adapter._command=command
@@ -304,7 +304,7 @@ with Browser(config) as browser:
     adapter=browser.session();tab=adapter._tabs()[0]['target_id'];snapshot=adapter._inspect_snapshot(tab)
     gate=browser.session(target_id=tab)
     captures=[];native=adapter._command
-    def command(method,params=None,session=None):
+    def command(method,params=None,session=None,**kwargs):
         if method=='Page.captureScreenshot': captures.append(True)
         return native(method,params,session)
     adapter._command=command

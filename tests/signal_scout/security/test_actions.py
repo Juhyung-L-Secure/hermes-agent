@@ -70,7 +70,7 @@ def test_AG_001_missing_permission_never_grants_access(boundary, mode):
 
 
 @pytest.mark.parametrize('failure', ['inspection','dispatch','observation'])
-def test_AG_005_AG_006_fatal_tracks_started_execution_and_is_terminal(boundary, monkeypatch, failure):
+def test_AG_005_AG_006_unknown_preserves_original_execution_facts(boundary, monkeypatch, failure):
     def broken(*_, **__):
         raise RuntimeError('private-packet-poison')
     def execute(action, args, invoke):
@@ -80,13 +80,12 @@ def test_AG_005_AG_006_fatal_tracks_started_execution_and_is_terminal(boundary, 
         broken()
     monkeypatch.setattr(boundary.session, '_execute', execute)
     result = boundary.session.dispatch({'action':'navigate','args':{'url':'http://public.test/'},'activity':'Inspect'})
-    assert result['status'] == 'fatal' and result['execution_started'] is (failure in {'dispatch','observation'})
-    assert result['data'] == {} and 'poison' not in repr(result)
-    assert boundary.closed == [True] and boundary.browser.failed and not boundary.browser.ready
-    before = deepcopy(boundary.calls)
-    terminal = boundary.session.dispatch({'action':'snapshot','args':{}})
-    assert terminal['status'] == 'fatal' and terminal['execution_started'] is False
-    assert boundary.calls == before and boundary.closed == [True]
+    assert result['status'] == 'incomplete'
+    assert result['execution_started'] is (failure in {'dispatch','observation'})
+    assert result['data']['failure']['kind'] == 'unknown'
+    assert 'poison' not in repr(result)
+    assert boundary.closed == [] and boundary.browser.ready
+
 
 
 @pytest.mark.parametrize('response', [
@@ -143,9 +142,10 @@ def test_AG_005_AG_006_SR_010_only_completed_download_enforcement_keeps_gate_hea
         assert result['data']['observation']['state']=='loading_error'
         assert not boundary.closed and snapshots == ['owned-page']
     else:
-        assert result == {'status':'fatal','reason':'Browser action failed.','execution_started':True,'data':{}}
-        assert boundary.closed == [True] and not snapshots and boundary.session._terminal
-        assert boundary.session.dispatch({'action':'snapshot','args':{}})['status'] == 'fatal'
+        assert result['status'] == 'incomplete'
+        assert result['data']['failure']['kind'] == 'unknown'
+        assert result['data']['capture']['state'] == 'unavailable'
+        assert not snapshots and not boundary.closed
 
 
 def test_AG_007_required_file_policy_fails_without_fallback(tmp_path):

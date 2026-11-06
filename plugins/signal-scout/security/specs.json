@@ -401,7 +401,7 @@
       "id": "SR_005",
       "subfeature": "browser-security",
       "title": "Disposable single-run browser lifecycle and owned replacement",
-      "contract": "One trusted host lifecycle owns one active research run and is reused by deterministic smoke/tests. Each initial browser and every replacement uses an exact owned container/process and fresh temporary profile; a second claimant or foreign/leftover resource is never adopted or disturbed. Code-directed repair may reconnect the same live owned browser or replace an unavailable owned browser under AG_010 without restarting Hermes conversation. Replacement revokes old action authority, retires old controls and element references, preserves configured sandbox/network/download protections, and reports browser-state loss. Normal mission end, exhausted repair or terminal protection failure removes only exact owned resources, retaining auth/log volumes and images and restoring helper state. Partial creation resolves exact attempted ownership before removal; foreign collisions remain untouched. Validated startup/control/shutdown/smoke bounds are consumed directly; host stop allows configured grace plus bounded Docker overhead. No arbitrary endpoint attachment, local/cloud fallback, host-death scavenging, independent orphan watchdog or durable mission resume is added. Auxiliary native helper lifecycle changes remain outside this feature except necessary rebinding of the owned replacement.",
+      "contract": "One trusted host owns one active run and each fresh anonymous browser generation. Foreign/leftover resources are never adopted or disturbed. Automatic same-browser reconnect and explicit model-requested replacement follow AG_010, with mission-long host admission ledger retaining failed/ambiguous charges and duplicate identity. Replacement retires only exact owned controls, invalidates refs and preserves configured sandbox/network/download protections without configured-value readback. Host research-plus-finalization deadline bounds attach wait and initiates existing bounded exact cleanup. Normal end/failure/cancel retains auth/log volumes/images and restores helpers; pending exact creation reconciles before another launch. No arbitrary endpoint, cloud/local fallback, orphan scavenging, host-death watchdog or durable resume. Auxiliary helper policy remains unchanged except owned generation rebind.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -436,6 +436,16 @@
           "layer": "e2e",
           "file": "tests/signal_scout/browser_tools/test_recovery_replacement.py",
           "test": "test_AG_010_SR_005_owned_replacement_continues_native_conversation"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_host_repair.py",
+          "test": "test_AG_010_SR_005_mission_ledger_charges_failed_attempts_and_all_duplicate_ids"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_triage_integration.py",
+          "test": "test_BR_003_BR_004_AE_006_AG_006_AG_010_SR_005_partial_input_requires_explicit_owned_restart"
         }
       ],
       "otherCoverage": [],

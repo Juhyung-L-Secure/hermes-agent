@@ -59,9 +59,7 @@ def transport(messages=(), *, send_error=None, receive_error=None):
     cdp.timeout, cdp.sequence = 30, 0
     cdp.observation_timeout, cdp.interaction_observation_timeout = 5, 0.25
     cdp._observation = None
-    cdp.authority, cdp.capture_deadline, cdp.facts = None, None, {}
-    cdp.effect_sent = cdp.effect_replies = 0
-    cdp.effect_acknowledged = False
+    cdp.authority, cdp.capture_deadline = None, None
     cdp.connection = SimpleNamespace(send=send, recv=receive)
     return cdp, sent
 

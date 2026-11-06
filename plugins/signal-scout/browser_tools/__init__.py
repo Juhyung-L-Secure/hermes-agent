@@ -17,7 +17,7 @@ _SCHEMA = {
         "Use the run-owned browser. Exact args by action: click {ref}; "
         "navigate {url}; type {ref,text} replaces field contents; keypress {key}; "
         "scroll {direction:up|down}; switch_tab {target_id} selects an existing tab; "
-        "back, reload, snapshot, screenshot, get_images, list_tabs, close {}. "
+        "back, reload, snapshot, screenshot, get_images, list_tabs, close, restart {}. "
         "Optional activity describes browsing progress. "
         "Use exact references from returned snapshots and IDs from list_tabs. "
         "Rejected actions did not execute; fatal outcomes stop the run. "
@@ -57,6 +57,7 @@ class _Binding:
     active: bool = True
     stopped: bool = False
     sequence: int = 0
+    control: object = None
 
 
 _binding = None
@@ -113,7 +114,7 @@ def load_action_reference():
 
 
 @contextmanager
-def bind_browser(session, *, on_fatal, action_reference):
+def bind_browser(session, *, on_fatal, action_reference, control=None):
     """Bind one trusted session and mandatory stop callback for a scoped run.
 
     The caller supplies an already-owned BrowserSession, selects only the
@@ -125,7 +126,7 @@ def bind_browser(session, *, on_fatal, action_reference):
     Binding overlap fails explicitly.
     """
     global _binding
-    binding = _Binding(session, on_fatal, action_reference)
+    binding = _Binding(session, on_fatal, action_reference, control=control)
     with _binding_lock:
         if _binding is not None:
             raise RuntimeError("A Scout browser run is already bound.")
@@ -192,6 +193,8 @@ def _handle(args, **_context):
             return _unavailable("fatal", "Scout browser run has stopped.")
         binding.sequence += 1
         sequence = binding.sequence
+    if binding.control is not None and binding.control.check() != 'research':
+        return _format_result(binding.control.feedback(), None)
     result = binding.session.request(args, call_id=invocation.key[-1] if invocation is not None else '',
         on_terminal=lambda authority: _stop(binding, sequence, invocation, authority))
     with _binding_lock:
@@ -199,6 +202,8 @@ def _handle(args, **_context):
             return _unavailable('incomplete', 'Browser request authority revoked.', started=result['execution_started'])
     if result["data"].get("error", {}).get("kind") == "request_format":
         result = {**result, "data": {**result["data"], "action_reference": binding.action_reference}}
+    if binding.control is not None:
+        binding.control.accept(result)
     if result["status"] == "fatal":
         _stop(binding, sequence, invocation)
 
