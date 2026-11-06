@@ -14,6 +14,7 @@ class _Binding:
     agent: object
     session_id: str
     max_attempts: int
+    control: object = None
     attempts: dict[str, int] = field(default_factory=dict)
     active: bool = True
     stopped: bool = False
@@ -34,9 +35,9 @@ _request_attempt = ContextVar('scout_model_request_attempt', default=None)
 
 
 @contextmanager
-def bind_model_requests(agent, *, max_attempts):
+def bind_model_requests(agent, *, max_attempts, control=None):
     global _binding
-    binding = _Binding(agent, agent.session_id, max_attempts)
+    binding = _Binding(agent, agent.session_id, max_attempts, control)
     with _binding_lock:
         if _binding is not None:
             raise RuntimeError('A Scout model request budget is already bound.')
@@ -66,6 +67,14 @@ def _execute(*, request, next_call, session_id='', api_request_id='', **_):
     if not matched:
         return next_call(request)
     _request_attempt.set(attempt)
+    if binding.control is not None:
+        from .mission import MissionLimit
+
+        try:
+            binding.control.before_model_request(api_request_id)
+        except MissionLimit:
+            binding.agent.interrupt(hard_cancel=True)
+            raise
     try:
         return next_call(request)
     except Exception:
