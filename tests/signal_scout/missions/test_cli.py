@@ -480,3 +480,50 @@ def test_MI_033_model_action_and_result_progress_at_error_level():
     assert stream.getvalue() == ('Scout model working (step 1).\n'
         'Scout action proposed navigate. Activity "Find public history".\n'
         'Scout browser result navigate rejected. Browser action is blocked.\n')
+
+
+def test_MI_035_host_absolute_deadline_bounds_attach_and_calls_owned_cleanup(monkeypatch, capsys):
+    from types import SimpleNamespace
+
+    events = []
+    browser = SimpleNamespace(project='test', run='owned', compose=['compose'],
+        config={'scout_mission': {'research_seconds': 2, 'finalization_seconds': 1},
+                'browser': {'mode': 'headless'}}, scout_environment=lambda: {}, __enter__=lambda: None)
+    monkeypatch.setattr(host, 'BrowserRun', lambda *_args, **_kwargs: browser)
+    monkeypatch.setattr(host, 'RecoveryServer', lambda _: SimpleNamespace(start=lambda: None, scout_options=lambda: []))
+    monkeypatch.setattr(host, 'checked', lambda *_args, **_kwargs: '')
+    monkeypatch.setattr(host.time, 'monotonic', lambda: 0)
+    def wait(**kwargs):
+        events.append(('wait', kwargs))
+        raise host.subprocess.TimeoutExpired('docker attach', kwargs['timeout'])
+    monkeypatch.setattr(host.subprocess, 'Popen', lambda *_args, **_kwargs: SimpleNamespace(stdin=io.StringIO(), wait=wait))
+    owner = host.MissionRun(mission.MissionRequest('Research fixture.'))
+    monkeypatch.setattr(owner, '_scout', lambda: {'Id': 'a' * 64, 'State': {'Running': True}})
+    monkeypatch.setattr(owner, 'close', lambda: events.append(('cleanup', owner.name)))
+    assert owner.run() == 1
+    assert events == [('wait', {'timeout': 3}), ('cleanup', 'test-mission-owned')]
+    assert 'Research incomplete. Absolute mission deadline reached.' in capsys.readouterr().out
+
+
+def test_MI_032_MI_035_host_reads_only_captured_configuration_after_browser_entry(monkeypatch):
+    from types import SimpleNamespace
+
+    class CapturedBrowser:
+        project, run, compose = 'test', 'owned', ['compose']
+        def __enter__(self):
+            self.config = {'scout_mission': {'research_seconds': 3, 'finalization_seconds': 1},
+                           'browser': {'mode': 'headless'}}
+        def scout_environment(self):
+            return {}
+    browser = CapturedBrowser()
+    monkeypatch.setattr(host, 'BrowserRun', lambda *_args, **_kwargs: browser)
+    monkeypatch.setattr(host, 'RecoveryServer', lambda _: SimpleNamespace(start=lambda: None, scout_options=lambda: []))
+    monkeypatch.setattr(host, 'checked', lambda *_args, **_kwargs: '')
+    monkeypatch.setattr(host.subprocess, 'Popen', lambda *_args, **_kwargs: SimpleNamespace(stdin=io.StringIO(), wait=lambda **_: 0))
+    owner = host.MissionRun(mission.MissionRequest('Research fixture.'))
+    states = iter([True, False])
+    monkeypatch.setattr(owner, '_scout', lambda: {'Id': 'a' * 64, 'State': {'Running': next(states), 'ExitCode': 0}})
+    closed = []
+    monkeypatch.setattr(owner, 'close', lambda: closed.append(owner.name))
+    assert owner.run() == 0
+    assert closed == ['test-mission-owned']

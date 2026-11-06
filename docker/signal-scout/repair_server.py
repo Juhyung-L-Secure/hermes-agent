@@ -198,7 +198,8 @@ class RecoveryServer:
                 with self._lock:
                     active_seconds = time.monotonic() - self._repair_started if self._repair_started is not None else 0
                     response = {**response, 'budget': {'remaining_replacements': max(0, self.browser.config['scout_recovery']['max_replacements'] - len(self._receipts)),
-                        'repair_seconds_remaining': max(0, self.browser.config['scout_recovery']['max_repair_seconds'] - self._repair_seconds - active_seconds)}}
+                        'repair_seconds_remaining': max(0, self.browser.config['scout_recovery']['max_repair_seconds'] - self._repair_seconds - active_seconds),
+                        'pending': self._active is not None or self.browser.creation_pending}}
                 payload = json.dumps(response, separators=(',', ':')).encode()
                 connection.settimeout(0.1)
                 connection.sendall(struct.pack('!I', len(payload)) + payload)

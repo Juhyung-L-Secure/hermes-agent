@@ -117,3 +117,46 @@ def test_MI_032_MI_035_time_boundary_without_tool_output_keeps_reporting_reserve
     now[0] = 5
     assert state.before_model_request('too-late') is False
     assert state.requests == {'first': 'research', 'report': 'report_only'}
+
+
+def test_MI_035_real_native_hanging_report_provider_obeys_remaining_reserve(native_plugin):
+    import json
+    import threading
+    import time
+    from functools import partial
+    from hermes_cli.plugins import get_plugin_manager
+    from tests.signal_scout.support.model import FakeSession
+    from tests.signal_scout.support.model_fixture import FAKE_MAIN
+
+    scope = {'json': json}
+    exec(FAKE_MAIN, scope)
+    policy = control(finalization_seconds=.2).policy
+    state = mission.MissionControl(mission.MissionRequest('Inspect fixture.'), policy)
+    gate = FakeSession()
+    release, entered, returned = threading.Event(), threading.Event(), threading.Event()
+    def plan(index, kwargs):
+        if index == 1:
+            return scope['response']([scope['tool']({'action': 'snapshot', 'args': {}}, call_id='initial')], content='')
+        assert index == 2
+        entered.set()
+        try:
+            assert release.wait(5)
+            return scope['response'](content='Late discarded answer.')
+        finally:
+            returned.set()
+    plugin_models = get_plugin_manager()._plugins['signal-scout'].module.model_requests
+    try:
+        with scope['fake_main'](plan, iterations=8) as (agent, requests):
+            began = time.monotonic()
+            with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(),
+                    on_fatal=partial(agent.interrupt, hard_cancel=True), control=state), \
+                 plugin_models.bind_model_requests(agent, max_attempts=1, control=state):
+                result = state.finish(agent.run_conversation('Inspect fixture then return partial report.'))
+            assert entered.is_set() and time.monotonic() - began < 3
+            assert len(requests) == 2 and len(gate.requests) == 1
+            assert state.mode == 'stopped' and result['scout_incomplete']
+            assert 'Late discarded answer' not in result['final_response']
+            assert 'Finalization time allowance reached.' in result['final_response']
+    finally:
+        release.set()
+        assert returned.wait(5)

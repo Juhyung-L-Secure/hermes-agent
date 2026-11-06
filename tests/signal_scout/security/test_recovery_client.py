@@ -21,7 +21,7 @@ def owner_channel():
     endpoint = 'ws://172.30.242.3:9222/devtools/browser/12345678-1234-1234-1234-123456789abc'
     network = config['scout_network']
     endpoint = endpoint.replace('172.30.242.3:9222', f"{network['browser_address']}:{network['relay_port']}")
-    browser = SimpleNamespace(config=config, generation=1, endpoint=endpoint, repair_cleanup_timeout=1,
+    browser = SimpleNamespace(config=config, generation=1, creation_pending=False, endpoint=endpoint, repair_cleanup_timeout=1,
         recovery_status=lambda *_: endpoint, settle_creation=lambda *_: None,
         report_repair_failure=lambda *_: None, ensure_repair_diagnostics=lambda *_: None)
     with RecoveryServer(browser) as server:

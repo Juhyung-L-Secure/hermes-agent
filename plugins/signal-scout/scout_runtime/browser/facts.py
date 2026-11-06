@@ -11,13 +11,13 @@ class Intent(StrEnum):
 
 
 _READ_COMMANDS = frozenset({
-    'Target.getTargets', 'Target.attachToTarget', 'Target.activateTarget',
+    'Target.getTargets', 'Target.attachToTarget',
     'Page.enable', 'Page.setLifecycleEventsEnabled', 'Page.getFrameTree',
     'Page.createIsolatedWorld', 'Page.getNavigationHistory', 'Page.captureScreenshot',
     'DOM.describeNode', 'DOM.resolveNode', 'DOM.getFrameOwner', 'DOM.getNodeForLocation',
     'DOM.getContentQuads', 'DOM.getBoxModel', 'Runtime.releaseObject', 'Accessibility.getFullAXTree',
 })
-_MUTATE_COMMANDS = frozenset({'Page.navigate', 'Page.reload', 'Page.navigateToHistoryEntry',
+_MUTATE_COMMANDS = frozenset({'Target.activateTarget', 'Page.navigate', 'Page.reload', 'Page.navigateToHistoryEntry',
                               'DOM.scrollIntoViewIfNeeded', 'Input.insertText'})
 
 

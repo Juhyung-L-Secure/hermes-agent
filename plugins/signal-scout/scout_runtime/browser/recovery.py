@@ -90,7 +90,8 @@ class RecoveryClient:
                 raise ValueError
             if 'budget' in response:
                 budget = response['budget']
-                if (not isinstance(budget, dict) or set(budget) != {'remaining_replacements', 'repair_seconds_remaining'}
+                if (not isinstance(budget, dict) or set(budget) != {'remaining_replacements', 'repair_seconds_remaining', 'pending'}
+                        or type(budget['pending']) is not bool
                         or type(budget['remaining_replacements']) is not int or budget['remaining_replacements'] < 0
                         or type(budget['repair_seconds_remaining']) not in (int, float)
                         or not math.isfinite(budget['repair_seconds_remaining']) or budget['repair_seconds_remaining'] < 0):

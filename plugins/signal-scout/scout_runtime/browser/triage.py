@@ -8,6 +8,7 @@ class BrowserUse(StrEnum):
     READY = 'ready'
     UNAVAILABLE = 'unavailable'
     BLOCKED = 'blocked'
+    UNCONTAINED = 'uncontained'
 
 
 @dataclass(frozen=True)
@@ -16,6 +17,7 @@ class RequestFacts:
     effects: EffectFacts
     secondary: tuple[str, ...] = ()
     contained: bool = True
+    generation: int = 0
 
 
 @dataclass(frozen=True)
@@ -26,15 +28,17 @@ class TriageDecision:
 
     def public(self, *, restart_available):
         allowed = ['ordinary_browser_actions', 'close'] if self.browser_use is BrowserUse.READY else ['close']
-        if restart_available and self.browser_use is not BrowserUse.BLOCKED:
+        if self.mission == 'stop':
+            allowed = []
+        if restart_available and self.browser_use not in {BrowserUse.BLOCKED, BrowserUse.UNCONTAINED}:
             allowed.append('restart')
         return {'browser_use': self.browser_use.value, 'mission': self.mission,
                 'allowed_operations': allowed, 'operational_failure': self.operational_failure}
 
 
 def decide(facts, previous):
-    if not facts.contained:
-        return TriageDecision(BrowserUse.BLOCKED, 'stop', True)
+    if not facts.contained or previous is BrowserUse.UNCONTAINED:
+        return TriageDecision(BrowserUse.UNCONTAINED, 'stop', True)
     kinds = (facts.kind, *facts.secondary)
     if previous is BrowserUse.BLOCKED or any(kind in {'ownership', 'protection'} for kind in kinds):
         return TriageDecision(BrowserUse.BLOCKED, 'report_only', True)

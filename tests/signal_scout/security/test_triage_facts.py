@@ -78,3 +78,22 @@ def test_AG_006_root_revocation_excludes_existing_child_admission():
     assert child.facts().commands[0].acknowledged is True
     assert len(child.facts().commands) == 1
     assert child.reason == 'parent_abandoned'
+
+
+def test_AG_006_AE_006_secondary_ownership_and_generation_freeze_with_primary_facts():
+    authority = lifetime.RequestAuthority('one', generation=7)
+    ticket = authority.admit(1, 'Input.insertText', facts.Intent.MUTATE)
+    authority.record(ticket, sent=True, response_valid=True, acknowledged=True)
+    authority.action_acknowledged = True
+    original = authority.failure('command_timeout')
+    authority.note('ownership')
+    capture = authority.admit(2, 'Runtime.evaluate', facts.Intent.READ)
+    authority.revoke('worker_timeout')
+    sealed = authority.snapshot()
+    authority.note('late_fault')
+    authority.record(capture, sent=True)
+    assert sealed.generation == 7 and sealed.kind == 'command_timeout'
+    assert sealed.secondary == ('ownership',)
+    assert sealed.effects == original
+    assert [command.method for command in sealed.effects.commands] == ['Input.insertText']
+    assert authority.snapshot() == sealed

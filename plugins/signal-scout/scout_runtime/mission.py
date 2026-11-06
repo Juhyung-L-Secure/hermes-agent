@@ -68,6 +68,13 @@ class MissionControl:
         self.requests[request_id] = self.mode
         return True
 
+    def remaining_report_seconds(self):
+        return max(0, self.policy['finalization_seconds'] - (self.clock() - self.reporting_started))
+
+    def expire_report(self):
+        self.mode = 'stopped'
+        self.reason = (self.reason or 'Research incomplete.') + ' Finalization time allowance reached.'
+
     def accept(self, result):
         decision = result['data'].get('triage', {})
         if decision.get('mission') == 'report_only':

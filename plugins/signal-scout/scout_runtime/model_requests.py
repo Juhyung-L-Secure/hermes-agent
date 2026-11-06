@@ -71,6 +71,19 @@ def _execute(*, request, next_call, session_id='', api_request_id='', **_):
         binding.agent.interrupt(hard_cancel=True)
         return None
     try:
+        if binding.control is not None and binding.control.mode == 'report_only':
+            from agent.deadline import run_bounded_sync
+
+            def expire():
+                binding.control.expire_report()
+                binding.agent.interrupt(hard_cancel=True)
+            remaining = binding.control.remaining_report_seconds()
+            if remaining <= 0:
+                expire()
+                return None
+            bounded = run_bounded_sync(lambda: next_call(request), remaining,
+                                       label='scout-finalization-request', on_timeout=expire)
+            return None if bounded.timed_out else bounded.value
         return next_call(request)
     except Exception:
         _request_attempt.set(replace(attempt, exc_info=sys.exc_info()))

@@ -227,6 +227,10 @@ class BrowserRun:
             raise RepairStopped('Browser repair stopped.')
         return remaining
 
+    @property
+    def creation_pending(self):
+        return isinstance(self.container, _PendingCreate)
+
     def recovery_status(self, deadline, cancelled):
         remaining = self._remaining(deadline, cancelled)
         if self.container is None or isinstance(self.container, _PendingCreate):

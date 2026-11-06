@@ -138,9 +138,10 @@ def test_AE_006_AE_007_unknown_root_and_transport_failure_remain_fatal(root, fau
     browser, adapter, peer = _adapter()
     peer.gone.add('root' if root else 'child')
     peer.fault = TimeoutError('control timeout') if fault == 'timeout' else session_module._ProtocolError(fault) if fault else None
-    with pytest.raises(session_module.BrowserFailure, match='Required browser evidence check failed.'):
+    expected = session_module.BrowserFailure if root else TimeoutError if fault == 'timeout' else session_module._ProtocolError
+    with pytest.raises(expected):
         adapter._inspect_snapshot('tab')
-    assert browser.failed
+    assert not browser.failed
 
 
 def test_AE_007_frame_loss_during_accessibility_keeps_available_snapshot():
@@ -240,13 +241,13 @@ def test_AE_007_pending_remote_roots_distinguish_excluded_descendants_and_unknow
 
 def test_AE_006_AE_007_known_frame_error_from_required_png_capture_remains_fatal():
     browser, adapter, _ = _adapter()
-    adapter._evaluate = lambda *_: {'value': {'width': 1280, 'height': 720, 'scale': 1}}
+    adapter._evaluate = lambda *_, **__: {'value': {'width': 1280, 'height': 720, 'scale': 1}}
     def failed_capture(*_):
         raise session_module._ProtocolError({'code': -32602, 'message': 'No frame for given id found'})
     adapter._command = failed_capture
-    with pytest.raises(session_module.BrowserFailure, match='Required browser evidence check failed.'):
+    with pytest.raises(session_module.BrowserFailure, match='Required viewport capture failed.'):
         adapter._run(lambda: adapter._capture(SimpleNamespace(session='owned')))
-    assert browser.failed
+    assert not browser.failed
 
 
 @pytest.mark.parametrize('action', ['screenshot', 'get_images'])

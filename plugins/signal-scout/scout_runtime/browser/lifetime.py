@@ -11,11 +11,18 @@ from agent.deadline import run_bounded_sync
 from tools.interrupt import is_thread_interrupted, set_interrupt
 
 from ._errors import RequestRevoked, OwnershipFailure
-from .facts import EffectFacts, Intent
+from .facts import CommandTicket, EffectFacts, Intent
 from .triage import BrowserUse, RequestFacts, TriageDecision, decide
 
 
 logger = logging.getLogger(__name__)
+
+
+def _log(level, message, *args, **kwargs):
+    try:
+        logger.log(level, message, *args, **kwargs)
+    except Exception:
+        pass
 
 
 @dataclass(eq=False)
@@ -34,15 +41,21 @@ class RequestAuthority:
     started: bool = False
     action_acknowledged: bool = False
     reason: str | None = None
-    commands: list = field(default_factory=list)
-    frozen: object = None
+    commands: list[CommandTicket] = field(default_factory=list)
+    sealed: RequestFacts | None = None
     contained: bool = True
+    generation: int = 0
+    primary_kind: str | None = None
+    primary_effects: EffectFacts | None = None
+    secondary: list[str] = field(default_factory=list)
     lifecycle_lock: threading.Lock = field(default_factory=threading.Lock)
     gate: threading.RLock = field(default_factory=threading.RLock)
 
     def __post_init__(self):
         if self.parent is not None:
             self.gate = self.parent.gate
+            if self.generation == 0:
+                self.generation = self.parent.generation
             with self.gate:
                 self.parent.check()
                 self.parent.children.append(self)
@@ -56,8 +69,6 @@ class RequestAuthority:
                 raise RequestRevoked('Browser request authority revoked.')
 
     def admit(self, number, method, intent):
-        from .facts import CommandTicket
-
         with self.gate:
             self.check()
             ticket = CommandTicket(number, method, intent, self.phase)
@@ -70,16 +81,50 @@ class RequestAuthority:
                 self.commands[ticket] = replace(self.commands[ticket], **changes)
 
     def facts(self):
-        from .facts import EffectFacts, Intent
-
         with self.gate:
-            return self.frozen or EffectFacts(tuple(self.commands), self.phase, self.started,
+            return self.sealed.effects if self.sealed is not None else EffectFacts(tuple(self.commands), self.phase, self.started,
                                              self.action_acknowledged)
 
-    def attach(self, transport):
+    def operation_facts(self):
         with self.gate:
-            self.check()
-            self.transport = transport
+            return self.sealed.effects if self.sealed is not None else (self.primary_effects or self.facts())
+
+    def failure(self, kind):
+        with self.gate:
+            if self.primary_effects is None:
+                self.primary_kind, self.primary_effects = kind, self.facts()
+            return self.primary_effects
+
+    def note(self, kind):
+        with self.gate:
+            if not self.revoked.is_set():
+                self.secondary.append(kind)
+                if self.parent is not None:
+                    self.parent.note(kind)
+
+    def secondary_facts(self):
+        with self.gate:
+            return self.sealed.secondary if self.sealed is not None else tuple(self.secondary)
+
+    def snapshot(self, kind=None):
+        with self.gate:
+            contained = self.contained and all(child.contained for child in self.children)
+            if self.sealed is not None:
+                return replace(self.sealed, kind=kind or self.sealed.kind, contained=contained)
+            return RequestFacts(kind or self.primary_kind, self.operation_facts(), self.secondary_facts(),
+                                contained, self.generation)
+
+    def attach(self, transport):
+        try:
+            with self.gate:
+                self.check()
+                self.transport = transport
+        except RequestRevoked:
+            try:
+                transport.abort()
+            except Exception:
+                self.contained = False
+            raise
 
     def _shutdown(self):
         for raw in tuple(self.sockets):
@@ -96,23 +141,30 @@ class RequestAuthority:
                 self.transport.abort()
             except Exception:
                 self.contained = False
-                logger.exception('Browser transport revocation failed')
+                _log(logging.ERROR, 'Browser transport revocation failed', exc_info=True)
 
     def own_socket(self, connection):
-        with self.gate:
-            self.check()
-            self.sockets.append(connection)
+        try:
+            with self.gate:
+                self.check()
+                self.sockets.append(connection)
+        except RequestRevoked:
+            try:
+                connection.close()
+            except Exception:
+                self.contained = False
+            raise
 
     def revoke(self, reason):
         with self.gate:
             if self.revoked.is_set():
                 return
-            self.frozen = self.facts()
+            self.sealed = self.snapshot()
             self.reason = reason
             self.revoked.set()
             children = tuple(self.children)
             for child in children:
-                child.frozen = child.facts()
+                child.sealed = child.snapshot()
                 child.reason = 'parent_abandoned'
                 child.revoked.set()
         for authority in (self, *children):
@@ -124,10 +176,10 @@ class RequestAuthority:
                 self.contained = False
 
     def feedback(self):
-        facts = self.facts()
+        facts = self.operation_facts()
         return {'status': 'incomplete', 'reason': 'Browser request deadline reached; access revoked, cancellation requested.',
                 'execution_started': facts.started, 'data': {
-                    'failure': {'kind': 'worker_timeout', **facts.public()},
+                    'failure': {'kind': 'worker_timeout', 'primary_kind': self.primary_kind, **facts.public()},
                     'capture': {'state': 'unavailable', 'reason': 'Whole request deadline reached.'},
                     'worker': {'cancel_requested': True, 'access_revoked': True, 'termination_confirmed': False}}}
 
@@ -161,6 +213,8 @@ class BrowserRequests:
         self.use = BrowserUse.READY
         self.replacement_required = False
         self.repair_elapsed = 0.0
+        self.remote_pending = False
+        self.remote_pending_since = None
         self.abandoned = []
         self.repair_pending = []
         self.replacements_remaining = session._browser.settings['scout_recovery']['max_replacements']
@@ -170,13 +224,14 @@ class BrowserRequests:
             active = self.active
             if active is None or active.parent_tid != parent_tid:
                 return
-            active.revoke(reason)
+        active.revoke(reason)
 
     def close(self):
         with self.lock:
             self.closed = True
-            if self.active is not None:
-                self.active.revoke('binding_closed')
+            active = self.active
+        if active is not None:
+            active.revoke('binding_closed')
         self.session.close()
 
     def _remaining_repair(self):
@@ -185,33 +240,45 @@ class BrowserRequests:
         for began, child in self.repair_pending:
             if child.done.is_set():
                 self.repair_elapsed += now - began
+                if self.remote_pending and self.remote_pending_since is None:
+                    self.remote_pending_since = now
             else:
                 pending.append((began, child))
         self.repair_pending = pending
         spent = self.repair_elapsed + sum(now - began for began, _ in pending)
+        if self.remote_pending_since is not None:
+            spent += now - self.remote_pending_since
         return max(0, self.session._browser.settings['scout_recovery']['max_repair_seconds'] - spent)
+
+    def _owner_budget(self, response):
+        budget = response.get('budget', {})
+        self.replacements_remaining = budget.get('remaining_replacements', self.replacements_remaining)
+        self.remote_pending = budget.get('pending', False)
+        if not self.remote_pending and self.remote_pending_since is not None:
+            self.repair_elapsed += time.monotonic() - self.remote_pending_since
+            self.remote_pending_since = None
 
     def _decision(self, private, authority, result):
         failure = result['data'].get('failure', {})
-        effects = authority.facts() if authority.revoked.is_set() else (getattr(private, '_failure_facts', None) or authority.facts())
-        facts = RequestFacts(failure.get('kind'), effects,
-                             () if authority.revoked.is_set() else tuple(getattr(private, '_secondary_failures', ())), authority.contained)
+        effects = authority.operation_facts()
+        facts = authority.snapshot(failure.get('kind'))
         decision = decide(facts, self.use)
         if result['data'].get('recovery', {}).get('kind') in {'reconnected', 'restarted'}:
-            if decision.browser_use is not BrowserUse.BLOCKED and not self.replacement_required:
+            if decision.browser_use not in {BrowserUse.BLOCKED, BrowserUse.UNCONTAINED} and not self.replacement_required:
                 decision = TriageDecision(BrowserUse.READY, 'continue', True)
         self.replacement_required |= effects.unresolved_input
         restart = (private._browser.recovery is not None
                    and private._permissions.get('restart') == 'allowed'
                    and private._browser.settings['scout_recovery']['strategy'] != 'reconnect'
-                   and self.replacements_remaining > 0 and self._remaining_repair() > 0 and decision.browser_use is not BrowserUse.BLOCKED
+                   and self.replacements_remaining > 0 and self._remaining_repair() > 0 and decision.browser_use not in {BrowserUse.BLOCKED, BrowserUse.UNCONTAINED}
                    and not result['data'].get('recovery', {}).get('restart_denied'))
-        if decision.browser_use is not BrowserUse.READY and not restart:
+        if decision.mission != 'stop' and decision.browser_use is not BrowserUse.READY and not restart:
             decision = TriageDecision(decision.browser_use, 'report_only', decision.operational_failure)
         self.use = decision.browser_use
-        if result['status'] == 'rejected' and not effects.commands and facts.kind is None and self.use is BrowserUse.READY:
+        if result['status'] == 'rejected' and not effects.commands and facts.kind is None and self.use is BrowserUse.READY and 'recovery' not in result['data']:
             return result
-        data = {**result['data'], 'operation': effects.public(), 'triage': decision.public(restart_available=restart)}
+        data = {**result['data'], 'operation': effects.public(),
+                'triage': {**decision.public(restart_available=restart), 'secondary_failures': list(facts.secondary)}}
         if decision.mission == 'stop':
             return {**result, 'status': 'fatal', 'reason': 'Browser execution containment failed.', 'data': data}
         return {**result, 'data': data}
@@ -220,7 +287,7 @@ class BrowserRequests:
         try:
             return self._decision(private, authority, result)
         except Exception:
-            logger.exception('Browser triage publication failed')
+            _log(logging.ERROR, 'Browser triage publication failed', exc_info=True)
             authority.revoke('triage_failed')
             self.use = BrowserUse.BLOCKED
             return {'status': 'incomplete' if authority.contained else 'fatal',
@@ -233,10 +300,11 @@ class BrowserRequests:
     def dispatch(self, proposal, *, call_id='', on_terminal=None):
         root = self.session
         policy = root._browser.settings['browser']
-        authority = RequestAuthority(call_id or uuid.uuid4().hex)
+        authority = RequestAuthority(call_id or uuid.uuid4().hex, generation=root._browser.generation)
         with self.lock:
-            if any(not previous.contained for previous in self.abandoned):
-                self.use = BrowserUse.BLOCKED
+            if any(not owned.contained and owned.generation == root._browser.generation
+                   for previous in self.abandoned for owned in (previous, *previous.children)):
+                self.use = BrowserUse.UNCONTAINED
             self.abandoned = [previous for previous in self.abandoned if not previous.done.is_set()]
             if self.closed:
                 return root._result('fatal', 'Browser binding is closing or closed.')
@@ -245,21 +313,36 @@ class BrowserRequests:
             self.active = authority
         private = self._fork(root, authority)
 
+        stop_sent = threading.Event()
+        def notify_stop():
+            with self.lock:
+                accepted = self.active is authority and not stop_sent.is_set()
+                if accepted:
+                    stop_sent.set()
+            if accepted and on_terminal is not None:
+                on_terminal(None)
+
+        def expire():
+            authority.revoke('worker_timeout')
+            if not authority.contained:
+                notify_stop()
+
         def work():
             result = None
-            private._secondary_failures = []
-            private._failure_facts = None
             with authority.lifecycle_lock:
                 authority.worker_tid = threading.get_ident()
             try:
                 authority.check()
+                if self.use is BrowserUse.UNCONTAINED:
+                    notify_stop()
+                    return private._result('fatal', 'Browser execution containment failed.')
                 prepared, result = private._prepare(proposal)
                 if result is None:
                     action = prepared['action']
                     if self.use is not BrowserUse.READY and action not in {'restart', 'close'}:
                         result = private._result('rejected', 'Browser control unavailable. Request eligible owned restart or report partial findings.')
                     elif action == 'restart':
-                        if self.use is BrowserUse.BLOCKED:
+                        if self.use in {BrowserUse.BLOCKED, BrowserUse.UNCONTAINED}:
                             result = private._result('rejected', 'Browser control is blocked by ownership or protection failure.')
                         else:
                             result = self._restart(private, authority, private._result('incomplete', data={}))
@@ -269,26 +352,30 @@ class BrowserRequests:
                         if result is None:
                             result = private._dispatch(prepared)
                         failure = result['data'].get('failure', {})
-                        effects = private._failure_facts or authority.facts()
+                        effects = authority.operation_facts()
                         if failure.get('kind') in {'unknown', 'control_lost'} and not effects.unresolved_input:
                             result = self._repair(private, authority, result)
                 authority.check()
+                if result['status'] == 'fatal' or not authority.snapshot().contained:
+                    notify_stop()
             except RequestRevoked:
                 raise
             except OwnershipFailure:
-                logger.exception('Browser request ownership failed')
+                _log(logging.ERROR, 'Browser request ownership failed', exc_info=True)
                 result = private._failure('ownership', authority.phase, authority.started, capture=False)
             except Exception:
-                logger.exception('Browser request failed outside action dispatch')
+                _log(logging.ERROR, 'Browser request failed outside action dispatch', exc_info=True)
                 result = private._failure('unknown', authority.phase, authority.started, capture=False)
             finally:
                 authority.phase = 'cleanup'
                 try:
                     private._disconnect()
                 except Exception:
-                    logger.exception('Request-owned browser cleanup failed')
-                    private._secondary_failures.append('cleanup_unavailable')
+                    _log(logging.ERROR, 'Request-owned browser cleanup failed', exc_info=True)
+                    authority.note('cleanup_unavailable')
                     authority._shutdown()
+                    if not authority.contained:
+                        notify_stop()
                     if result is not None:
                         result = {**result, 'status': 'incomplete',
                                   'data': {**result['data'], 'cleanup': {'state': 'failed'}}}
@@ -300,10 +387,10 @@ class BrowserRequests:
 
         try:
             bounded = run_bounded_sync(work, policy['request_timeout'], label='scout-browser-request',
-                                       on_timeout=lambda: authority.revoke('worker_timeout'))
+                                       on_timeout=expire)
             with self.lock:
                 if bounded.timed_out or self.active is not authority or authority.revoked.is_set():
-                    logger.error('Browser request access revoked phase=%s', authority.facts().phase)
+                    _log(logging.ERROR, 'Browser request access revoked phase=%s', authority.facts().phase)
                     self.abandoned.append(authority)
                     return self._finish(private, authority, authority.feedback())
                 result = bounded.value
@@ -340,8 +427,6 @@ class BrowserRequests:
         private._sessions = {}
         private._refs = dict(root._refs) if keep_refs else {}
         private._permissions = dict(root._permissions)
-        private._failure_facts = None
-        private._secondary_failures = []
         private._terminal = False
         return private
 
@@ -390,7 +475,7 @@ class BrowserRequests:
                             except (RequestRevoked, OwnershipFailure):
                                 raise
                             except Exception:
-                                logger.exception('Browser reconnected but capture unavailable')
+                                _log(logging.ERROR, 'Browser reconnected but capture unavailable', exc_info=True)
                         child.check()
                         return data, dict(candidate._refs), candidate._selected
                     finally:
@@ -409,7 +494,7 @@ class BrowserRequests:
                     authority.check()
                     if outcome.timed_out:
                         diagnostics.append('TimeoutError')
-                        logger.error('Browser reconnect attempt deadline attempt=%s cancel_requested=True access_revoked=True', attempt + 1)
+                        _log(logging.ERROR, 'Browser reconnect attempt deadline attempt=%s cancel_requested=True access_revoked=True', attempt + 1)
                         if 'data' not in proof:
                             continue
                         data, refs, selected = proof['data'], {}, private._selected
@@ -418,18 +503,18 @@ class BrowserRequests:
                     else:
                         data, refs, selected = outcome.value
                     private._refs, private._selected = refs, selected
-                    logger.warning('Browser control repaired reconnect_attempts=%s restart_attempts=0', attempt + 1)
+                    _log(logging.WARNING, 'Browser control repaired reconnect_attempts=%s restart_attempts=0', attempt + 1)
                     return private._result('incomplete', 'Browser control reconnected; original action was not replayed.',
                                            started=failed['execution_started'], data=data)
                 except RequestRevoked:
                     raise
                 except OwnershipFailure:
-                    logger.exception('Browser repair refused ownership mismatch')
-                    private._secondary_failures.append('ownership')
+                    _log(logging.ERROR, 'Browser repair refused ownership mismatch', exc_info=True)
+                    authority.note('ownership')
                     return private._result('incomplete', 'Browser ownership verification failed.',
                                            started=failed['execution_started'], data=failed['data'])
                 except Exception as error:
-                    logger.exception('Browser reconnect failed attempt=%s', attempt + 1)
+                    _log(logging.ERROR, 'Browser reconnect failed attempt=%s', attempt + 1, exc_info=True)
                     diagnostics.append(type(error).__name__)
                     if 'data' in proof:
                         private._refs = {}
@@ -455,7 +540,7 @@ class BrowserRequests:
             authority.phase = 'owner_status'
             response = browser.recovery.request('status', browser.generation, authority,
                                                 browser.settings['scout_recovery']['attempt_timeout'])
-            self.replacements_remaining = response.get('budget', {}).get('remaining_replacements', self.replacements_remaining)
+            self._owner_budget(response)
             if response['status'] == 'ready':
                 owned = response['owned']
                 if owned.generation == browser.generation:
@@ -472,8 +557,8 @@ class BrowserRequests:
             return private._result('incomplete', 'Browser owner unavailable.', data={'recovery': {
                 'kind': 'failed', 'reason': response['reason']}})
         except (OwnershipFailure, ControlUnavailable, TimeoutError):
-            logger.exception('Browser owner status failed')
-            private._secondary_failures.append('ownership')
+            _log(logging.ERROR, 'Browser owner status failed', exc_info=True)
+            authority.note('ownership')
             return private._result('incomplete', 'Browser owner or ownership verification failed.')
 
     @staticmethod
@@ -499,13 +584,15 @@ class BrowserRequests:
 
     def _restart(self, private, authority, failed, *, diagnostics=(), owned=None, expected_generation=None):
         policy = private._browser.settings['scout_recovery']
+        healthy = self.use is BrowserUse.READY
         if owned is None and private._browser.recovery is not None:
             status = private._browser.recovery.request('status', private._browser.generation,
                                                        authority, policy['attempt_timeout'])
-            self.replacements_remaining = status.get('budget', {}).get('remaining_replacements', self.replacements_remaining)
+            self._owner_budget(status)
             if status['status'] == 'ready' and status['owned'].generation > private._browser.generation:
                 owned = status['owned']
             elif status['status'] == 'unavailable':
+                healthy = False
                 expected_generation = status['generation']
             elif status['status'] != 'ready':
                 return private._result('incomplete', 'Owned browser repair is pending or unavailable.',
@@ -513,8 +600,8 @@ class BrowserRequests:
                           'recovery': {'kind': 'pending', 'restart_denied': status['status'] not in {'busy'}}})
         if owned is None and (policy['strategy'] == 'reconnect' or private._browser.recovery is None
                               or self.replacements_remaining <= 0 or self._remaining_repair() <= 0 or self.repair_pending):
-            return private._result('incomplete', 'Owned replacement unavailable within mission allowance.',
-                data={**failed['data'], 'failure': {'kind': 'control_lost'},
+            return private._result('rejected' if healthy else 'incomplete', 'Owned replacement unavailable within mission allowance.',
+                data={**failed['data'], **({} if healthy else {'failure': {'kind': 'control_lost'}}),
                       'recovery': {'kind': 'exhausted', 'restart_denied': True}})
         failures = list(diagnostics)
         expected_generation = private._browser.generation if expected_generation is None else expected_generation
@@ -543,13 +630,15 @@ class BrowserRequests:
                             proof['owner'] = status
                             return None
                     if descriptor is None:
+                        self.remote_pending = True
                         response = candidate._browser.recovery.request('restart', expected_generation,
                                                                         child, timeout)
-                        self.replacements_remaining = response.get('budget', {}).get('remaining_replacements', self.replacements_remaining)
+                        self._owner_budget(response)
                         if response['status'] != 'ready':
                             proof['owner'] = response
                             return None
                         descriptor = response['owned']
+                    child.generation = descriptor.generation
                     candidate._browser.endpoint = descriptor.endpoint
                     candidate._browser.generation = descriptor.generation
                     candidate._connect(timeout=timeout)
@@ -570,7 +659,7 @@ class BrowserRequests:
                     except (RequestRevoked, OwnershipFailure):
                         raise
                     except Exception:
-                        logger.exception('Replacement browser capture unavailable')
+                        _log(logging.ERROR, 'Replacement browser capture unavailable', exc_info=True)
                     child.check()
                     return data, dict(candidate._refs), candidate._selected
                 finally:
@@ -583,6 +672,9 @@ class BrowserRequests:
                             child.done.set()
 
             began = time.monotonic()
+            if self.remote_pending_since is not None:
+                self.repair_elapsed += began - self.remote_pending_since
+                self.remote_pending_since = None
             try:
                 outcome = run_bounded_sync(restart, timeout, label='scout-browser-restart',
                                            on_timeout=lambda child=child: child.revoke('repair_timeout'))
@@ -605,22 +697,25 @@ class BrowserRequests:
                     data, refs, selected = outcome.value
                 private._browser = _RequestBrowser(candidate._browser, authority)
                 private._refs, private._selected = refs, selected
-                logger.warning('Browser control repaired generation=%s restart_attempts=%s',
+                _log(logging.WARNING, 'Browser control repaired generation=%s restart_attempts=%s',
                                private._browser.generation, attempt + 1)
                 return private._result('incomplete', 'Owned browser replaced; tabs and session state lost; action not replayed.',
                                        started=failed['execution_started'], data=data)
             except RequestRevoked:
                 raise
             except OwnershipFailure:
-                logger.exception('Browser replacement refused ownership or sandbox mismatch')
-                private._secondary_failures.append('protection')
+                _log(logging.ERROR, 'Browser replacement refused ownership or sandbox mismatch', exc_info=True)
+                authority.note('protection')
                 return private._result('incomplete', 'Browser ownership or protection verification failed.', data=failed['data'])
             except Exception as error:
-                logger.exception('Browser replacement failed attempt=%s', attempt + 1)
+                _log(logging.ERROR, 'Browser replacement failed attempt=%s', attempt + 1, exc_info=True)
                 failures.append(type(error).__name__)
             finally:
                 if child.done.is_set():
-                    self.repair_elapsed += time.monotonic() - began
+                    now = time.monotonic()
+                    self.repair_elapsed += now - began
+                    if self.remote_pending and self.remote_pending_since is None:
+                        self.remote_pending_since = now
                 else:
                     self.repair_pending.append((began, child))
                 if authority.active_child is child:

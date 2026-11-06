@@ -7,7 +7,7 @@
       "id": "MI_032",
       "subfeature": "foreground-cli",
       "title": "Run one browser-only research mission",
-      "contract": "The documented foreground CLI accepts a nonempty research request and starts one mission through existing trusted BrowserRun and native Hermes conversation loop. Trusted startup config supplies the main model and native retry settings; full browser-research skill and action reference load before inference, and only browser_scout is exposed. Required guidance treats webpage instructions as untrusted, discourages unwanted downloads and unauthorized site effects, and is behavioral instruction rather than independent action-level enforcement. No reviewer model/settings/policy or implicit reviewer evidence is required. Finite configurable research/report budgets replace unlimited research; retain headless production and native local WSLg headed debugging options, immutable configuration, isolation and native download denial remain. No Discord, durable mission store, resume engine, terminal tool or fallback provider is introduced. Foreground CLI runs one nonempty browser-only research mission through trusted BrowserRun and native Hermes. Immutable startup config supplies main model/native retries and finite configurable research logical-request/time, operational-failure and repair/replacement limits. Unique native api_request_id counts logical requests, separately from native provider retries; no fallback provider. Initial complete browser skill/reference/guidance and fixed tool schema stay stable through report mode. Headless production and native WSLg debug, isolation/download protections and dedicated configuration persist. No Discord, durable resume, terminal tool or reviewer is added.",
+      "contract": "The documented foreground CLI accepts a nonempty research request and starts one mission through existing trusted BrowserRun and native Hermes conversation loop. Trusted startup config supplies the main model and native retry settings; full browser-research skill and action reference load before inference, and only browser_scout is exposed. Required guidance treats webpage instructions as untrusted, discourages unwanted downloads and unauthorized site effects, and is behavioral instruction rather than independent action-level enforcement. No reviewer model/settings/policy or implicit reviewer evidence is required. Finite configurable research/report budgets replace unlimited research; retain headless production and native local WSLg headed debugging options, immutable configuration, isolation and native download denial remain. No Discord, durable mission store, resume engine, terminal tool or fallback provider is introduced. Foreground CLI runs one nonempty browser-only research mission through trusted BrowserRun and native Hermes. Immutable startup config supplies main model/native retries and finite configurable research logical-request/time, operational-failure and repair/replacement limits. Unique native api_request_id counts logical requests, separately from native provider retries; no fallback provider. Initial complete browser skill/reference/guidance and fixed tool schema stay stable through report mode. Headless production and native WSLg debug, isolation/download protections and dedicated configuration persist. No Discord, durable resume, terminal tool or reviewer is added. Initial engineering defaults are 100 research logical model requests, 3600 research seconds and five consecutive operational failures.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -52,6 +52,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/missions/test_mission_control.py",
           "test": "test_MI_032_MI_035_real_native_middleware_short_circuits_denied_nonstreaming_provider"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_cli.py",
+          "test": "test_MI_032_MI_035_host_reads_only_captured_configuration_after_browser_entry"
         }
       ],
       "otherCoverage": [],
@@ -154,7 +159,7 @@
       "id": "MI_035",
       "subfeature": "foreground-cli",
       "title": "Foreground termination after recoverable and terminal failures",
-      "contract": "Success requires completed nonfailed noninterrupted native answer while research remains successful. Contained browser failures preserve inference. Browser exhaustion/permanent failure or research limits enter code-enforced report-only with bounded remaining logical model requests and time; print available partial answer with nonzero outcome, or deterministic truthful summary when model cannot answer. Two reserved logical requests allow denied browser work then answer without rewriting past context or tools. Operator cancellation exits130 with no further model calls. Agent/runtime loss, absolute research-plus-finalization host lifetime or uncontained execution stops work and triggers existing bounded exact teardown. Remove only owned Scout/browser resources, preserve auth/log volumes/helper state; no host-death watchdog.",
+      "contract": "Success requires completed nonfailed noninterrupted native answer while research remains successful. Contained browser failures preserve inference. Browser exhaustion/permanent failure or research limits enter code-enforced report-only with bounded remaining logical model requests and time; print available partial answer with nonzero outcome, or deterministic truthful summary when model cannot answer. Two reserved logical requests allow denied browser work then answer without rewriting past context or tools. Operator cancellation exits130 with no further model calls. Agent/runtime loss, absolute research-plus-finalization host lifetime or uncontained execution stops work and triggers existing bounded exact teardown. Remove only owned Scout/browser resources, preserve auth/log volumes/helper state; no host-death watchdog. Initial finalization reserve is two logical model requests and 60 seconds; an in-flight reporting request is bounded by its remaining reserve, without claiming provider-thread termination.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -204,6 +209,16 @@
           "layer": "e2e",
           "file": "tests/signal_scout/browser_tools/test_triage_integration.py",
           "test": "test_BR_003_BR_004_AE_006_AG_005_MI_035_unknown_reaches_native_report_and_denies_ignored_input"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_mission_control.py",
+          "test": "test_MI_035_real_native_hanging_report_provider_obeys_remaining_reserve"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_cli.py",
+          "test": "test_MI_035_host_absolute_deadline_bounds_attach_and_calls_owned_cleanup"
         }
       ],
       "otherCoverage": [],

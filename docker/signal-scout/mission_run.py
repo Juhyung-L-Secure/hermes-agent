@@ -71,12 +71,13 @@ class MissionRun:
 
     def run(self):
         code = 1
-        policy = self.browser.config["scout_mission"]
-        deadline = time.monotonic() + policy["research_seconds"] + policy["finalization_seconds"]
+        started = time.monotonic()
         try:
             print("Scout starting browser.", file=sys.stderr, flush=True)
             with defer_creation_cancellation():
                 self.browser.__enter__()
+            policy = self.browser.config["scout_mission"]
+            deadline = started + policy["research_seconds"] + policy["finalization_seconds"]
             print("Scout browser ready (" + self.browser.config["browser"]["mode"] + ").", file=sys.stderr, flush=True)
             with defer_creation_cancellation():
                 self.recovery = RecoveryServer(self.browser)

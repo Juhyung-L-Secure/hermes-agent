@@ -138,3 +138,29 @@ with Browser(config) as browser:
 print('real native middleware cap denied provider dispatch and produced fallback')
 ''', run=run, timeout=180)
     assert run.container is None
+
+
+def test_BR_003_BR_004_AG_006_MI_035_uncontained_native_failure_stops_before_report_inference(fixture_web):
+    stack, _, _, _ = fixture_web
+    with stack.browser_run() as run:
+        stack.browser_probe(SETUP + FAKE_MAIN + r'''
+with Browser(config) as browser:
+    tab=open_fixture(browser);gate=browser.session(target_id=tab)
+    native_execute=g.BrowserSession._execute
+    def execute(self,*args,**kwargs):
+        data=native_execute(self,*args,**kwargs)
+        self._authority.contained=False
+        return data
+    def plan(index,kwargs):
+        assert index==1,'Uncontained execution permitted report inference'
+        return response([tool({'action':'snapshot','args':{}},call_id='uncontained')],content='')
+    with patch.object(g.BrowserSession,'_execute',execute),fake_main(plan) as (agent,requests):
+        with adapter.bind_browser(gate,action_reference=action_reference,on_fatal=partial(agent.interrupt,hard_cancel=True)):
+            native=agent.run_conversation('Inspect controlled fixture.')
+        assert native.get('interrupted') and not native.get('completed')
+        assert len(requests)==1 and agent._hard_interrupt_requested.is_set()
+        feedback=model_result(tool_replies(native)[0])
+        assert feedback['status']=='fatal' and feedback['data']['triage']['mission']=='stop',feedback
+print('uncontained native control hard-stop before further inference verified')
+''', run=run, timeout=180)
+    assert run.container is None

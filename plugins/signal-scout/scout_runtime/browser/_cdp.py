@@ -258,13 +258,11 @@ class _CDP:
                 authority = self._local_authority = RequestAuthority('direct-cdp')
         ticket = authority.admit(command_id, method, command_intent(method, params or {}) if intent is None else intent)
         try:
-            if authority is not None:
-                authority.check()
+            authority.check()
             self._log(logging.INFO, "Browser command send id=%s method=%s session=%s", command_id, method, session)
             self.connection.send(json.dumps(message))
             authority.record(ticket, sent=True)
-            if authority is not None:
-                authority.check()
+            authority.check()
             wait_state = "command_response"
             while True:
                 response = self._receive(deadline)

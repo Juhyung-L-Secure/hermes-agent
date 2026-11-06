@@ -446,6 +446,16 @@
           "layer": "e2e",
           "file": "tests/signal_scout/browser_tools/test_triage_integration.py",
           "test": "test_BR_003_BR_004_AE_006_AG_005_MI_035_unknown_reaches_native_report_and_denies_ignored_input"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_AE_006_AG_005_type_focus_clear_and_insert_preserve_prior_mutations"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_BR_003_AE_006_AG_005_capture_ownership_fault_persists_after_acknowledged_input"
         }
       ],
       "otherCoverage": [],
@@ -695,6 +705,16 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_triage_policy.py",
           "test": "test_AG_005_AE_006_capture_ownership_and_partial_gesture_never_clear_on_read"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_AE_006_AG_005_switch_tab_acknowledgment_survives_observation_failure"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_BR_003_AG_005_uncontained_failure_preserves_stop_before_cleanup"
         }
       ],
       "otherCoverage": [],
@@ -784,6 +804,21 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_triage_facts.py",
           "test": "test_AG_006_AE_006_revoke_freezes_admitted_send_without_waiting_for_io"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_facts.py",
+          "test": "test_AG_006_AE_006_secondary_ownership_and_generation_freeze_with_primary_facts"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_BR_003_AG_006_late_retired_generation_fault_cannot_disable_current_browser"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_AG_006_AG_010_child_abort_failure_cannot_publish_reconnected_ready"
         }
       ],
       "otherCoverage": [],
@@ -1040,7 +1075,7 @@
       "id": "AG_010",
       "subfeature": "infrastructure-recovery",
       "title": "Code-directed reconnect and owned browser replacement",
-      "contract": "Confirmed control loss may automatically reconnect the same exactly owned browser within cumulative repair time. Fresh replacement requires explicit model restart action through the fixed browser_scout schema and authenticated exact host ownership. Host charges actual replacement admission once per stable operation ID before side effects; failed/ambiguous attempts retain charge; duplicate, busy/status and lost-reply adoption cannot charge or launch twice. Pending owned creation must reconcile before another create. Generation is identity, not attempt count. Successful replacement clears browser-instance restrictions/refs and discloses state loss, never resets mission totals. Spent allowance leaves healthy browser usable. Unavailable browser with denied/spent/permanent repair enters bounded report-only; ownership/protection never permits foreign attachment or cleanup.",
+      "contract": "Confirmed control loss may automatically reconnect the same exactly owned browser within cumulative repair time. Fresh replacement requires explicit model restart action through the fixed browser_scout schema and authenticated exact host ownership. Host charges actual replacement admission once per stable operation ID before side effects; failed/ambiguous attempts retain charge; duplicate, busy/status and lost-reply adoption cannot charge or launch twice. Pending owned creation must reconcile before another create. Generation is identity, not attempt count. Successful replacement clears browser-instance restrictions/refs and discloses state loss, never resets mission totals. Spent allowance leaves healthy browser usable. Unavailable browser with denied/spent/permanent repair enters bounded report-only; ownership/protection never permits foreign attachment or cleanup. Initial engineering defaults allow two actual mission replacement admissions and 120 cumulative repair seconds; pending authenticated host work remains charged until settled.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -1105,6 +1140,16 @@
           "layer": "e2e",
           "file": "tests/signal_scout/browser_tools/test_triage_integration.py",
           "test": "test_BR_003_BR_004_AE_006_AG_006_AG_010_SR_005_partial_input_requires_explicit_owned_restart"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_BR_003_AG_010_denied_restart_does_not_disable_healthy_browser"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_AG_010_pending_remote_work_keeps_cumulative_repair_clock"
         }
       ],
       "otherCoverage": [],

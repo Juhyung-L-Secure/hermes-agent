@@ -290,8 +290,7 @@ class BrowserSession:
         if action == 'reload':
             target = self._session(tab)
             invoke(lambda: self._command('Page.reload', {}, target))
-            if self._authority is not None:
-                self._authority.action_acknowledged = True
+            self._authority.action_acknowledged = True
             return {'snapshot': invoke(lambda: self._inspect_snapshot(tab), phase_name='observation'),
                     'target_id': tab}
         scan = self._frames(tab)
@@ -337,8 +336,7 @@ class BrowserSession:
                 if self._focus(tab, frames)[0] != binding:
                     raise BrowserFailure("Exact browser typing focus changed.")
                 command("Input.insertText", {"text": args["text"]})
-                if self._authority is not None:
-                    self._authority.action_acknowledged = True
+                self._authority.action_acknowledged = True
             finally:
                 self._command("Runtime.releaseObject", {"objectId": obj}, frame.session)
         elif action == "keypress":
@@ -378,8 +376,7 @@ class BrowserSession:
                     **({"inspection": scan.summary()} if scan.omitted else {})}
         else:
             raise BrowserFailure("Browser action execution unavailable.")
-        if self._authority is not None:
-            self._authority.action_acknowledged = True
+        self._authority.action_acknowledged = True
         return {"snapshot": invoke(lambda: self._inspect_snapshot(self._selected), phase_name="observation"),
                 "target_id": self._selected}
 
@@ -420,21 +417,17 @@ class BrowserSession:
     def _dispatch(self, request):
         started, action, phase, began = False, "unknown", "preparation", time.monotonic()
         self._authority.action_acknowledged = False
-        self._failure_facts = None
-        self._secondary_failures = []
         def invoke(operation, *, phase_name="execution"):
             nonlocal started, phase
             if self._permissions.get(action, "blocked") == "blocked":
                 raise ActionRejected("Browser action is blocked.")
             phase = phase_name
-            if self._authority is not None:
-                self._authority.phase = phase
+            self._authority.phase = phase
             self._live()
             if self._cdp is not connection:
                 raise OwnershipFailure("Browser control connection changed unexpectedly.")
             started = True
-            if self._authority is not None:
-                self._authority.started = True
+            self._authority.started = True
             return operation()
         def diagnostic(*, failure=None):
             try:
@@ -466,8 +459,7 @@ class BrowserSession:
             attempts = 1 + self._navigation_retries if action == "navigate" else 1
             for attempt in range(attempts):
                 phase = "preparation"
-                if self._authority is not None:
-                    self._authority.phase = phase
+                self._authority.phase = phase
                 try:
                     args = request["args"]
                     self._browser.verify_control()
@@ -539,8 +531,7 @@ class BrowserSession:
 
     def _failure(self, kind, phase, started, *, capture=True):
         connection = self._cdp
-        facts = self._authority.facts()
-        self._failure_facts = facts
+        facts = self._authority.failure(kind)
         data = {'failure': {'kind': kind, **facts.public(), 'phase': phase},
                 'capture': {'state': 'unavailable'}}
         if capture and connection is not None:
@@ -553,10 +544,10 @@ class BrowserSession:
             except RequestRevoked:
                 raise
             except OwnershipFailure:
-                self._secondary_failures.append('ownership')
+                self._authority.note('ownership')
                 logger.exception('Browser recovery capture ownership failed')
             except Exception as error:
-                self._secondary_failures.append('capture_unavailable' if isinstance(error, (TimeoutError, ActionRejected, BrowserFailure)) else 'unknown')
+                self._authority.note('capture_unavailable' if isinstance(error, (TimeoutError, ActionRejected, BrowserFailure)) else 'unknown')
                 logger.exception('Browser recovery capture unavailable')
             finally:
                 connection.capture_deadline = None
