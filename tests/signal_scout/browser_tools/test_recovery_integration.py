@@ -371,7 +371,8 @@ with Browser(config) as browser:
         assert release.wait(20),'Root cleanup was not released'
         return native_close()
     def broken_control(self):
-        raise errors.OwnershipFailure('Controlled ownership failure.')
+        self.authority.contained=False
+        raise errors.ControlUnavailable('Controlled containment failure.')
     def plan(index,kwargs):
         if index==1:
             return response([tool({'action':'close' if case=='close' else 'snapshot','args':{}})],content='')

@@ -255,3 +255,118 @@ def test_AG_006_AG_010_child_abort_failure_cannot_publish_reconnected_ready(boun
     assert child.contained is False and root.snapshot().contained is False
     assert result['status'] == 'fatal' and result['data']['triage']['mission'] == 'stop'
     assert result['data']['triage']['browser_use'] == 'uncontained'
+
+
+def test_BR_003_AG_006_outer_abandonment_fences_before_old_request_returns(boundary, monkeypatch):
+    import threading
+
+    gate = boundary.session
+    monkeypatch.setattr(lifetime._RequestBrowser, 'verify_control', lambda _: None)
+    monkeypatch.setattr(session_module.BrowserSession, '_disconnect', lambda _: None)
+    parked, release = threading.Event(), threading.Event()
+    sent = []
+    def connect(self, timeout=None):
+        self._cdp, calls = transport([{'id': 1, 'sessionId': 'owned', 'result': {}}])
+        self._cdp.authority = self._authority
+        sent.append(calls)
+    def execute(self, action, args, invoke):
+        if action == 'keypress':
+            invoke(lambda: self._command('Input.dispatchKeyEvent', {'type': 'keyDown'}, 'owned'))
+            parked.set()
+            assert release.wait(5)
+            self._authority.check()
+        return {'snapshot': '- heading "Accepted fresh generation"', 'target_id': self._selected}
+    monkeypatch.setattr(session_module.BrowserSession, '_connect', connect)
+    del gate._execute
+    monkeypatch.setattr(session_module.BrowserSession, '_execute', execute)
+    old = []
+    caller = threading.Thread(target=lambda: old.append(gate.request({'action': 'keypress', 'args': {'key': 'Enter'}})))
+    caller.start()
+    try:
+        assert parked.wait(5)
+        gate._requests.abandon(parent_tid=caller.ident, reason='native_outer_timeout')
+        denied = gate.request({'action': 'keypress', 'args': {'key': 'Enter'}})
+        assert denied['status'] == 'rejected'
+        assert denied['data']['triage']['browser_use'] == 'unavailable'
+        assert len(sent[0]) == 1 and len(sent) == 1
+        boundary.browser.generation = 2
+        gate._requests.use = triage.BrowserUse.READY
+        gate._requests.replacement_required = False
+        gate._selected, gate._refs = 'fresh-page', {'@s999': 'fresh reference'}
+        fresh = gate.request({'action': 'snapshot', 'args': {}})
+        assert fresh['status'] == 'success'
+        release.set()
+        caller.join(5)
+        assert not caller.is_alive() and old[0]['status'] == 'incomplete'
+        assert gate._requests.use is triage.BrowserUse.READY
+        assert gate._selected == 'fresh-page' and gate._refs == {'@s999': 'fresh reference'}
+    finally:
+        release.set()
+        caller.join(5)
+
+
+def test_BR_003_AG_005_MI_032_machinery_read_timeout_advances_mission_failure_limit(boundary, monkeypatch):
+    mission = importlib.import_module('plugins.signal-scout.scout_runtime.mission')
+    state = mission.MissionControl(mission.MissionRequest('Inspect fixture.'), {
+        'research_model_requests': 10, 'research_seconds': 100, 'max_consecutive_failures': 2,
+        'finalization_model_requests': 2, 'finalization_seconds': 10})
+    gate = boundary.session
+    monkeypatch.setattr(lifetime._RequestBrowser, 'verify_control', lambda _: None)
+    monkeypatch.setattr(session_module.BrowserSession, '_disconnect', lambda _: None)
+    def connect(self, timeout=None):
+        self._cdp, _ = transport()
+        self._cdp.authority = self._authority
+    def execute(self, action, args, invoke):
+        return invoke(lambda: self._command('Target.getTargets'))
+    monkeypatch.setattr(session_module.BrowserSession, '_connect', connect)
+    monkeypatch.setattr(session_module.BrowserSession, '_inspect_snapshot', lambda *_: '- heading "Current"')
+    del gate._execute
+    monkeypatch.setattr(session_module.BrowserSession, '_execute', execute)
+    for count in (1, 2):
+        result = gate.request({'action': 'list_tabs', 'args': {}})
+        assert result['data']['failure']['kind'] == 'command_timeout'
+        assert result['data']['triage']['operational_failure'] is True
+        assert result['data']['triage']['browser_use'] == 'ready'
+        state.accept(result)
+        assert state.failures == count
+    assert state.mode == 'report_only'
+
+
+@pytest.mark.parametrize('fault,permission', [(ValueError('Unknown capture protocol'), 'unavailable'),
+                                            (TimeoutError('Capture reply missing'), 'ready')])
+def test_AG_005_AG_010_new_capture_fault_outranks_earlier_reconnect_proof(boundary, monkeypatch, fault, permission):
+    boundary.browser.settings['scout_recovery'].update(reconnect_attempts=1, strategy='reconnect')
+    gate = boundary.session
+    monkeypatch.setattr(lifetime._RequestBrowser, 'verify_control', lambda _: None)
+    monkeypatch.setattr(session_module.BrowserSession, '_disconnect', lambda _: None)
+    def connect(self, timeout=None):
+        self._cdp, _ = transport()
+        self._cdp.authority = self._authority
+    monkeypatch.setattr(session_module.BrowserSession, '_connect', connect)
+    monkeypatch.setattr(session_module.BrowserSession, '_inspect_snapshot', lambda *_: (_ for _ in ()).throw(fault))
+    manager = lifetime.BrowserRequests(gate)
+    authority = lifetime.RequestAuthority('root')
+    private = manager._fork(gate, authority)
+    repaired = manager._repair(private, authority, gate._result('incomplete', started=True,
+        data={'failure': {'kind': 'control_lost'}}))
+    assert repaired['data']['recovery']['kind'] == 'reconnected'
+    result = manager._finish(private, authority, repaired)
+    assert result['data']['triage']['browser_use'] == permission
+
+
+def test_AE_006_AG_005_neutral_missing_reply_preserves_uncertainty_without_disabling_control():
+    authority = lifetime.RequestAuthority('navigation')
+    ticket = authority.admit(1, 'Page.navigate', facts.Intent.MUTATE)
+    authority.record(ticket, sent=True)
+    missing = authority.failure('command_timeout')
+    result = triage.decide(triage.RequestFacts('command_timeout', missing), triage.BrowserUse.READY)
+    assert result.browser_use == 'ready' and result.operational_failure is True
+    assert missing.public()['remote_effects'] == 'unknown'
+    authority.revoke('worker_timeout')
+    expired = triage.decide(authority.snapshot(), triage.BrowserUse.READY)
+    assert expired.browser_use == 'ready' and expired.mission == 'continue'
+    assert authority.feedback()['data']['capture']['state'] == 'unavailable'
+    down = lifetime.RequestAuthority('partial')
+    down.admit(1, 'Input.dispatchMouseEvent', facts.Intent.PRESS)
+    down.revoke('worker_timeout')
+    assert triage.decide(down.snapshot(), triage.BrowserUse.READY).browser_use == 'unavailable'

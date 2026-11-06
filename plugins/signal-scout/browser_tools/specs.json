@@ -715,6 +715,16 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_triage_policy.py",
           "test": "test_BR_003_AG_005_uncontained_failure_preserves_stop_before_cleanup"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_facts.py",
+          "test": "test_AE_006_AG_005_navigation_retry_ack_is_scoped_to_current_effect_attempt"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_AE_006_AG_005_neutral_missing_reply_preserves_uncertainty_without_disabling_control"
         }
       ],
       "otherCoverage": [],
@@ -819,6 +829,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_triage_policy.py",
           "test": "test_AG_006_AG_010_child_abort_failure_cannot_publish_reconnected_ready"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_BR_003_AG_006_outer_abandonment_fences_before_old_request_returns"
         }
       ],
       "otherCoverage": [],
@@ -1150,6 +1165,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_triage_policy.py",
           "test": "test_AG_010_pending_remote_work_keeps_cumulative_repair_clock"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_AG_005_AG_010_new_capture_fault_outranks_earlier_reconnect_proof"
         }
       ],
       "otherCoverage": [],

@@ -97,3 +97,34 @@ def test_AG_006_AE_006_secondary_ownership_and_generation_freeze_with_primary_fa
     assert sealed.effects == original
     assert [command.method for command in sealed.effects.commands] == ['Input.insertText']
     assert authority.snapshot() == sealed
+
+
+def test_AE_006_AG_005_navigation_retry_ack_is_scoped_to_current_effect_attempt(boundary, monkeypatch):
+    from types import SimpleNamespace
+
+    gate = boundary.session
+    session = importlib.import_module('plugins.signal-scout.scout_runtime.browser.session')
+    cdp, sent = transport()
+    gate._cdp = cdp
+    root = SimpleNamespace(session='owned', parent=None, loader='old', document=1)
+    monkeypatch.setattr(gate, '_execute', session.BrowserSession._execute.__get__(gate))
+    monkeypatch.setattr(gate, '_frames', lambda *_args, **_kwargs: SimpleNamespace(frames={'root': root}))
+    monkeypatch.setattr(gate, '_inspect_snapshot', lambda *_: '- heading "Current"')
+    monkeypatch.setattr(gate, '_navigation_page', lambda _: session._Page(
+        session._DocumentKey('owned', 'root', 'old', 1), '- heading "Current"', 'http://public.test/', 'complete'))
+    navigation = [0]
+    def receive(**kwargs):
+        command = sent[-1]
+        result = {}
+        if command['method'] == 'Page.navigate':
+            navigation[0] += 1
+            if navigation[0] == 2:
+                raise TimeoutError('Second navigation reply missing')
+            result = {'frameId': 'root', 'errorText': 'net::ERR_NAME_NOT_RESOLVED'}
+        return json.dumps({'id': command['id'], 'sessionId': 'owned', 'result': result})
+    cdp.connection.recv = receive
+    result = gate.dispatch({'action': 'navigate', 'args': {'url': 'http://public.test/'}})
+    failure = result['data']['failure']
+    assert failure['action_acknowledged'] is False
+    assert failure['remote_effects'] == 'unknown'
+    assert [command['acknowledged'] for command in failure['commands']] == [True, False]

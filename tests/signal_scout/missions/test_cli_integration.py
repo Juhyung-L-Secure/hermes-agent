@@ -21,7 +21,7 @@ def test_MI_035_actual_failed_cli_restores_both_stopped_helpers(cli_images, tmp_
     result = subprocess.run([sys.executable, str(CLI), "--compose-file", str(lifecycle.COMPOSE),
         "--compose-file", str(cli_images), "CLI fixture startupfail"], capture_output=True, text=True, timeout=120)
     receipt(tmp_path, result)
-    assert result.returncode == 1 and result.stdout == "", result.stderr
+    assert result.returncode == 1 and "Partial research report" in result.stdout, result.stderr
     assert "Offline fixture authentication failure" in result.stderr
     after = set(lifecycle.checked(run.compose + ["ps", "--services", "--status", "running"]).splitlines())
     assert not after & {"proxy", "firewall"}
@@ -91,12 +91,16 @@ def test_MI_033_MI_035_actual_cli_failed_native_outcome_and_blocked_action(cli_s
     receipt(tmp_path, result)
     expected = 0 if scenario == "blocked" else 1
     assert result.returncode == expected, result.stderr
-    assert result.stdout.strip() == ("Controlled blocked action preserved healthy conversation." if scenario == "blocked" else "")
+    if scenario == 'blocked':
+        assert result.stdout.strip() == 'Controlled blocked action preserved healthy conversation.'
+    else:
+        assert result.stdout.startswith('Partial research report')
     assert ("mission completed" if expected == 0 else "mission failed") in result.stderr
     if scenario == "fatal":
-        assert "Browser action failed." in result.stderr
-        assert "browser result navigate fatal" in result.stderr
-        assert result.stderr.count("Scout model working") == 1
+        assert "Browser ownership verification failed." in result.stderr
+        assert "browser result navigate incomplete" in result.stderr
+        assert result.stderr.count("Scout model working") == 2
+        assert "Controlled incomplete report." in result.stdout
         assert counts().get("cli-effects", 0) == effects
     if scenario == "exhaust":
         assert "Broken pipe" in result.stderr
@@ -127,7 +131,7 @@ def test_MI_036_actual_cli_mixed_invalid_response_uses_six_native_attempts(cli_s
         assert result.stdout.strip() == 'Controlled sixth native attempt succeeded.'
         assert 'application budget exhausted' not in result.stderr
     else:
-        assert result.stdout == ''
+        assert result.stdout.startswith('Partial research report')
         assert result.stderr.count('Scout model application budget exhausted') == 1
         assert 'attempts=6' in result.stderr and 'mission failed' in result.stderr
     assert counts().get('cli-effects', 0) == effects + 1

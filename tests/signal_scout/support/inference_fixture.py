@@ -97,8 +97,8 @@ def _send(self, request, **kwargs):
             native = evidence.BrowserSession._command
             def command(self, method, params=None, session=None,**kwargs):
                 if method == 'Page.navigate':
-                    return native(self, 'Scout.requiredBrowserFailure', {}, session)
-                return native(self, method, params, session)
+                    raise evidence.OwnershipFailure('Controlled permanent browser ownership failure.')
+                return native(self, method, params, session, **kwargs)
             evidence.BrowserSession._command = command
         if _scenario == "blocked":
             from hermes_cli.plugins import get_plugin_manager
@@ -106,6 +106,10 @@ def _send(self, request, **kwargs):
             adapter._binding.session._permissions['navigate'] = 'blocked'
         return _reply(request, body, [_tool("navigate", {"url": "http://public.test/cli-mission"}, "Read controlled research source")])
     latest = _result(body)
+    if _scenario == 'fatal':
+        assert latest['status'] == 'incomplete'
+        assert latest['data']['triage']['mission'] == 'report_only'
+        return _reply(request, body, [_message('Controlled incomplete report. Browser control is blocked.')])
     if _scenario == "blocked":
         assert latest["status"] == "rejected" and latest["execution_started"] is False
         return _reply(request, body, [_message("Controlled blocked action preserved healthy conversation.")])

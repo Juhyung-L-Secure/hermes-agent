@@ -327,6 +327,9 @@ class _CDP:
     def observe(self, effect, baseline, inspect, capture, *, explicit=False, interaction=False):
         if self._observation is not None:
             raise RuntimeError("Browser observation is already active.")
+        authority = self.authority or getattr(self, '_local_authority', None)
+        if authority is not None:
+            authority.action_acknowledged = False
         observation = _Observation(baseline, explicit, interaction, navigation=not interaction)
         connection = self.connection
         self._observation = observation

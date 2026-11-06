@@ -1,11 +1,12 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from .facts import EffectFacts
+from .facts import EffectFacts, Intent
 
 
 class BrowserUse(StrEnum):
     READY = 'ready'
+    CLOSED = 'closed'
     UNAVAILABLE = 'unavailable'
     BLOCKED = 'blocked'
     UNCONTAINED = 'uncontained'
@@ -18,6 +19,9 @@ class RequestFacts:
     secondary: tuple[str, ...] = ()
     contained: bool = True
     generation: int = 0
+    restored: bool = False
+    restart_available: bool = True
+    closed: bool = False
 
 
 @dataclass(frozen=True)
@@ -28,9 +32,9 @@ class TriageDecision:
 
     def public(self, *, restart_available):
         allowed = ['ordinary_browser_actions', 'close'] if self.browser_use is BrowserUse.READY else ['close']
-        if self.mission == 'stop':
+        if self.mission == 'stop' or self.browser_use is BrowserUse.CLOSED:
             allowed = []
-        if restart_available and self.browser_use not in {BrowserUse.BLOCKED, BrowserUse.UNCONTAINED}:
+        if restart_available and self.browser_use not in {BrowserUse.BLOCKED, BrowserUse.UNCONTAINED, BrowserUse.CLOSED}:
             allowed.append('restart')
         return {'browser_use': self.browser_use.value, 'mission': self.mission,
                 'allowed_operations': allowed, 'operational_failure': self.operational_failure}
@@ -42,11 +46,20 @@ def decide(facts, previous):
     kinds = (facts.kind, *facts.secondary)
     if previous is BrowserUse.BLOCKED or any(kind in {'ownership', 'protection'} for kind in kinds):
         return TriageDecision(BrowserUse.BLOCKED, 'report_only', True)
+    if facts.closed:
+        return TriageDecision(BrowserUse.CLOSED, 'continue', False)
+    restricted = 'continue' if facts.restart_available else 'report_only'
     if facts.effects.unresolved_input:
-        return TriageDecision(BrowserUse.UNAVAILABLE, 'continue', True)
-    if any(kind in {'cleanup_unavailable', 'unknown', 'control_lost'} for kind in kinds) or facts.kind in {'unknown', 'control_lost', 'worker_timeout'}:
-        return TriageDecision(BrowserUse.UNAVAILABLE, 'continue', True)
-    if facts.kind == 'command_timeout' and facts.effects.mutations and not facts.effects.action_acknowledged:
-        return TriageDecision(BrowserUse.UNAVAILABLE, 'continue', True)
-    local = facts.kind in {None, 'context_changed', 'frame_unavailable', 'inspection_failed', 'command_timeout'}
-    return TriageDecision(previous, 'continue', not local)
+        return TriageDecision(BrowserUse.UNAVAILABLE, restricted, True)
+    if any(kind in {'cleanup_unavailable', 'unknown', 'control_lost'} for kind in facts.secondary):
+        return TriageDecision(BrowserUse.UNAVAILABLE, restricted, True)
+    if facts.restored:
+        return TriageDecision(BrowserUse.READY, 'continue', True)
+    if facts.kind in {'unknown', 'control_lost'}:
+        return TriageDecision(BrowserUse.UNAVAILABLE, restricted, True)
+    if facts.kind in {'command_timeout', 'worker_timeout'} and any(
+            command.intent is Intent.UNKNOWN and not command.acknowledged for command in facts.effects.mutations):
+        return TriageDecision(BrowserUse.UNAVAILABLE, restricted, True)
+    operational = facts.kind not in {None, 'context_changed', 'frame_unavailable', 'inspection_failed'}
+    mission = 'continue' if previous is BrowserUse.READY else restricted
+    return TriageDecision(previous, mission, operational)

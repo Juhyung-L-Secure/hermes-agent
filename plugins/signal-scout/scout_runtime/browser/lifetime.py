@@ -10,9 +10,9 @@ import uuid
 from agent.deadline import run_bounded_sync
 from tools.interrupt import is_thread_interrupted, set_interrupt
 
-from ._errors import RequestRevoked, OwnershipFailure
+from ._errors import ActionRejected, BrowserFailure, RequestRevoked, OwnershipFailure
 from .facts import CommandTicket, EffectFacts, Intent
-from .triage import BrowserUse, RequestFacts, TriageDecision, decide
+from .triage import BrowserUse, RequestFacts, decide
 
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,6 @@ class RequestAuthority:
     worker_tid: int | None = None
     parent: object = None
     children: list = field(default_factory=list)
-    active_child: object = None
     transport: object = None
     sockets: list = field(default_factory=list)
     revoked: threading.Event = field(default_factory=threading.Event)
@@ -59,7 +58,6 @@ class RequestAuthority:
             with self.gate:
                 self.parent.check()
                 self.parent.children.append(self)
-                self.parent.active_child = self
 
     def check(self):
         with self.gate:
@@ -225,6 +223,9 @@ class BrowserRequests:
             if active is None or active.parent_tid != parent_tid:
                 return
         active.revoke(reason)
+        with self.lock:
+            if self.active is active and active.generation == self.session._browser.generation:
+                self._finish(self.session, active, active.feedback())
 
     def close(self):
         with self.lock:
@@ -261,19 +262,17 @@ class BrowserRequests:
     def _decision(self, private, authority, result):
         failure = result['data'].get('failure', {})
         effects = authority.operation_facts()
-        facts = authority.snapshot(failure.get('kind'))
-        decision = decide(facts, self.use)
-        if result['data'].get('recovery', {}).get('kind') in {'reconnected', 'restarted'}:
-            if decision.browser_use not in {BrowserUse.BLOCKED, BrowserUse.UNCONTAINED} and not self.replacement_required:
-                decision = TriageDecision(BrowserUse.READY, 'continue', True)
+        facts = authority.snapshot(authority.primary_kind or failure.get('kind'))
         self.replacement_required |= effects.unresolved_input
         restart = (private._browser.recovery is not None
-                   and private._permissions.get('restart') == 'allowed'
+                   and not self.closed and private._permissions.get('restart') == 'allowed'
                    and private._browser.settings['scout_recovery']['strategy'] != 'reconnect'
-                   and self.replacements_remaining > 0 and self._remaining_repair() > 0 and decision.browser_use not in {BrowserUse.BLOCKED, BrowserUse.UNCONTAINED}
+                   and self.replacements_remaining > 0 and self._remaining_repair() > 0
                    and not result['data'].get('recovery', {}).get('restart_denied'))
-        if decision.mission != 'stop' and decision.browser_use is not BrowserUse.READY and not restart:
-            decision = TriageDecision(decision.browser_use, 'report_only', decision.operational_failure)
+        restored = (result['data'].get('recovery', {}).get('kind') in {'reconnected', 'restarted'}
+                    and not self.replacement_required)
+        facts = replace(facts, restored=restored, restart_available=restart, closed=bool(result['data'].get('closed')))
+        decision = decide(facts, self.use)
         self.use = decision.browser_use
         if result['status'] == 'rejected' and not effects.commands and facts.kind is None and self.use is BrowserUse.READY and 'recovery' not in result['data']:
             return result
@@ -308,8 +307,12 @@ class BrowserRequests:
             self.abandoned = [previous for previous in self.abandoned if not previous.done.is_set()]
             if self.closed:
                 return root._result('fatal', 'Browser binding is closing or closed.')
-            if self.active is not None and not self.active.revoked.is_set():
-                return root._result('rejected', 'Another browser request is active.')
+            if self.active is not None:
+                if not self.active.revoked.is_set():
+                    return root._result('rejected', 'Another browser request is active.')
+                if self.active.generation == root._browser.generation:
+                    self._finish(root, self.active, self.active.feedback())
+                self.abandoned.append(self.active)
             self.active = authority
         private = self._fork(root, authority)
 
@@ -334,9 +337,9 @@ class BrowserRequests:
             try:
                 authority.check()
                 if self.use is BrowserUse.UNCONTAINED:
-                    notify_stop()
-                    return private._result('fatal', 'Browser execution containment failed.')
-                prepared, result = private._prepare(proposal)
+                    prepared, result = None, private._result('fatal', 'Browser execution containment failed.')
+                else:
+                    prepared, result = private._prepare(proposal)
                 if result is None:
                     action = prepared['action']
                     if self.use is not BrowserUse.READY and action not in {'restart', 'close'}:
@@ -356,8 +359,16 @@ class BrowserRequests:
                         if failure.get('kind') in {'unknown', 'control_lost'} and not effects.unresolved_input:
                             result = self._repair(private, authority, result)
                 authority.check()
-                if result['status'] == 'fatal' or not authority.snapshot().contained:
-                    notify_stop()
+                hard_terminal = result['status'] == 'fatal' or not authority.snapshot().contained
+                if result['data'].get('closed') or hard_terminal:
+                    with self.lock:
+                        if self.active is not authority or authority.revoked.is_set():
+                            raise RequestRevoked('Browser terminal cleanup was abandoned.')
+                        self.closed = True
+                    if hard_terminal:
+                        notify_stop()
+                    authority.phase = 'cleanup'
+                    root.close()
             except RequestRevoked:
                 raise
             except OwnershipFailure:
@@ -389,7 +400,9 @@ class BrowserRequests:
             bounded = run_bounded_sync(work, policy['request_timeout'], label='scout-browser-request',
                                        on_timeout=expire)
             with self.lock:
-                if bounded.timed_out or self.active is not authority or authority.revoked.is_set():
+                if self.active is not authority:
+                    return authority.feedback()
+                if bounded.timed_out or authority.revoked.is_set():
                     _log(logging.ERROR, 'Browser request access revoked phase=%s', authority.facts().phase)
                     self.abandoned.append(authority)
                     return self._finish(private, authority, authority.feedback())
@@ -404,14 +417,11 @@ class BrowserRequests:
                     self.use = BrowserUse.READY
                 root._refs, root._selected = private._refs, private._selected
                 result = self._finish(private, authority, result)
-                if result['data'].get('closed'):
-                    self.closed = True
-                    root.close()
                 return result
         except RequestRevoked:
             authority.revoke('cancelled')
             with self.lock:
-                return self._finish(private, authority, authority.feedback())
+                return self._finish(private, authority, authority.feedback()) if self.active is authority else authority.feedback()
         finally:
             with self.lock:
                 if self.active is authority:
@@ -474,7 +484,8 @@ class BrowserRequests:
                                         'capture': {'state': 'fresh'}}
                             except (RequestRevoked, OwnershipFailure):
                                 raise
-                            except Exception:
+                            except Exception as error:
+                                child.note('capture_unavailable' if isinstance(error, (TimeoutError, ActionRejected, BrowserFailure)) else 'unknown')
                                 _log(logging.ERROR, 'Browser reconnected but capture unavailable', exc_info=True)
                         child.check()
                         return data, dict(candidate._refs), candidate._selected
@@ -482,6 +493,10 @@ class BrowserRequests:
                         child.phase = 'cleanup'
                         try:
                             candidate._disconnect()
+                        except Exception:
+                            child.note('cleanup_unavailable')
+                            child._shutdown()
+                            raise
                         finally:
                             with child.lifecycle_lock:
                                 set_interrupt(False)
@@ -525,8 +540,6 @@ class BrowserRequests:
                         self.repair_elapsed += time.monotonic() - began
                     else:
                         self.repair_pending.append((began, child))
-                    if authority.active_child is child:
-                        authority.active_child = None
         return private._result('incomplete', 'Browser control unavailable; original action was not replayed.',
                                started=failed['execution_started'], data={**failed['data'],
                                    'recovery': {'kind': 'unavailable', 'reconnect_failures': diagnostics,
@@ -658,7 +671,8 @@ class BrowserRequests:
                                 'target_id': candidate._selected, 'capture': {'state': 'fresh'}}
                     except (RequestRevoked, OwnershipFailure):
                         raise
-                    except Exception:
+                    except Exception as error:
+                        child.note('capture_unavailable' if isinstance(error, (TimeoutError, ActionRejected, BrowserFailure)) else 'unknown')
                         _log(logging.ERROR, 'Replacement browser capture unavailable', exc_info=True)
                     child.check()
                     return data, dict(candidate._refs), candidate._selected
@@ -666,6 +680,10 @@ class BrowserRequests:
                     child.phase = 'cleanup'
                     try:
                         candidate._disconnect()
+                    except Exception:
+                        child.note('cleanup_unavailable')
+                        child._shutdown()
+                        raise
                     finally:
                         with child.lifecycle_lock:
                             set_interrupt(False)
@@ -718,8 +736,6 @@ class BrowserRequests:
                         self.remote_pending_since = now
                 else:
                     self.repair_pending.append((began, child))
-                if authority.active_child is child:
-                    authority.active_child = None
         return private._result('incomplete', 'Browser infrastructure repair exhausted.',
             started=failed['execution_started'], data={**failed['data'],
             'failure': {'kind': 'control_lost'}, 'recovery': {'kind': 'exhausted', 'failures': failures, 'restart_denied': True}})

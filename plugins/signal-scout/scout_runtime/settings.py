@@ -45,9 +45,13 @@ def parse_settings(contents):
         recovery = config.setdefault('scout_recovery', {
             'strategy': 'reconnect_then_restart', 'reconnect_attempts': 2,
             'restart_attempts': 1, 'attempt_timeout': 30})
+        if not isinstance(recovery, dict):
+            raise ValueError
         recovery.setdefault('max_replacements', 2)
         recovery.setdefault('max_repair_seconds', 120)
         mission = config.setdefault('scout_mission', {})
+        if not isinstance(mission, dict):
+            raise ValueError
         defaults = {'max_consecutive_failures': 5, 'research_model_requests': 100,
                     'research_seconds': 3600, 'finalization_model_requests': 2, 'finalization_seconds': 60}
         for key, value in defaults.items():

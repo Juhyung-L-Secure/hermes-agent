@@ -57,6 +57,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/missions/test_cli.py",
           "test": "test_MI_032_MI_035_host_reads_only_captured_configuration_after_browser_entry"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_BR_003_AG_005_MI_032_machinery_read_timeout_advances_mission_failure_limit"
         }
       ],
       "otherCoverage": [],
