@@ -401,28 +401,63 @@ def test_AG_006_AG_010_repair_time_charged_before_abandoned_worker_finishes(boun
 
 @pytest.mark.parametrize('current_generation,expected', [(1, 'fatal'), (2, 'success')])
 def test_AG_006_AG_010_finished_root_keeps_live_child_containment_obligation(boundary, monkeypatch, current_generation, expected):
+    import threading
+
     gate = boundary.session
+    boundary.browser.settings['scout_recovery'].update(reconnect_attempts=2, attempt_timeout=2)
     monkeypatch.setattr(lifetime._RequestBrowser, 'verify_control', lambda _: None)
-    monkeypatch.setattr(session_module.BrowserSession, '_disconnect', lambda _: None)
+    parked, release = threading.Event(), threading.Event()
+    old, connections = [], []
     def connect(self, timeout=None):
-        self._cdp, _ = transport()
+        token = self._authority
+        connections.append(token.call_id)
+        late = token.parent is not None and token.call_id.endswith('-reconnect-0')
+        def abort():
+            if late:
+                raise OSError('Late handoff abort failed')
+        resource = SimpleNamespace(capture_deadline=None, abort=abort, close=lambda: None)
+        if late:
+            old.append(token)
+            parked.set()
+            assert release.wait(10)
+        token.attach(resource)
+        self._cdp = resource
+    first = [True]
+    def execute(self, action, args, invoke):
+        if first[0]:
+            first[0] = False
+            return invoke(lambda: (_ for _ in ()).throw(session_module.ControlUnavailable('Initial control lost')))
+        invoke(lambda: boundary.effects.append('snapshot'))
+        return {'snapshot': '- heading "Current owned page"', 'target_id': self._selected}
     monkeypatch.setattr(session_module.BrowserSession, '_connect', connect)
-    manager = gate._requests = lifetime.BrowserRequests(gate)
-    root = lifetime.RequestAuthority('completed-root', generation=1)
-    child = lifetime.RequestAuthority('late-child', parent=root)
-    child.revoke('repair_timeout')
-    root.done.set()
-    manager.abandoned.append(root)
-    assert gate.request({'action': 'snapshot', 'args': {}})['status'] == 'success'
-    assert manager.abandoned == [root]
-    with pytest.raises(lifetime.RequestRevoked):
-        child.attach(SimpleNamespace(abort=lambda: (_ for _ in ()).throw(OSError('Close failed'))))
-    assert child.contained is False
-    boundary.browser.generation = current_generation
-    stops = []
-    result = gate.request({'action': 'snapshot', 'args': {}}, on_terminal=lambda _: stops.append(True))
-    assert result['status'] == expected
-    assert stops == ([True] if expected == 'fatal' else [])
+    monkeypatch.setattr(session_module.BrowserSession, '_disconnect', lambda self: setattr(self, '_cdp', None))
+    monkeypatch.setattr(session_module.BrowserSession, '_inspect_snapshot', lambda *_: '- heading "Recovered page"')
+    del gate._execute
+    monkeypatch.setattr(session_module.BrowserSession, '_execute', execute)
+    try:
+        recovered = gate.request({'action': 'snapshot', 'args': {}}, call_id='normal-root')
+        assert parked.is_set() and recovered['data']['recovery']['kind'] == 'reconnected'
+        assert recovered['data']['recovery']['reconnect_attempts'] == 2
+        assert recovered['data']['triage']['browser_use'] == 'ready'
+        root = old[0].parent
+        assert root.done.is_set() and not old[0].done.is_set()
+        assert gate._requests.abandoned == [root]
+        assert gate.request({'action': 'snapshot', 'args': {}})['status'] == 'success'
+        assert gate._requests.abandoned == [root] and boundary.effects == ['snapshot']
+        boundary.browser.generation = current_generation
+        release.set()
+        assert old[0].done.wait(5) and old[0].contained is False
+        before = len(connections)
+        stops = []
+        result = gate.request({'action': 'snapshot', 'args': {}}, on_terminal=lambda _: stops.append(True))
+        assert result['status'] == expected
+        assert stops == ([True] if expected == 'fatal' else [])
+        assert len(connections) == before + (0 if expected == 'fatal' else 1)
+        assert boundary.effects == (['snapshot'] if expected == 'fatal' else ['snapshot', 'snapshot'])
+    finally:
+        release.set()
+        if old:
+            assert old[0].done.wait(5)
 
 
 def test_AG_006_AG_010_overlapping_settlement_cannot_drop_new_repair_charge(boundary, monkeypatch):

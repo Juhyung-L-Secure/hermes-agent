@@ -155,10 +155,15 @@ with Browser(config) as browser:
         assert index==1,'Uncontained execution permitted report inference'
         return response([tool({'action':'snapshot','args':{}},call_id='uncontained')],content='')
     with patch.object(g.BrowserSession,'_execute',execute),fake_main(plan) as (agent,requests):
-        with adapter.bind_browser(gate,action_reference=action_reference,on_fatal=partial(agent.interrupt,hard_cancel=True)):
+        stops=[]
+        def stop():
+            agent.interrupt(hard_cancel=True)
+            stops.append((agent._interrupt_requested,agent._hard_interrupt_requested.is_set()))
+        with adapter.bind_browser(gate,action_reference=action_reference,on_fatal=stop):
             native=agent.run_conversation('Inspect controlled fixture.')
         assert native.get('interrupted') and not native.get('completed')
-        assert len(requests)==1 and agent._hard_interrupt_requested.is_set()
+        assert len(requests)==1,len(requests)
+        assert stops==[(True,True)],stops
         feedback=model_result(tool_replies(native)[0])
         assert feedback['status']=='fatal' and feedback['data']['triage']['mission']=='stop',feedback
 print('uncontained native control hard-stop before further inference verified')
