@@ -250,6 +250,7 @@ def test_AG_006_AG_010_child_abort_failure_cannot_publish_reconnected_ready(boun
     child = lifetime.RequestAuthority('child', parent=root)
     child.transport = SimpleNamespace(abort=lambda: (_ for _ in ()).throw(OSError('Abort failed')))
     child.revoke('repair_timeout')
+    manager.active = root
     result = manager._finish(boundary.session, root, {'status': 'incomplete', 'reason': 'Reconnected.',
         'execution_started': True, 'data': {'recovery': {'kind': 'reconnected'}}})
     assert child.contained is False and root.snapshot().contained is False
@@ -350,6 +351,7 @@ def test_AG_005_AG_010_new_capture_fault_outranks_earlier_reconnect_proof(bounda
     repaired = manager._repair(private, authority, gate._result('incomplete', started=True,
         data={'failure': {'kind': 'control_lost'}}))
     assert repaired['data']['recovery']['kind'] == 'reconnected'
+    manager.active = authority
     result = manager._finish(private, authority, repaired)
     assert result['data']['triage']['browser_use'] == permission
 
@@ -399,14 +401,17 @@ def test_AG_006_AG_010_repair_time_charged_before_abandoned_worker_finishes(boun
     assert manager.remote_pending is False
 
 
-@pytest.mark.parametrize('current_generation,expected', [(1, 'fatal'), (2, 'success')])
-def test_AG_006_AG_010_finished_root_keeps_live_child_containment_obligation(boundary, monkeypatch, current_generation, expected):
+@pytest.mark.parametrize('current_generation,child_generation,expected', [(1, 1, 'fatal'), (2, 1, 'success'), (1, 2, 'fatal')])
+@pytest.mark.parametrize('admission', ['browser', 'tool', 'model'])
+def test_BR_004_AG_006_AG_010_MI_035_late_child_gates_all_admission(boundary, native_plugin, monkeypatch, current_generation, child_generation, expected, admission):
+    from copy import deepcopy
     import threading
 
     gate = boundary.session
     boundary.browser.settings['scout_recovery'].update(reconnect_attempts=2, attempt_timeout=2)
     monkeypatch.setattr(lifetime._RequestBrowser, 'verify_control', lambda _: None)
     parked, release = threading.Event(), threading.Event()
+    abort_entered, abort_release = threading.Event(), threading.Event()
     old, connections = [], []
     def connect(self, timeout=None):
         token = self._authority
@@ -414,9 +419,12 @@ def test_AG_006_AG_010_finished_root_keeps_live_child_containment_obligation(bou
         late = token.parent is not None and token.call_id.endswith('-reconnect-0')
         def abort():
             if late:
+                abort_entered.set()
+                assert abort_release.wait(10)
                 raise OSError('Late handoff abort failed')
         resource = SimpleNamespace(capture_deadline=None, abort=abort, close=lambda: None)
         if late:
+            token.generation = child_generation
             old.append(token)
             parked.set()
             assert release.wait(10)
@@ -439,6 +447,7 @@ def test_AG_006_AG_010_finished_root_keeps_live_child_containment_obligation(bou
         assert parked.is_set() and recovered['data']['recovery']['kind'] == 'reconnected'
         assert recovered['data']['recovery']['reconnect_attempts'] == 2
         assert recovered['data']['triage']['browser_use'] == 'ready'
+        accepted = deepcopy(recovered)
         root = old[0].parent
         assert root.done.is_set() and not old[0].done.is_set()
         assert gate._requests.abandoned == [root]
@@ -446,16 +455,60 @@ def test_AG_006_AG_010_finished_root_keeps_live_child_containment_obligation(bou
         assert gate._requests.abandoned == [root] and boundary.effects == ['snapshot']
         boundary.browser.generation = current_generation
         release.set()
-        assert old[0].done.wait(5) and old[0].contained is False
+        assert abort_entered.wait(5)
+        original_done = root.done.is_set
+        def complete_at_retirement():
+            abort_release.set()
+            assert old[0].done.wait(5)
+            return original_done()
+        monkeypatch.setattr(root.done, 'is_set', complete_at_retirement)
         before = len(connections)
         stops = []
-        result = gate.request({'action': 'snapshot', 'args': {}}, on_terminal=lambda _: stops.append(True))
-        assert result['status'] == expected
-        assert stops == ([True] if expected == 'fatal' else [])
-        assert len(connections) == before + (0 if expected == 'fatal' else 1)
-        assert boundary.effects == (['snapshot'] if expected == 'fatal' else ['snapshot', 'snapshot'])
+        if admission == 'browser':
+            result = gate.request({'action': 'snapshot', 'args': {}}, on_terminal=lambda _: stops.append(True))
+            assert result['status'] == expected
+            assert stops == ([True] if expected == 'fatal' else [])
+            assert len(connections) == before + (0 if expected == 'fatal' else 1)
+            assert boundary.effects == (['snapshot'] if expected == 'fatal' else ['snapshot', 'snapshot'])
+        else:
+            import json
+            from hermes_cli.plugins import get_plugin_manager
+            from tests.signal_scout.support.model import dispatch
+            from tests.signal_scout.support.model_fixture import FAKE_MAIN
+
+            scope = {'json': json}
+            exec(FAKE_MAIN, scope)
+            mission = importlib.import_module('plugins.signal-scout.scout_runtime.mission')
+            state = mission.MissionControl(mission.MissionRequest('Report available findings.'), {
+                'research_model_requests': 10, 'research_seconds': 100,
+                'finalization_model_requests': 2, 'finalization_seconds': 10, 'max_consecutive_failures': 5})
+            state.require_report('Research allowance reached.')
+            def plan(index, kwargs):
+                assert expected == 'success' and index == 1, 'Uncontained owned worker admitted provider'
+                return scope['response'](content='Earlier verified finding.')
+            models = get_plugin_manager()._plugins['signal-scout'].module.model_requests
+            with scope['fake_main'](plan) as (agent, requests):
+                def stop():
+                    stops.append(True)
+                    agent.interrupt(hard_cancel=True)
+                with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(),
+                        on_fatal=stop, control=state), models.bind_model_requests(agent, max_attempts=1, control=state):
+                    if admission == 'tool':
+                        result = json.loads(dispatch({'action': 'snapshot', 'args': {}}))
+                        assert result['status'] == ('fatal' if expected == 'fatal' else 'incomplete')
+                        assert result['data']['triage']['mission'] == ('stop' if expected == 'fatal' else 'report_only')
+                        assert stops == ([True] if expected == 'fatal' else [])
+                        assert requests == []
+                    else:
+                        result = agent.run_conversation('Report earlier available findings.')
+                        assert len(requests) == (0 if expected == 'fatal' else 1)
+                        assert bool(result.get('completed')) is (expected == 'success')
+                        assert state.hard_stopped is (expected == 'fatal')
+                assert len(connections) == before and boundary.effects == ['snapshot']
+        assert recovered == accepted
     finally:
         release.set()
+        abort_release.set()
         if old:
             assert old[0].done.wait(5)
 

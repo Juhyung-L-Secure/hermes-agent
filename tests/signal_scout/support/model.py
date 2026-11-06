@@ -26,6 +26,9 @@ class FakeSession:
     def abandon(self, parent_tid, reason):
         pass
 
+    def containment_failed(self):
+        return False
+
     def close(self):
         self.closed = True
 

@@ -93,12 +93,15 @@ def _post_call(*, tool_name, status, tool_call_id='', session_id='', turn_id='',
     if tool_name != 'browser_scout' or status not in {'timeout', 'cancelled'}:
         return
     key = (session_id, turn_id, api_request_id, tool_call_id)
+    abandoned = []
     with _binding_lock:
         for invocation in _invocations:
             if invocation.key == key and is_thread_interrupted(invocation.parent_tid):
                 invocation.revoked = True
                 if invocation.binding is not None:
-                    invocation.binding.session.abandon(invocation.parent_tid, status)
+                    abandoned.append((invocation.binding.session, invocation.parent_tid))
+    for session, parent_tid in abandoned:
+        session.abandon(parent_tid, status)
 
 
 
@@ -131,6 +134,8 @@ def bind_browser(session, *, on_fatal, action_reference, control=None):
         if _binding is not None:
             raise RuntimeError("A Scout browser run is already bound.")
         _binding = binding
+    if control is not None:
+        control.browser = session
     try:
         yield
     finally:
@@ -146,6 +151,8 @@ def bind_browser(session, *, on_fatal, action_reference, control=None):
             with _binding_lock:
                 if _binding is binding:
                     _binding = None
+            if control is not None:
+                control.browser = None
 
 
 def _unavailable(status, reason, *, started=False):
@@ -194,7 +201,10 @@ def _handle(args, **_context):
         binding.sequence += 1
         sequence = binding.sequence
     if binding.control is not None and binding.control.check() != 'research':
-        return _format_result(binding.control.feedback(), None)
+        result = binding.control.feedback()
+        if result['status'] == 'fatal':
+            _stop(binding, sequence, invocation)
+        return _format_result(result, None)
     result = binding.session.request(args, call_id=invocation.key[-1] if invocation is not None else '',
         on_terminal=lambda authority: _stop(binding, sequence, invocation, authority))
     with _binding_lock:
@@ -203,7 +213,7 @@ def _handle(args, **_context):
     if result["data"].get("error", {}).get("kind") == "request_format":
         result = {**result, "data": {**result["data"], "action_reference": binding.action_reference}}
     if binding.control is not None:
-        binding.control.accept(result)
+        result = binding.control.accept(result)
     if result["status"] == "fatal":
         _stop(binding, sequence, invocation)
 

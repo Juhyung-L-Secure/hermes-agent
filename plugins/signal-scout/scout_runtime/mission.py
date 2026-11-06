@@ -38,6 +38,8 @@ class MissionControl:
         self.reporting_started = None
         self.requests = {}
         self.failures = 0
+        self.browser = None
+        self.hard_stopped = False
 
     def require_report(self, reason):
         if self.mode == 'research':
@@ -46,6 +48,10 @@ class MissionControl:
             self.reporting_started = self.clock()
 
     def check(self):
+        if self.browser is not None and self.browser.containment_failed():
+            self.mode = 'stopped'
+            self.hard_stopped = True
+            self.reason = 'Browser execution containment failed.'
         if self.mode == 'research' and self.clock() - self.started >= self.policy['research_seconds']:
             self.require_report('Research time allowance reached.')
         if self.mode == 'report_only' and self.clock() - self.reporting_started >= self.policy['finalization_seconds']:
@@ -77,6 +83,11 @@ class MissionControl:
 
     def accept(self, result):
         decision = result['data'].get('triage', {})
+        if result['status'] == 'fatal' or decision.get('mission') == 'stop':
+            self.mode = 'stopped'
+            self.hard_stopped = True
+            self.reason = result.get('reason') or 'Browser execution containment failed.'
+            return result
         if decision.get('mission') == 'report_only':
             self.require_report(result.get('reason') or 'Browser unavailable; research incomplete.')
         if decision.get('operational_failure'):
@@ -85,9 +96,21 @@ class MissionControl:
                 self.require_report('Consecutive operational failure allowance reached.')
         elif result['status'] == 'success' and decision.get('browser_use') == 'ready':
             self.failures = 0
+        if self.check() != 'research':
+            feedback = self.feedback()
+            if self.hard_stopped:
+                return {**result, 'status': feedback['status'], 'reason': feedback['reason'],
+                        'data': {**result['data'], 'triage': {**decision,
+                            'browser_use': 'uncontained', **feedback['data']['triage']}}}
+            return {**result, 'data': {**result['data'], 'triage': {
+                **decision, **feedback['data']['triage']}}}
+        return result
 
     def feedback(self):
         self.check()
+        if self.hard_stopped:
+            return {'status': 'fatal', 'reason': self.reason, 'execution_started': False,
+                    'data': {'triage': {'mission': 'stop', 'allowed_operations': [], 'stop_reason': self.reason}}}
         return {'status': 'incomplete', 'reason': 'Research ended. Return a partial report using available findings; browser work is disabled.',
                 'execution_started': False, 'data': {'triage': {'mission': 'report_only',
                     'allowed_operations': [], 'stop_reason': self.reason}}}

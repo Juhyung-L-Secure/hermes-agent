@@ -169,3 +169,50 @@ with Browser(config) as browser:
 print('uncontained native control hard-stop before further inference verified')
 ''', run=run, timeout=180)
     assert run.container is None
+
+
+def test_AG_005_MI_032_MI_035_native_failure_cap_reports_effective_permission_immediately(fixture_web):
+    stack, _, _, _ = fixture_web
+    with stack.browser_run() as run:
+        stack.browser_probe(SETUP + FAKE_MAIN + r'''
+mission=importlib.import_module('plugins.signal-scout.scout_runtime.mission')
+plugin=get_plugin_manager()._plugins['signal-scout'].module
+config['scout_mission']['max_consecutive_failures']=1
+state=mission.MissionControl(mission.MissionRequest('Inspect fixture.'),config['scout_mission'])
+with Browser(config) as browser:
+    tab=open_fixture(browser);gate=browser.session(target_id=tab)
+    native_execute=g.BrowserSession._execute
+    executed=[]
+    def execute(self,*args,**kwargs):
+        data=native_execute(self,*args,**kwargs)
+        executed.append(args[0])
+        raise TimeoutError('Controlled known read reply timeout')
+    def plan(index,kwargs):
+        if index==1:
+            return response([tool({'action':'snapshot','args':{}},call_id='cap-trigger')],content='')
+        feedback=model_result([m for m in kwargs['messages'] if m.get('role')=='tool'][-1])
+        assert feedback['data']['triage']['mission']=='report_only',feedback
+        assert feedback['data']['triage']['allowed_operations']==[],feedback
+        assert feedback['data']['triage']['stop_reason']=='Consecutive operational failure allowance reached.'
+        assert executed==['snapshot'] and state.failures==1
+        if index==2:
+            assert feedback['status']=='incomplete' and feedback['data']['failure']['kind']=='command_timeout',feedback
+            assert feedback['data']['triage']['browser_use']=='ready'
+            assert 'snapshot' in feedback['data'] and 'operation' in feedback['data']
+            return response([tool({'action':'snapshot','args':{}},call_id='ignore-cap')],content='')
+        assert index==3 and feedback['execution_started'] is False
+        return response(content='Verified page visible. Research remains incomplete.')
+    with patch.object(g.BrowserSession,'_execute',execute),fake_main(plan,iterations=6) as (agent,requests):
+        with adapter.bind_browser(gate,action_reference=action_reference,on_fatal=partial(agent.interrupt,hard_cancel=True),control=state), \
+             plugin.model_requests.bind_model_requests(agent,max_attempts=1,control=state):
+            native=agent.run_conversation('Inspect controlled fixture then report. '+action_reference)
+            result=state.finish(native)
+            assert native.get('completed') and not native.get('interrupted'),native
+            assert mission.MissionOutcome.from_native(result)==mission.MissionOutcome.FAILURE
+            assert 'Verified page visible.' in result['final_response']
+        assert len(requests)==3 and executed==['snapshot']
+        stable_requests(requests)
+        assert requests[2]['messages'][:len(requests[1]['messages'])]==requests[1]['messages']
+print('failure-cap feedback immediately publishes effective permission; native partial report verified')
+''', run=run, timeout=180)
+    assert run.container is None

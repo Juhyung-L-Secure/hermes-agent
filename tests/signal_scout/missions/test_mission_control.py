@@ -106,6 +106,63 @@ def test_MI_032_MI_035_operational_streak_ignores_local_rejection_and_recovery_i
     assert state.mode == 'report_only' and state.failures == 3
 
 
+@pytest.mark.parametrize('limit', ['failures', 'time'])
+def test_AG_005_MI_032_current_tool_feedback_publishes_effective_mission_permission(native_plugin, limit):
+    import json
+    from tests.signal_scout.support.model import FakeSession, dispatch
+
+    now = [0]
+    state = control(max_consecutive_failures=2, research_seconds=2)
+    state.clock = lambda: now[0]
+    original = {'status': 'incomplete' if limit == 'failures' else 'success',
+        'reason': 'Known reply timeout.' if limit == 'failures' else None,
+        'execution_started': True, 'data': {
+            'failure': {'kind': 'command_timeout', 'phase': 'execution'},
+            'operation': {'effect_started': True, 'effect_acknowledged': False},
+            'snapshot': '- heading "Verified finding"', 'target_id': 'tab-a',
+            'triage': {'mission': 'continue', 'browser_use': 'ready',
+                       'operational_failure': limit == 'failures', 'allowed_operations': ['ordinary', 'close']}}}
+    gate = FakeSession(original)
+    native_dispatch = gate.dispatch
+    def action(request):
+        result = native_dispatch(request)
+        if limit == 'time':
+            now[0] = 2
+        return result
+    gate.dispatch = action
+    with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(),
+            on_fatal=lambda: pytest.fail('Ordinary cap stopped native conversation'), control=state):
+        if limit == 'failures':
+            assert json.loads(dispatch({'action': 'snapshot', 'args': {}})) == original
+        result = json.loads(dispatch({'action': 'snapshot', 'args': {}}))
+        reason = ('Consecutive operational failure allowance reached.' if limit == 'failures'
+                  else 'Research time allowance reached.')
+        assert result == {**original, 'data': {**original['data'], 'triage': {
+            **original['data']['triage'], 'mission': 'report_only', 'allowed_operations': [], 'stop_reason': reason}}}
+        assert state.mode == 'report_only' and gate.result == original
+        denied = json.loads(dispatch({'action': 'snapshot', 'args': {}}))
+        assert denied['execution_started'] is False and denied['data']['triage']['stop_reason'] == reason
+        assert len(gate.requests) == (2 if limit == 'failures' else 1)
+
+
+def test_AG_005_MI_035_effective_mission_feedback_preserves_containment_stop(native_plugin):
+    import json
+    from tests.signal_scout.support.model import FakeSession, dispatch
+
+    state = control(max_consecutive_failures=1)
+    original = {'status': 'fatal', 'reason': 'Browser execution containment failed.', 'execution_started': True,
+                'data': {'triage': {'mission': 'stop', 'browser_use': 'uncontained',
+                                   'operational_failure': True, 'allowed_operations': []}}}
+    gate, stops = FakeSession(original), []
+    with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(),
+            on_fatal=lambda: stops.append(True), control=state):
+        assert json.loads(dispatch({'action': 'snapshot', 'args': {}})) == original
+        assert state.mode == 'stopped' and state.reason == original['reason']
+        assert state.before_model_request('forbidden-report') is False
+        assert json.loads(dispatch({'action': 'snapshot', 'args': {}}))['status'] == 'fatal'
+        assert len(gate.requests) == 1 and stops == [True]
+
+
 def test_MI_032_MI_035_time_boundary_without_tool_output_keeps_reporting_reserve():
     now = [0]
     state = control(research_seconds=2, finalization_seconds=3)

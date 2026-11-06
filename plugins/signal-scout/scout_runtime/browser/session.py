@@ -166,6 +166,9 @@ class BrowserSession:
         if self._requests is not None:
             self._requests.abandon(parent_tid=parent_tid, reason=reason)
 
+    def containment_failed(self):
+        return self._requests is not None and self._requests.containment_failed()
+
 
     def _bind(self, target_id):
         browser = self._browser

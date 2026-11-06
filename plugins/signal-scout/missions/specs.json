@@ -62,6 +62,16 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_triage_policy.py",
           "test": "test_BR_003_AG_005_MI_032_machinery_read_timeout_advances_mission_failure_limit"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_mission_control.py",
+          "test": "test_AG_005_MI_032_current_tool_feedback_publishes_effective_mission_permission"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_triage_integration.py",
+          "test": "test_AG_005_MI_032_MI_035_native_failure_cap_reports_effective_permission_immediately"
         }
       ],
       "otherCoverage": [],
@@ -224,6 +234,21 @@
           "layer": "unit",
           "file": "tests/signal_scout/missions/test_cli.py",
           "test": "test_MI_035_host_absolute_deadline_bounds_attach_and_calls_owned_cleanup"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/missions/test_mission_control.py",
+          "test": "test_AG_005_MI_035_effective_mission_feedback_preserves_containment_stop"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_triage_integration.py",
+          "test": "test_AG_005_MI_032_MI_035_native_failure_cap_reports_effective_permission_immediately"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_BR_004_AG_006_AG_010_MI_035_late_child_gates_all_admission"
         }
       ],
       "otherCoverage": [],

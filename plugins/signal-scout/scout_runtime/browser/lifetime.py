@@ -43,6 +43,7 @@ class RequestAuthority:
     commands: list[CommandTicket] = field(default_factory=list)
     sealed: RequestFacts | None = None
     contained: bool = True
+    revocation_in_progress: bool = False
     generation: int = 0
     primary_kind: str | None = None
     primary_effects: EffectFacts | None = None
@@ -112,6 +113,20 @@ class RequestAuthority:
             return RequestFacts(kind or self.primary_kind, self.operation_facts(), self.secondary_facts(),
                                 contained, self.generation)
 
+    def revocation_settled(self):
+        with self.gate:
+            return not self.revocation_in_progress and (self.parent is None or self.parent.revocation_settled())
+
+    def repair_settled(self):
+        with self.gate:
+            return self.revocation_settled() and (
+                self.done.is_set() or self.revoked.is_set() and self.snapshot().contained)
+
+    def lifecycle_settled(self):
+        with self.gate:
+            return (self.done.is_set() and self.revocation_settled()
+                    and all(child.lifecycle_settled() for child in self.children))
+
     def attach(self, transport):
         try:
             with self.gate:
@@ -153,10 +168,11 @@ class RequestAuthority:
                 self.contained = False
             raise
 
-    def revoke(self, reason):
+    def begin_revocation(self, reason):
         with self.gate:
             if self.revoked.is_set():
-                return
+                return None
+            self.revocation_in_progress = True
             self.sealed = self.snapshot()
             self.reason = reason
             self.revoked.set()
@@ -165,13 +181,25 @@ class RequestAuthority:
                 child.sealed = child.snapshot()
                 child.reason = 'parent_abandoned'
                 child.revoked.set()
-        for authority in (self, *children):
-            with authority.lifecycle_lock:
-                if authority.worker_tid is not None and not authority.done.is_set():
-                    set_interrupt(True, authority.worker_tid, reason='Scout request abandoned')
-            authority._shutdown()
-            if not authority.contained:
-                self.contained = False
+            return (self, *children)
+
+    def finish_revocation(self, authorities):
+        if authorities is None:
+            return
+        try:
+            for authority in authorities:
+                with authority.lifecycle_lock:
+                    if authority.worker_tid is not None and not authority.done.is_set():
+                        set_interrupt(True, authority.worker_tid, reason='Scout request abandoned')
+                authority._shutdown()
+                if not authority.contained:
+                    self.contained = False
+        finally:
+            with self.gate:
+                self.revocation_in_progress = False
+
+    def revoke(self, reason):
+        self.finish_revocation(self.begin_revocation(reason))
 
     def feedback(self):
         facts = self.operation_facts()
@@ -222,10 +250,9 @@ class BrowserRequests:
             active = self.active
             if active is None or active.parent_tid != parent_tid:
                 return
-        active.revoke(reason)
-        with self.lock:
-            if self.active is active and active.generation == self.session._browser.generation:
-                self._finish(self.session, active, active.feedback())
+            authorities = active.begin_revocation(reason)
+        active.finish_revocation(authorities)
+        self._finish(self.session, active, active.feedback())
 
     def close(self):
         with self.lock:
@@ -238,7 +265,7 @@ class BrowserRequests:
     def _settle_repairs(self):
         now = time.monotonic()
         for child, began in tuple(self.repair_pending.items()):
-            if child.done.is_set() or child.revoked.is_set() and child.snapshot().contained:
+            if child.repair_settled():
                 self.repair_elapsed += now - began
                 del self.repair_pending[child]
         if not self.repair_pending and self.remote_pending and self.remote_pending_since is None:
@@ -300,30 +327,55 @@ class BrowserRequests:
             return {**result, 'status': 'fatal', 'reason': 'Browser execution containment failed.', 'data': data}
         return {**result, 'data': data}
 
-    def _finish(self, private, authority, result):
-        try:
-            return self._decision(private, authority, result)
-        except Exception:
-            _log(logging.ERROR, 'Browser triage publication failed', exc_info=True)
-            authority.revoke('triage_failed')
-            self.use = BrowserUse.BLOCKED
-            return {'status': 'incomplete' if authority.contained else 'fatal',
-                    'reason': 'Browser result unavailable; control disabled.',
-                    'execution_started': authority.facts().started,
-                    'data': {**result['data'], 'capture': {'state': 'unavailable'},
-                             'triage': {'browser_use': 'blocked', 'allowed_operations': [],
-                                        'mission': 'report_only' if authority.contained else 'stop'}}}
+    def _finish(self, private, authority, result, *, on_terminal=None):
+        with self.lock:
+            if self.active is not authority:
+                return authority.feedback()
+            if authority.revoked.is_set():
+                if authority.generation < self.session._browser.generation:
+                    return authority.feedback()
+                result = authority.feedback()
+            try:
+                return self._decision(private, authority, result)
+            except Exception:
+                _log(logging.ERROR, 'Browser triage publication failed', exc_info=True)
+                authorities = authority.begin_revocation('triage_failed')
+                self.use = BrowserUse.BLOCKED
+        authority.finish_revocation(authorities)
+        with self.lock:
+            if self.active is not authority:
+                return authority.feedback()
+            contained = authority.snapshot().contained
+            self.use = BrowserUse.BLOCKED if contained else BrowserUse.UNCONTAINED
+            fallback = {'status': 'incomplete' if contained else 'fatal',
+                        'reason': 'Browser result unavailable; control disabled.',
+                        'execution_started': authority.facts().started,
+                        'data': {**result['data'], 'capture': {'state': 'unavailable'},
+                                 'triage': {'browser_use': self.use.value, 'allowed_operations': [],
+                                            'mission': 'report_only' if contained else 'stop'}}}
+        if not contained and on_terminal is not None:
+            on_terminal()
+        return fallback
+
+    def _settle_lifecycle(self):
+        completed = {previous for previous in self.abandoned if previous.lifecycle_settled()}
+        owners = (*self.abandoned, *((self.active,) if self.active is not None else ()))
+        if any(not owned.contained and owned.generation >= self.session._browser.generation
+               for previous in owners for owned in (previous, *previous.children)):
+            self.use = BrowserUse.UNCONTAINED
+        self.abandoned = [previous for previous in self.abandoned if previous not in completed]
+
+    def containment_failed(self):
+        with self.lock:
+            self._settle_lifecycle()
+            return self.use is BrowserUse.UNCONTAINED
 
     def dispatch(self, proposal, *, call_id='', on_terminal=None):
         root = self.session
         policy = root._browser.settings['browser']
         authority = RequestAuthority(call_id or uuid.uuid4().hex, generation=root._browser.generation)
         with self.lock:
-            if any(not owned.contained and owned.generation == root._browser.generation
-                   for previous in self.abandoned for owned in (previous, *previous.children)):
-                self.use = BrowserUse.UNCONTAINED
-            self.abandoned = [previous for previous in self.abandoned
-                              if not previous.done.is_set() or any(not child.done.is_set() for child in previous.children)]
+            self._settle_lifecycle()
             if self.closed:
                 return root._result('fatal', 'Browser binding is closing or closed.')
             if self.active is not None:
@@ -424,25 +476,24 @@ class BrowserRequests:
                 if bounded.timed_out or authority.revoked.is_set():
                     _log(logging.ERROR, 'Browser request access revoked phase=%s', authority.facts().phase)
                     self.abandoned.append(authority)
-                    return self._finish(private, authority, authority.feedback())
-                result = bounded.value
-                if private._browser.generation != root._browser.generation:
-                    root._browser.accept_replacement(private._browser)
-                    if root._cdp is not None:
-                        root._cdp.abort()
-                        root._cdp = None
-                    root._sessions = {}
-                    self.replacement_required = False
-                    self.use = BrowserUse.READY
-                root._refs, root._selected = private._refs, private._selected
-                if any(not child.done.is_set() for child in authority.children):
-                    self.abandoned.append(authority)
-                result = self._finish(private, authority, result)
-                return result
+                    result = authority.feedback()
+                else:
+                    result = bounded.value
+                    if private._browser.generation != root._browser.generation:
+                        root._browser.accept_replacement(private._browser)
+                        if root._cdp is not None:
+                            root._cdp.abort()
+                            root._cdp = None
+                        root._sessions = {}
+                        self.replacement_required = False
+                        self.use = BrowserUse.READY
+                    root._refs, root._selected = private._refs, private._selected
+                    if not authority.lifecycle_settled():
+                        self.abandoned.append(authority)
+            return self._finish(private, authority, result, on_terminal=notify_stop)
         except RequestRevoked:
             authority.revoke('cancelled')
-            with self.lock:
-                return self._finish(private, authority, authority.feedback()) if self.active is authority else authority.feedback()
+            return self._finish(private, authority, authority.feedback(), on_terminal=notify_stop)
         finally:
             with self.lock:
                 if self.active is authority:
