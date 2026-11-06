@@ -160,6 +160,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
           "test": "test_BR_003_BR_004_AG_006_MI_035_final_detach_owns_late_revoker"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
+          "test": "test_BR_003_BR_004_AG_006_AG_010_MI_035_generation_capture_is_atomic_with_admission"
         }
       ],
       "otherCoverage": [],
@@ -208,6 +213,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
           "test": "test_BR_003_BR_004_AG_006_MI_035_final_detach_owns_late_revoker"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
+          "test": "test_BR_003_BR_004_AG_006_AG_010_MI_035_generation_capture_is_atomic_with_admission"
         }
       ],
       "otherCoverage": [],
@@ -774,7 +784,7 @@
       "id": "AG_006",
       "subfeature": "browser-action-gate",
       "title": "Bounded requests and abandoned-worker access revocation",
-      "contract": "Configurable command and whole-request deadlines bound serial requests including observation and cleanup. Root admission gate atomically orders revoke against child repair/command admission, recording admission before potentially blocking I/O without holding cancellation gate across network I/O or socket shutdown. Already admitted sends may remain in flight after cancellation. Whole expiry freezes original facts, revokes authority and requests cooperative cancellation without claiming thread termination or remote rollback. Late workers cannot publish refs/results/generation, stop newer bindings or clean newer resources. Default capture is unavailable after expiry; fresh authorized request is required. No automatic replay or universal page-recovery checklist is added. Revocation registers before exposing abandonment and remains owned until every shutdown actor settles; worker completion alone cannot retire that obligation or settle repair time. Retirement snapshots completed lifecycle states before checking faults and prunes only those snapshots. Uncontained current or future owned generations stop admission; only strictly older retired generations are ignored. Existing model and tool admission also consume late containment faults, including during report-only mode, before starting new work; in-flight inference termination is not claimed. Final active-owner detachment transfers every authority through lifecycle settlement, including revocation registered after initial result classification.",
+      "contract": "Configurable command and whole-request deadlines bound serial requests including observation and cleanup. Root admission gate atomically orders revoke against child repair/command admission, recording admission before potentially blocking I/O without holding cancellation gate across network I/O or socket shutdown. Already admitted sends may remain in flight after cancellation. Whole expiry freezes original facts, revokes authority and requests cooperative cancellation without claiming thread termination or remote rollback. Late workers cannot publish refs/results/generation, stop newer bindings or clean newer resources. Default capture is unavailable after expiry; fresh authorized request is required. No automatic replay or universal page-recovery checklist is added. Revocation registers before exposing abandonment and remains owned until every shutdown actor settles; worker completion alone cannot retire that obligation or settle repair time. Retirement snapshots completed lifecycle states before checking faults and prunes only those snapshots. Uncontained current or future owned generations stop admission; only strictly older retired generations are ignored. Existing model and tool admission also consume late containment faults, including during report-only mode, before starting new work; in-flight inference termination is not claimed. Final active-owner detachment transfers every authority through lifecycle settlement, including revocation registered after initial result classification. Root authority captures the currently owned generation inside the same manager admission lock that serializes replacement publication.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -919,6 +929,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
           "test": "test_AG_006_AG_010_retired_bootstrap_cleanup_preserves_new_generation"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
+          "test": "test_BR_003_BR_004_AG_006_AG_010_MI_035_generation_capture_is_atomic_with_admission"
         }
       ],
       "otherCoverage": [],
@@ -1280,6 +1295,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
           "test": "test_AG_006_AG_010_retired_bootstrap_cleanup_preserves_new_generation"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
+          "test": "test_BR_003_BR_004_AG_006_AG_010_MI_035_generation_capture_is_atomic_with_admission"
         }
       ],
       "otherCoverage": [],

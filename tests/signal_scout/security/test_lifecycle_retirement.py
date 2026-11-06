@@ -432,3 +432,109 @@ def test_AG_006_AG_010_retired_bootstrap_cleanup_preserves_new_generation(bounda
         caller.join(5)
         if checker is not None:
             checker.join(5)
+
+
+@pytest.mark.parametrize('admission', ['model', 'tool'])
+def test_BR_003_BR_004_AG_006_AG_010_MI_035_generation_capture_is_atomic_with_admission(boundary, native_plugin, monkeypatch, admission):
+    import json
+    from hermes_cli.plugins import get_plugin_manager
+    from tests.signal_scout.support.model import dispatch
+    from tests.signal_scout.support.model_fixture import FAKE_MAIN
+
+    gate = boundary.session
+    manager = lifetime.BrowserRequests(gate)
+    gate._requests, gate._cdp = manager, None
+    replacement_ready, publish = threading.Event(), threading.Event()
+    before_admission, admit = threading.Event(), threading.Event()
+    handoff, attach = threading.Event(), threading.Event()
+    replaced, timed_out, tokens, errors = [], [], [], []
+    native_bounded = lifetime.run_bounded_sync
+    def bounded(*args, **kwargs):
+        result = native_bounded(*args, **kwargs)
+        if threading.get_ident() == first.ident and kwargs.get('label') == 'scout-browser-request':
+            replacement_ready.set()
+            assert publish.wait(10)
+        return result
+    def restart(self, private, authority, failed):
+        private._browser.endpoint, private._browser.generation = 'ws://generation-two', 2
+        return private._result('incomplete', data={'recovery': {'kind': 'restarted', 'generation': 2}})
+    def accept(replacement):
+        boundary.browser.endpoint, boundary.browser.generation = replacement.endpoint, replacement.generation
+    def connect(self, timeout=None):
+        token = self._authority
+        tokens.append((token, self._browser.generation))
+        def abort():
+            raise OSError('Late generation-two handoff cleanup failed')
+        resource = SimpleNamespace(abort=abort, close=lambda: None, capture_deadline=None)
+        handoff.set()
+        assert attach.wait(10)
+        token.attach(resource)
+        self._cdp = resource
+    monkeypatch.setattr(lifetime, 'run_bounded_sync', bounded)
+    monkeypatch.setattr(lifetime.BrowserRequests, '_restart', restart)
+    monkeypatch.setattr(lifetime._RequestBrowser, 'verify_control', lambda _: None)
+    monkeypatch.setattr(session_module.BrowserSession, '_connect', connect)
+    monkeypatch.setattr(session_module.BrowserSession, '_disconnect', lambda self: setattr(self, '_cdp', None))
+    monkeypatch.setattr(boundary.browser, 'accept_replacement', accept)
+    def request(action, output, call_id):
+        try:
+            output.append(gate.request({'action': action, 'args': {}}, call_id=call_id))
+        except Exception as error:
+            errors.append(error)
+    first = threading.Thread(target=lambda: request('restart', replaced, 'replacement'))
+    second = threading.Thread(target=lambda: request('snapshot', timed_out, 'successor'))
+    first.start()
+    try:
+        assert replacement_ready.wait(5)
+        native_lock = manager.lock
+        class BeforeAdmission:
+            def __enter__(self):
+                if threading.get_ident() == second.ident and not before_admission.is_set():
+                    before_admission.set()
+                    assert admit.wait(10)
+                native_lock.acquire()
+            def __exit__(self, *_):
+                native_lock.release()
+        manager.lock = BeforeAdmission()
+        boundary.browser.settings['browser']['request_timeout'] = .1
+        second.start()
+        assert before_admission.wait(5)
+        publish.set()
+        first.join(5)
+        assert not first.is_alive() and replaced[0]['data']['recovery']['generation'] == 2
+        admit.set()
+        assert handoff.wait(5)
+        second.join(5)
+        assert not second.is_alive() and errors == []
+        assert timed_out[0]['status'] == 'incomplete' and timed_out[0]['data']['worker']['access_revoked']
+        assert tokens[0][1] == 2 and tokens[0][0].contained
+        attach.set()
+        assert tokens[0][0].done.wait(5) and not tokens[0][0].contained
+        scope = {'json': json}
+        exec(FAKE_MAIN, scope)
+        mission = importlib.import_module('plugins.signal-scout.scout_runtime.mission')
+        state = mission.MissionControl(mission.MissionRequest('Report earlier findings.'), {
+            'research_model_requests': 10, 'research_seconds': 100, 'finalization_model_requests': 2,
+            'finalization_seconds': 10, 'max_consecutive_failures': 5})
+        state.require_report('Research allowance reached.')
+        models = get_plugin_manager()._plugins['signal-scout'].module.model_requests
+        with scope['fake_main'](lambda *_: pytest.fail('Current generation mislabeled as retired')) as (agent, requests):
+            with native_plugin.bind_browser(gate, action_reference=native_plugin.load_action_reference(),
+                    on_fatal=lambda: agent.interrupt(hard_cancel=True), control=state), \
+                 models.bind_model_requests(agent, max_attempts=1, control=state):
+                if admission == 'tool':
+                    result = json.loads(dispatch({'action': 'snapshot', 'args': {}}))
+                    assert result['status'] == 'fatal' and result['data']['triage']['mission'] == 'stop'
+                else:
+                    result = agent.run_conversation('Report earlier findings.')
+                    assert not result.get('completed') and state.hard_stopped
+                assert requests == [] and tokens[0][0].generation == 2
+    finally:
+        publish.set()
+        admit.set()
+        attach.set()
+        first.join(5)
+        if second.ident is not None:
+            second.join(5)
+        if tokens:
+            assert tokens[0][0].done.wait(5)

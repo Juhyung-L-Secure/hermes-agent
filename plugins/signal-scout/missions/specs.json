@@ -254,6 +254,11 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
           "test": "test_BR_003_BR_004_AG_006_MI_035_final_detach_owns_late_revoker"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
+          "test": "test_BR_003_BR_004_AG_006_AG_010_MI_035_generation_capture_is_atomic_with_admission"
         }
       ],
       "otherCoverage": [],

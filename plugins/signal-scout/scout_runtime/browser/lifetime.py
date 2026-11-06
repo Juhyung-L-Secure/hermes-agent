@@ -373,7 +373,6 @@ class BrowserRequests:
     def dispatch(self, proposal, *, call_id='', on_terminal=None):
         root = self.session
         policy = root._browser.settings['browser']
-        authority = RequestAuthority(call_id or uuid.uuid4().hex, generation=root._browser.generation)
         with self.lock:
             self._settle_lifecycle()
             if self.closed:
@@ -384,6 +383,7 @@ class BrowserRequests:
                 if self.active.generation == root._browser.generation:
                     self._finish(root, self.active, self.active.feedback())
                 self.abandoned.append(self.active)
+            authority = RequestAuthority(call_id or uuid.uuid4().hex, generation=root._browser.generation)
             self.active = authority
         private = self._fork(root, authority)
 
