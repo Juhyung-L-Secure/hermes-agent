@@ -35,6 +35,84 @@ def test_AG_005_AE_006_capture_ownership_and_partial_gesture_never_clear_on_read
     assert fresh.browser_use == 'blocked'
 
 
+@pytest.mark.parametrize('fault,status,permission,mission', [
+    ('normal', 'success', 'closed', 'continue'),
+    ('timeout', 'incomplete', 'closed', 'report_only'),
+    ('cleanup_failure', 'incomplete', 'closed', 'report_only'),
+    ('ownership', 'success', 'blocked', 'report_only'),
+    ('protection', 'success', 'blocked', 'report_only'),
+    ('uncontained', 'fatal', 'uncontained', 'stop'),
+])
+def test_BR_003_AG_005_AG_006_MI_035_closed_owner_publishes_no_operations(boundary, monkeypatch, fault, status, permission, mission):
+    import threading
+
+    mission_module = importlib.import_module('plugins.signal-scout.scout_runtime.mission')
+    gate = boundary.session
+    boundary.browser.settings['browser']['request_timeout'] = 2
+    entered, release = threading.Event(), threading.Event()
+    owners, calls, stops = [], [], []
+    native_close = boundary.browser.close
+    native_execute = session_module.BrowserSession._execute
+    def close():
+        authority = gate._requests.active
+        owners.append(authority)
+        entered.set()
+        if fault == 'timeout':
+            assert release.wait(10), 'Owned cleanup was not released'
+        if fault in {'ownership', 'protection'}:
+            authority.note(fault)
+        if fault == 'uncontained':
+            authority.contained = False
+        if fault == 'cleanup_failure':
+            raise OSError('Owned cleanup failed')
+        native_close()
+    def execute(self, action, args, invoke):
+        calls.append(action)
+        return native_execute(self, action, args, invoke)
+    monkeypatch.setattr(boundary.browser, 'close', close)
+    del gate._execute
+    monkeypatch.setattr(session_module.BrowserSession, '_execute', execute)
+    try:
+        result = gate.request({'action': 'close', 'args': {}},
+                              on_terminal=lambda _: stops.append(True))
+        assert entered.is_set() and result['status'] == status, result
+        assert result['execution_started'] is True
+        decision = result['data']['triage']
+        assert decision['browser_use'] == permission and decision['mission'] == mission, result
+        assert decision['allowed_operations'] == []
+        assert decision['operational_failure'] is (fault != 'normal')
+        assert decision['secondary_failures'] == ([fault] if fault in {'ownership', 'protection'} else [])
+        assert stops == ([True] if fault == 'uncontained' else [])
+        assert result['data']['operation']['phase'] == 'cleanup'
+        if fault == 'timeout':
+            assert not release.is_set() and not owners[0].done.is_set()
+            assert result['data']['failure']['kind'] == 'worker_timeout'
+            assert result['data']['failure']['phase'] == 'cleanup'
+            assert result['data']['capture']['state'] == 'unavailable'
+            assert result['data']['worker']['termination_confirmed'] is False
+        elif fault == 'cleanup_failure':
+            assert result['data']['failure']['kind'] == 'unknown'
+            assert result['data']['failure']['phase'] == 'cleanup'
+        denied = gate.request({'action': 'snapshot', 'args': {}})
+        assert denied['status'] == 'fatal' and denied['reason'] == 'Browser binding is closing or closed.'
+        assert calls == ['close'] and boundary.effects == []
+        control = mission_module.MissionControl(mission_module.MissionRequest('Keep verified findings.'),
+                                                boundary.browser.settings['scout_mission'])
+        control.accept(result)
+        finished = control.finish({'completed': True, 'final_response': 'A verified finding.'})
+        assert mission_module.MissionOutcome.from_native(finished) == (
+            mission_module.MissionOutcome.SUCCESS if fault == 'normal' else mission_module.MissionOutcome.FAILURE)
+        if fault == 'normal':
+            assert finished == {'completed': True, 'final_response': 'A verified finding.'}
+        else:
+            assert finished['scout_incomplete'] and finished['final_response'].startswith('Partial research report\n\nA verified finding.')
+    finally:
+        release.set()
+        if owners:
+            assert owners[0].done.wait(5)
+    assert boundary.closed == ([] if fault == 'cleanup_failure' else [True])
+
+
 def test_BR_003_AG_005_AE_006_persistent_gate_blocks_ignored_partial_input(boundary, monkeypatch):
     gate = boundary.session
     boundary.browser.settings['scout_recovery']['strategy'] = 'reconnect'

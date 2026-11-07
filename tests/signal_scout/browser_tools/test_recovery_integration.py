@@ -1,3 +1,5 @@
+import subprocess
+
 import pytest
 
 from tests.signal_scout.browser_tools.test_native_integration import SETUP
@@ -355,6 +357,7 @@ with Browser(config) as browser:
 
 @pytest.mark.parametrize('case', ['close', 'fatal'])
 def test_BR_003_AG_006_real_owner_cleanup_is_bounded_and_stop_precedes_cleanup(fixture_web, case):
+    """AG_005"""
     stack, _, _, _ = fixture_web
     stack.browser_probe(SETUP + FAKE_MAIN + '\ncase='+repr(case)+'\n'+r'''
 from contextlib import nullcontext
@@ -382,6 +385,7 @@ with Browser(config) as browser:
         assert result['status']=='incomplete' and result['data']['failure']['phase']=='cleanup',result
         assert result['data']['triage']['browser_use']=='closed',result
         assert result['data']['triage']['allowed_operations']==[],result
+        assert result['data']['triage']['mission']=='report_only',result
         assert parked.is_set() and not release.is_set()
         return response([tool({'action':'snapshot','args':{}},call_id='must-reject')],content='')
     try:
@@ -406,3 +410,45 @@ with Browser(config) as browser:
     finally:
         release.set()
 ''', timeout=150)
+
+
+def test_BR_003_AG_005_AG_006_MI_035_native_completed_close_allows_final_answer(fixture_web):
+    stack, _, _, _ = fixture_web
+    with stack.browser_run() as run:
+        owned = run.container
+        stack.browser_probe(SETUP + FAKE_MAIN + r'''
+mission=importlib.import_module('plugins.signal-scout.scout_runtime.mission')
+plugin=get_plugin_manager()._plugins['signal-scout'].module
+state=mission.MissionControl(mission.MissionRequest('Retain completed findings.'),config['scout_mission'])
+with Browser(config) as browser:
+    gate=browser.session()
+    stops=[]
+    def plan(index,kwargs):
+        if index==1:
+            return response([tool({'action':'close','args':{}},call_id='completed-close')],content='')
+        assert index==2,'Completed close admitted an extra model request'
+        result=model_result([m for m in kwargs['messages'] if m.get('role')=='tool'][-1])
+        assert result['status']=='success' and result['reason'] is None,result
+        assert result['execution_started'] is True and result['data']['closed'] is True
+        assert result['data']['triage']=={'browser_use':'closed','mission':'continue',
+            'allowed_operations':[],'operational_failure':False,'secondary_failures':[]}
+        assert gate._requests.closed and not browser.ready and browser.failed
+        return response(content='Completed findings retained after browser close.')
+    with fake_main(plan) as (agent,requests):
+        agent._api_max_retries=1
+        def stop():
+            stops.append(True);agent.interrupt(hard_cancel=True)
+        with adapter.bind_browser(gate,action_reference=action_reference,on_fatal=stop,control=state), \
+             plugin.model_requests.bind_model_requests(agent,max_attempts=1,control=state):
+            native=agent.run_conversation('Close completed browsing, then return verified findings. '+action_reference)
+            result=state.finish(native)
+            assert mission.MissionOutcome.from_native(result)==mission.MissionOutcome.SUCCESS,result
+            assert result['final_response']=='Completed findings retained after browser close.'
+            assert native.get('completed') and not native.get('interrupted') and not result.get('scout_incomplete')
+            assert state.mode=='research' and stops==[] and len(requests)==2
+            stable_requests(requests)
+print('completed native close preserves final answer without browser permission')
+''', run=run, timeout=150)
+    assert run.container is None
+    inspected = subprocess.run(['docker', 'inspect', owned], capture_output=True, timeout=10)
+    assert inspected.returncode != 0 and b'no such object' in inspected.stderr.lower()

@@ -30,12 +30,12 @@ class TriageDecision:
     mission: str
     operational_failure: bool
 
-    def public(self, *, restart_available):
+    def public(self, *, restart_available, closed=False):
         allowed = ['ordinary_browser_actions', 'close'] if self.browser_use is BrowserUse.READY else ['close']
-        if self.mission == 'stop' or self.browser_use is BrowserUse.CLOSED:
-            allowed = []
         if restart_available and self.browser_use not in {BrowserUse.BLOCKED, BrowserUse.UNCONTAINED, BrowserUse.CLOSED}:
             allowed.append('restart')
+        if closed or self.mission == 'stop' or self.browser_use is BrowserUse.CLOSED:
+            allowed = []
         return {'browser_use': self.browser_use.value, 'mission': self.mission,
                 'allowed_operations': allowed, 'operational_failure': self.operational_failure}
 
@@ -47,7 +47,8 @@ def decide(facts, previous):
     if previous is BrowserUse.BLOCKED or any(kind in {'ownership', 'protection'} for kind in kinds):
         return TriageDecision(BrowserUse.BLOCKED, 'report_only', True)
     if facts.closed:
-        return TriageDecision(BrowserUse.CLOSED, 'continue', False)
+        failed = facts.kind is not None or bool(facts.secondary)
+        return TriageDecision(BrowserUse.CLOSED, 'report_only' if failed else 'continue', failed)
     restricted = 'continue' if facts.restart_available else 'report_only'
     if facts.effects.unresolved_input:
         return TriageDecision(BrowserUse.UNAVAILABLE, restricted, True)

@@ -259,6 +259,16 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
           "test": "test_BR_003_BR_004_AG_006_AG_010_MI_035_generation_capture_is_atomic_with_admission"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_BR_003_AG_005_AG_006_MI_035_closed_owner_publishes_no_operations"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_AG_005_AG_006_MI_035_native_completed_close_allows_final_answer"
         }
       ],
       "otherCoverage": [],

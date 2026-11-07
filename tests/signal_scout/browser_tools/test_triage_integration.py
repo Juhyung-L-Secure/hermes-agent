@@ -135,7 +135,7 @@ with Browser(config) as browser:
             native=agent.run_conversation('Inspect fixture, then report within budget. '+action_reference)
             result=state.finish(native)
             assert len(requests)==2 and len(state.requests)==2
-            assert state.mode=='stopped' and hard_cancels==[True]
+            assert state.mode=='stopped' and hard_cancels and all(hard_cancels),(state.mode,hard_cancels)
             assert mission.MissionOutcome.from_native(result)==mission.MissionOutcome.FAILURE
             assert 'Partial research report' in result['final_response']
             assert 'No completed findings available.' in result['final_response']

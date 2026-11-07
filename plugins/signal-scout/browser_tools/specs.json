@@ -165,6 +165,16 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
           "test": "test_BR_003_BR_004_AG_006_AG_010_MI_035_generation_capture_is_atomic_with_admission"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_BR_003_AG_005_AG_006_MI_035_closed_owner_publishes_no_operations"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_AG_005_AG_006_MI_035_native_completed_close_allows_final_answer"
         }
       ],
       "otherCoverage": [],
@@ -720,7 +730,7 @@
       "id": "AG_005",
       "subfeature": "browser-action-gate",
       "title": "Complete truthful outcomes and fresh applicable observations",
-      "contract": "Every dispatch returns truthful gate status, fixed sanitized reason or null, truthful execution_started and dictionary data. Execution start means local effect/read/close invocation, not exact wire send or proof of server effects. A proposal rejected before execution has false execution_started and no proposed input effect; preparation effects remain truthful under AE_006. Failure feedback separately records operation certainty, browser permission/allowed operations and mission disposition. Valid acknowledgment follows exact command/session/envelope checks and applies to the current effect attempt; admitted commands and failed sends remain uncertain. Post-dispatch or required observation failure preserves started state and returns nonfatal feedback when contained. Bounded fresh failure snapshots are best effort and absence is explicit; action acknowledgment and observation failure remain distinct. Snapshot success cannot prove neutral partial input or erase ownership/protection faults. Successful click/navigation/type/key/back/scroll/switch returns fresh compact AX and exact selected target_id without automatic main-agent screenshot. Ordinary navigation-load failure follows AG_008 and never claims destination loading success. Completed native download cancellation is successful enforcement with true execution_started, fresh selected-page AX and healthy continuation, not destination loading or machinery recovery. Explicit screenshot returns full native viewport PNG bytes/MIME in memory; tabs/images return actual observations and close returns its close outcome. AG_008 owns navigation-aware observations using an independent short deadline and matching initial-document DOMContentLoaded rather than mandatory load-event wait. Readiness and configured-deadline facts do not promise all media, application data or future updates are ready. SR_022 keeps raw diagnostic exceptions, traces and protocol payloads out of model-facing results. The current result discloses effective mission disposition and allowed operations when that result reaches a mission failure/time limit, preserving original action facts and browser permission; hard containment stop has precedence.",
+      "contract": "Every dispatch returns truthful gate status, fixed sanitized reason or null, truthful execution_started and dictionary data. Execution start means local effect/read/close invocation, not exact wire send or proof of server effects. A proposal rejected before execution has false execution_started and no proposed input effect; preparation effects remain truthful under AE_006. Failure feedback separately records operation certainty, browser permission/allowed operations and mission disposition. Valid acknowledgment follows exact command/session/envelope checks and applies to the current effect attempt; admitted commands and failed sends remain uncertain. Post-dispatch or required observation failure preserves started state and returns nonfatal feedback when contained. Bounded fresh failure snapshots are best effort and absence is explicit; action acknowledgment and observation failure remain distinct. Snapshot success cannot prove neutral partial input or erase ownership/protection faults. Successful click/navigation/type/key/back/scroll/switch returns fresh compact AX and exact selected target_id without automatic main-agent screenshot. Ordinary navigation-load failure follows AG_008 and never claims destination loading success. Completed native download cancellation is successful enforcement with true execution_started, fresh selected-page AX and healthy continuation, not destination loading or machinery recovery. Explicit screenshot returns full native viewport PNG bytes/MIME in memory; tabs/images return actual observations and close returns its close outcome. AG_008 owns navigation-aware observations using an independent short deadline and matching initial-document DOMContentLoaded rather than mandatory load-event wait. Readiness and configured-deadline facts do not promise all media, application data or future updates are ready. SR_022 keeps raw diagnostic exceptions, traces and protocol payloads out of model-facing results. The current result discloses effective mission disposition and allowed operations when that result reaches a mission failure/time limit, preserving original action facts and browser permission; hard containment stop has precedence. A result published after the request owner closes command admission advertises no permitted browser operations, including while cleanup remains pending. A completed deliberate close permits a final answer; incomplete or failed terminal cleanup enters bounded report-only mode without claiming worker termination. Ownership/protection report-only and uncontained stop retain precedence.",
       "requiredCoverage": [
         "unit",
         "e2e"
@@ -775,6 +785,21 @@
           "layer": "e2e",
           "file": "tests/signal_scout/browser_tools/test_triage_integration.py",
           "test": "test_AG_005_MI_032_MI_035_native_failure_cap_reports_effective_permission_immediately"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_BR_003_AG_005_AG_006_MI_035_closed_owner_publishes_no_operations"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_AG_005_AG_006_MI_035_native_completed_close_allows_final_answer"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_AG_006_real_owner_cleanup_is_bounded_and_stop_precedes_cleanup"
         }
       ],
       "otherCoverage": [],
@@ -934,6 +959,16 @@
           "layer": "unit",
           "file": "tests/signal_scout/security/test_lifecycle_retirement.py",
           "test": "test_BR_003_BR_004_AG_006_AG_010_MI_035_generation_capture_is_atomic_with_admission"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_triage_policy.py",
+          "test": "test_BR_003_AG_005_AG_006_MI_035_closed_owner_publishes_no_operations"
+        },
+        {
+          "layer": "e2e",
+          "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
+          "test": "test_BR_003_AG_005_AG_006_MI_035_native_completed_close_allows_final_answer"
         }
       ],
       "otherCoverage": [],

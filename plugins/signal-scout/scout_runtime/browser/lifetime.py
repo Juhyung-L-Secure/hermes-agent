@@ -316,13 +316,15 @@ class BrowserRequests:
                    and not result['data'].get('recovery', {}).get('restart_denied'))
         restored = (result['data'].get('recovery', {}).get('kind') in {'reconnected', 'restarted'}
                     and not self.replacement_required)
-        facts = replace(facts, restored=restored, restart_available=restart, closed=bool(result['data'].get('closed')))
+        facts = replace(facts, restored=restored, restart_available=restart,
+                        closed=self.closed or bool(result['data'].get('closed')))
         decision = decide(facts, self.use)
         self.use = decision.browser_use
         if result['status'] == 'rejected' and not effects.commands and facts.kind is None and self.use is BrowserUse.READY and 'recovery' not in result['data']:
             return result
         data = {**result['data'], 'operation': effects.public(),
-                'triage': {**decision.public(restart_available=restart), 'secondary_failures': list(facts.secondary)}}
+                'triage': {**decision.public(restart_available=restart, closed=facts.closed),
+                           'secondary_failures': list(facts.secondary)}}
         if decision.mission == 'stop':
             return {**result, 'status': 'fatal', 'reason': 'Browser execution containment failed.', 'data': data}
         return {**result, 'data': data}
