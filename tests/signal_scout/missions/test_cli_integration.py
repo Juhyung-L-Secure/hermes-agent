@@ -16,17 +16,29 @@ CLI = ROOT / "docker/signal-scout/mission_run.py"
 
 def test_MI_035_actual_failed_cli_restores_both_stopped_helpers(cli_images, tmp_path):
     run = lifecycle.BrowserRun()
-    lifecycle.checked(run.compose + ["stop", "-t", "2", "proxy", "firewall"])
-    before = set(lifecycle.checked(run.compose + ["ps", "--services", "--status", "running"]).splitlines())
-    assert not before & {"proxy", "firewall"}, "Proof requires initially stopped helpers"
-    result = subprocess.run([sys.executable, str(CLI), "--compose-file", str(lifecycle.COMPOSE),
-        "--compose-file", str(cli_images), "CLI fixture startupfail"], capture_output=True, text=True, timeout=120)
-    receipt(tmp_path, result)
-    assert result.returncode == 1 and "Partial research report" in result.stdout, result.stderr
-    assert "Offline fixture authentication failure" in result.stderr
-    after = set(lifecycle.checked(run.compose + ["ps", "--services", "--status", "running"]).splitlines())
-    assert not after & {"proxy", "firewall"}
-    assert_clean(None)
+    helpers = {"proxy", "firewall"}
+    status = run.compose + ["ps", "--services", "--status", "running"]
+    initially_running = set(lifecycle.checked(status).splitlines()) & helpers
+    try:
+        lifecycle.checked(run.compose + ["stop", "-t", "2", "proxy", "firewall"])
+        before = set(lifecycle.checked(status).splitlines())
+        assert not before & helpers, "Proof requires initially stopped helpers"
+        result = subprocess.run([sys.executable, str(CLI), "--compose-file", str(lifecycle.COMPOSE),
+            "--compose-file", str(cli_images), "CLI fixture startupfail"], capture_output=True, text=True, timeout=120)
+        receipt(tmp_path, result)
+        assert result.returncode == 1 and "Partial research report" in result.stdout, result.stderr
+        assert "Offline fixture authentication failure" in result.stderr
+        after = set(lifecycle.checked(status).splitlines())
+        assert not after & helpers
+        assert_clean(None)
+    finally:
+        stopped = helpers - initially_running
+        if stopped:
+            lifecycle.checked(run.compose + ["stop", "-t", "2", *sorted(stopped)])
+        if initially_running:
+            lifecycle.checked(run.compose + ["up", "-d", "--wait", "--no-build", "--pull", "never",
+                "--no-deps", *sorted(initially_running)])
+        assert set(lifecycle.checked(status).splitlines()) & helpers == initially_running
 
 
 def test_MI_032_actual_bootstrap_status_retains_bounded_alarm(cli_images, tmp_path):
