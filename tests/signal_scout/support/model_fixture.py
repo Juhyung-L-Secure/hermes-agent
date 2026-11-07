@@ -2,6 +2,8 @@
 FAKE_MAIN = r'''
 from contextlib import contextmanager
 from copy import deepcopy
+import sys
+import traceback
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 from run_agent import AIAgent
@@ -34,9 +36,18 @@ def model_result(message, *, allow_guardrail=False):
 def offline_main(plan):
     client=MagicMock()
     requests=[]
+    first_assertion=None
     def create(**kwargs):
+        nonlocal first_assertion
         requests.append(deepcopy(kwargs))
-        return plan(len(requests),kwargs)
+        try:
+            return plan(len(requests),kwargs)
+        except AssertionError:
+            if first_assertion is None:
+                first_assertion=(len(requests),traceback.format_exc())
+            print(f'OFFLINE_PLAN_ASSERTION request={first_assertion[0]}\n{first_assertion[1]}',
+                file=sys.stderr,flush=True)
+            raise
     client.chat.completions.create.side_effect=create
     with patch('run_agent.OpenAI',return_value=client), \
          patch('agent.agent_init.fetch_model_metadata',return_value={}), \
