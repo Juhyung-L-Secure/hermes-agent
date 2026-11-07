@@ -329,7 +329,7 @@ with Browser(config) as browser:
 
 @pytest.mark.parametrize('phase', ['inspection','dispatch','observation'])
 def test_AG_005_AG_006_required_failure_terminal_started_and_owned_cleanup(fixture_web, phase):
-    """AE_006 SR_022 persists original browser failures without changing owned cleanup."""
+    """AE_006 SR_022: Direct dispatch retains original failure facts and owned teardown."""
     stack, _, _, _ = fixture_web
     with stack.browser_run() as run:
         helper = stack.compose('ps','-q','proxy')
@@ -346,14 +346,14 @@ with Browser(config) as browser:
     open_fixture(browser)
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
-    snapshot=successful(gate,'snapshot')['snapshot'];native=adapter._command;dispatched=[]
-    def broken(method,params=None,session=None):
+    snapshot=successful(gate,'snapshot')['snapshot'];native=adapter._command;native_page=adapter._page;dispatched=[]
+    def broken(method,params=None,session=None,**kwargs):
         if phase=='inspection' and method=='DOM.getContentQuads':
             raise RuntimeError('private evidence poison')
         if phase=='dispatch' and method=='Input.dispatchMouseEvent':
             dispatched.append(True)
-            return native('Scout.executionDoesNotExist',{},session)
-        return native(method,params,session)
+            return native('Scout.executionDoesNotExist',{},session,**kwargs)
+        return native(method,params,session,**kwargs)
     adapter._command=broken
     if phase=='observation':
         def snapshot_failure(_):
@@ -361,10 +361,29 @@ with Browser(config) as browser:
             raise RuntimeError('private post-action poison')
         adapter._page=snapshot_failure
     result=dispatch(gate,'click',{'ref':reference(snapshot,'Controlled click')})
-    assert result['status']=='fatal' and result['execution_started'] is (phase!='inspection')
-    assert result['data']=={} and 'poison' not in repr(result)
-    assert browser.failed and not browser.ready
-    assert dispatch(gate,'snapshot')['status']=='fatal'
+    assert result['status']=='incomplete' and result['execution_started'] is (phase!='inspection'),result
+    failure=result['data']['failure']
+    assert failure['kind']=='unknown' and failure['phase']=={'inspection':'preparation','dispatch':'execution','observation':'observation'}[phase]
+    assert failure['action_acknowledged'] is (phase=='observation'),result
+    assert result['data']['capture']=={'state':'unavailable'},result
+    commands=failure['commands']
+    assert [item['method'] for item in commands]=={
+        'inspection':['DOM.scrollIntoViewIfNeeded'],
+        'dispatch':['DOM.scrollIntoViewIfNeeded','Scout.executionDoesNotExist'],
+        'observation':['DOM.scrollIntoViewIfNeeded','Input.dispatchMouseEvent','Input.dispatchMouseEvent']}[phase]
+    assert all(item['send_started'] and item['sent'] for item in commands)
+    assert failure['remote_effects']==('acknowledged' if phase=='observation' else 'unknown')
+    assert failure['unresolved_input'] is False
+    assert 'poison' not in repr(result)
+    assert browser.ready and not browser.failed and not gate._terminal
+    assert len(dispatched)==(1 if phase=='dispatch' else 0)
+    assert browser.command('eval','window.clicks')['result']==(1 if phase=='observation' else 0)
+    if phase=='dispatch':
+        assert failure['command']['method']=='Scout.executionDoesNotExist' and not failure['command']['acknowledged']
+    adapter._command=native;adapter._page=native_page
+    current=successful(gate,'snapshot')
+    assert current['target_id']==tab and isinstance(current['snapshot'],str)
+    assert browser.command('eval','window.clicks')['result']==(1 if phase=='observation' else 0)
     assert len(dispatched)==(1 if phase=='dispatch' else 0)
     hermes_logging.flush_log_queue()
     for name in ('agent.log','errors.log'):
