@@ -329,7 +329,7 @@ with Browser(config) as browser:
 
 @pytest.mark.parametrize('phase', ['inspection','dispatch','observation'])
 def test_AG_005_AG_006_required_failure_terminal_started_and_owned_cleanup(fixture_web, phase):
-    """AE_006 SR_022: Direct dispatch retains original failure facts and owned teardown."""
+    """AE_006 SR_022"""
     stack, _, _, _ = fixture_web
     with stack.browser_run() as run:
         helper = stack.compose('ps','-q','proxy')
@@ -347,6 +347,7 @@ with Browser(config) as browser:
     adapter=browser.session();tab=adapter._tabs()[0]['target_id']
     gate=browser.session(target_id=tab)
     snapshot=successful(gate,'snapshot')['snapshot'];native=adapter._command;native_page=adapter._page;dispatched=[]
+    assert 'Guarded research controls' in snapshot
     def broken(method,params=None,session=None,**kwargs):
         if phase=='inspection' and method=='DOM.getContentQuads':
             raise RuntimeError('private evidence poison')
@@ -381,8 +382,10 @@ with Browser(config) as browser:
     if phase=='dispatch':
         assert failure['command']['method']=='Scout.executionDoesNotExist' and not failure['command']['acknowledged']
     adapter._command=native;adapter._page=native_page
+    browser.command('eval',"document.querySelector('h1').textContent='Restored current evidence';true")
     current=successful(gate,'snapshot')
-    assert current['target_id']==tab and isinstance(current['snapshot'],str)
+    assert current['target_id']==tab and 'Restored current evidence' in current['snapshot']
+    assert 'Guarded research controls' not in current['snapshot']
     assert browser.command('eval','window.clicks')['result']==(1 if phase=='observation' else 0)
     assert len(dispatched)==(1 if phase=='dispatch' else 0)
     hermes_logging.flush_log_queue()
