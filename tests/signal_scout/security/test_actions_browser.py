@@ -122,7 +122,7 @@ with Browser(config) as browser:
     captures=[];native=adapter._command
     def command(method,params=None,session=None,**kwargs):
         if method=='Page.captureScreenshot': captures.append(method)
-        return native(method,params,session)
+        return native(method,params,session,**kwargs)
     adapter._command=command
     result=successful(gate,'navigate',{'url':'http://public.test/gate'})
     wait_ready(browser)
@@ -306,7 +306,7 @@ with Browser(config) as browser:
     captures=[];native=adapter._command
     def command(method,params=None,session=None,**kwargs):
         if method=='Page.captureScreenshot': captures.append(True)
-        return native(method,params,session)
+        return native(method,params,session,**kwargs)
     adapter._command=command
     for action,args in [('click',{'ref':reference(snapshot,'Controlled click')}),
       ('navigate',{'url':'http://public.test/safe'}),('snapshot',{})]:

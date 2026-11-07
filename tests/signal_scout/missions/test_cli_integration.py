@@ -16,6 +16,7 @@ CLI = ROOT / "docker/signal-scout/mission_run.py"
 
 def test_MI_035_actual_failed_cli_restores_both_stopped_helpers(cli_images, tmp_path):
     run = lifecycle.BrowserRun()
+    lifecycle.checked(run.compose + ["stop", "-t", "2", "proxy", "firewall"])
     before = set(lifecycle.checked(run.compose + ["ps", "--services", "--status", "running"]).splitlines())
     assert not before & {"proxy", "firewall"}, "Proof requires initially stopped helpers"
     result = subprocess.run([sys.executable, str(CLI), "--compose-file", str(lifecycle.COMPOSE),

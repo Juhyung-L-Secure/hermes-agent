@@ -123,12 +123,19 @@ with Browser(config) as browser:
         return response([tool({'action':'snapshot','args':{}},call_id='request-'+str(index))],content='')
     with fake_main(plan,iterations=8) as (agent,requests):
         agent._api_max_retries=1
-        with adapter.bind_browser(gate,action_reference=action_reference,on_fatal=partial(agent.interrupt,hard_cancel=True),control=state), \
+        hard_cancels=[];native_interrupt=agent.interrupt
+        def interrupt(*args,**kwargs):
+            result=native_interrupt(*args,**kwargs)
+            if kwargs.get('hard_cancel') is True:
+                hard_cancels.append(agent._hard_interrupt_requested.is_set())
+            return result
+        with patch.object(agent,'interrupt',interrupt), \
+             adapter.bind_browser(gate,action_reference=action_reference,on_fatal=partial(agent.interrupt,hard_cancel=True),control=state), \
              plugin.model_requests.bind_model_requests(agent,max_attempts=1,control=state):
             native=agent.run_conversation('Inspect fixture, then report within budget. '+action_reference)
             result=state.finish(native)
             assert len(requests)==2 and len(state.requests)==2
-            assert state.mode=='stopped' and agent._hard_interrupt_requested.is_set()
+            assert state.mode=='stopped' and hard_cancels==[True]
             assert mission.MissionOutcome.from_native(result)==mission.MissionOutcome.FAILURE
             assert 'Partial research report' in result['final_response']
             assert 'No completed findings available.' in result['final_response']
