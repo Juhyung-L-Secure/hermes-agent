@@ -10,7 +10,7 @@ Operator supplies a public URL, Scout starts a fresh isolated browser, verifies 
 
 ## How to get to it (user POV)
 
-- Run `.venv/bin/python docker/signal-scout/browser_run.py https://example.com` from repository root.
+- Run `.venv/bin/python docker/signal-scout/browser_smoke.py https://example.com` from repository root.
 - The `scout browser-smoke URL` container entry is attachment-only; the host CLI supplies its required ownership. Do not call it unbound or expose it as a model tool.
 
 ## Driving it with verify-scout

@@ -103,6 +103,7 @@ def test_BT_004_browser_command_uses_supplied_timeout(monkeypatch):
 
 def test_BT_004_SR_005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_path):
     from tests.signal_scout.support.stack import lifecycle
+    import browser_smoke
     browser_module = importlib.import_module('plugins.signal-scout.scout_runtime.browser.owner')
     config = settings.load_settings(CONFIG)
     config['scout_lifecycle'] = {'startup_timeout':7, 'control_connect_timeout':1,
@@ -140,7 +141,8 @@ def test_BT_004_SR_005_lifecycle_consumes_supplied_bounds(monkeypatch, tmp_path)
             return 'a' * 64
         return ''
     monkeypatch.setattr(lifecycle, 'checked', checked)
-    assert run.smoke('https://example.com')['success']
+    monkeypatch.setattr(browser_smoke, 'checked', checked)
+    assert browser_smoke.smoke(run, 'https://example.com')['success']
     assert calls[-1][1] == 80
     run.close()
     assert (['docker', 'stop', '-t', '3', 'a' * 64], 3 + lifecycle.DOCKER_COMMAND_TIMEOUT) in calls

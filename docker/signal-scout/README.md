@@ -11,7 +11,8 @@ Run commands from repository root. Requires Linux Docker Engine, Compose with na
 | `Dockerfile` / `Dockerfile.dockerignore` | Pinned images, driver/browser archives, source inclusion |
 | `config.yaml` | Runtime operating settings |
 | `chrome-policy.json` | Root-owned native mandatory Chrome for Testing download policy |
-| `browser_run.py` | Trusted host ownership lock, browser creation, smoke, exact teardown |
+| `browser_run.py` | Trusted host ownership lock, browser creation, exact teardown |
+| `browser_smoke.py` | Operator smoke command using the shared browser lifecycle |
 | `mission_run.py` | Foreground mission ownership and native headed browser launch |
 | `../../plugins/signal-scout/scout_runtime/network/` | Direct `scout_runtime.network.firewall` and `scout_runtime.network.proxy` module entrypoints |
 | `chromium-seccomp.json` | Browser container namespace sandbox syscall profile |
@@ -26,7 +27,7 @@ docker compose -f docker/signal-scout/compose.yaml config --quiet
 docker compose -f docker/signal-scout/compose.yaml build
 HERMES_TEST_FILE_TIMEOUT=600 scripts/run_tests.sh tests/signal_scout/integration/test_runtime_config.py --include-integration -q -j 1 --file-retries 0
 docker compose -f docker/signal-scout/compose.yaml run --rm -T scout status
-.venv/bin/python docker/signal-scout/browser_run.py https://example.com
+.venv/bin/python docker/signal-scout/browser_smoke.py https://example.com
 ```
 
 Smoke creates fresh browser, attests actual `chrome://sandbox`, navigates operator URL, observes one snapshot, and returns fixed success metadata. No model call, screenshot archive, raw page output, or model browser tool. Denied URL/fatal control/startup failure removes owned browser.
@@ -88,7 +89,7 @@ Control path is `scout (.3) → browser relay (.4:9223) → Chromium loopback (1
 
 Chrome uses installed native mandatory download policy. Startup checks actual sandbox availability and sets initial main-window size. Tabs share default context and normal window sizing. Popups retain own size. Source-IP checks are not cryptographic identity. [Security contracts](../../plugins/signal-scout/security/README.md) give exact confinement, forced-proxy, policy, sizing, and trust limits. Compromised browser/controller, Docker daemon, or kernel remains trust risk.
 
-Both applications run UID/GID 10000, read-only root, zero capabilities/no-new-privileges. Browser retains namespace/seccomp-BPF sandbox, 128 MiB tmpfs, 2,000,000,000-byte memory+swap, no CPU quota, 512 PIDs. Hermes: 1 GiB memory+swap, 1 CPU, 512 PIDs. Each helper: 256 MiB memory+swap, 0.5 CPU, 128 PIDs; limits are per container. Firewall initially needs NET_ADMIN/SETUID/SETGID/SETPCAP, then drops all capabilities/runs UID10000; Docker healthcheck retains startup identity.
+Both applications run UID/GID 10000, read-only root, zero capabilities/no-new-privileges. Browser retains namespace/seccomp-BPF sandbox, 512 MiB tmpfs, 2,000,000,000-byte memory+swap, no CPU quota, 512 PIDs. Hermes: 1 GiB memory+swap, 1 CPU, 512 PIDs. Each helper: 256 MiB memory+swap, 0.5 CPU, 128 PIDs; limits are per container. Firewall initially needs NET_ADMIN/SETUID/SETGID/SETPCAP, then drops all capabilities/runs UID10000; Docker healthcheck retains startup identity.
 
 Pins remain `agent-browser 0.26.0`, Chrome for Testing `153.0.8010.36`, verified archives and existing base digests. Browser includes hash-verified `websockets==15.0.1` and no Hermes runtime or credentials. Headed debugging uses the host WSLg Wayland service without a separate virtual display or VNC stack. Browser seccomp derives from Playwright v1.58.2 commit `ce480a952553175eae75342aad2c5e86cdf2cbba`, with in-user-namespace `chroot` allowed. SQLite retains upstream WAL-reset fix. Build downloads are distinct from restricted runtime networking.
 

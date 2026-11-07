@@ -59,7 +59,7 @@ docker compose -f docker/signal-scout/compose.yaml config --quiet
 docker compose -f docker/signal-scout/compose.yaml build
 ```
 
-There is no persistent mission server to launch for the primary smoke. `verify.py smoke` invokes `.venv/bin/python docker/signal-scout/browser_run.py https://example.com`. That public CLI starts healthy helpers, creates a fresh browser/profile, sets main-window contents, attaches Scout, verifies the actual sandbox, navigates, snapshots, then removes the owned browser. All readiness steps must succeed; container existence alone is insufficient.
+There is no persistent mission server to launch for the primary smoke. `verify.py smoke` invokes `.venv/bin/python docker/signal-scout/browser_smoke.py https://example.com`. That public CLI starts healthy helpers, creates a fresh browser/profile, sets main-window contents, attaches Scout, verifies the actual sandbox, navigates, snapshots, then removes the owned browser. All readiness steps must succeed; container existence alone is insufficient.
 
 An empty Docker auth volume is initialized by the image's existing entrypoint, including its canonical operating-file symlink. Anonymous smoke needs neither login nor seeded application data. `https://example.com` is its public page. Readiness is the successful JSON result plus verified teardown, not an assumed delay. Mapped integration tests create their own controlled pages and data through existing fixtures.
 

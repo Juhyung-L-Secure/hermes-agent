@@ -109,7 +109,7 @@ def prove(args):
                        if (ROOT / name).is_file()), None)
         if python is None:
             raise RuntimeError("Existing Scout development virtual environment is required.")
-        operation = ([str(python), str(ROOT / "docker/signal-scout/browser_run.py"), args.url]
+        operation = ([str(python), str(ROOT / "docker/signal-scout/browser_smoke.py"), args.url]
                      if args.action == "smoke" else COMPOSE + ["run", "--rm", "--no-deps", "-T", "scout", "status"])
         receipt = {"feature": "browser-smoke" if args.action == "smoke" else "runtime-status",
                    "entry_point": "operator-cli", "command": operation, "images": preflight["images"],

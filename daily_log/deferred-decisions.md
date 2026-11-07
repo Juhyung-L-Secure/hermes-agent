@@ -2,11 +2,21 @@
 
 ## Signal Scout
 
+### Browser-action safety reviewer reconsideration
+
+**Decision needed:** Whether and when to restore browser-action LLM review after the user archives it, and which reviewer-specific evidence and recheck guarantees would then be needed.
+
+**Current boundary:** User chose full reviewer retirement instead of a toggle. Active runtime no longer constructs a reviewer, prepares review packets or performs cross-review context checks; local tag `archive/scout-safety-reviewer-2026-10-29` preserves prior committed implementation. Ordinary request validation, allowed/blocked permissions, exact target/focus/visibility/iframe handling, browser-only tool exposure, isolation, firewall/proxy, download denial and owned lifecycle remain. Main-agent instructions guide behavior and do not independently enforce site effects. Historical screenshot, evidence-size and Jev discussions below are dormant until the user explicitly restores reviewer work; no new provider or limits are selected. Shared browser observations and original Chromium timeout remain separate from review retirement. No engine migration or broad browser-driver rewrite is authorized.
+
+**Revisit when:** User explicitly reopens safety-review design. Any future reintroduction requires a fresh decision based on observed need.
+
+**Source:** `daily_log/2026-10-29.md`
+
 ### Native browser-helper lifecycle and removal
 
 **Decision needed:** Retain native helper/supervisor for whole research mission, retire redundant startup dependency through Scout's private CDP, or define a deliberate handoff and dialog behavior.
 
-**Current boundary:** User explicitly puts helper discussion on hold and prioritizes identifying cause of original mission failure. No helper removal, startup migration, idle-timeout change, supervisor policy change or lifecycle fix authorized by current discussion. Preserve sandbox checks and other protections. Existing lifecycle assertion records helper loss but does not prove this caused original ConnectionClosedError; two controlled replay missions completed despite cleanup.
+**Current boundary:** Initial native helper startup, idle cleanup and auxiliary-supervisor policy remain unchanged. Action-driver recovery now supports same-browser reconnection and owned replacement; an accepted replacement gets an explicit-endpoint generation supervisor and captured initial-helper retirement. This necessary rebinding does not settle general helper removal, startup migration, idle-timeout tuning or degraded-monitoring policy. Original renderer-crash cause remains unknown.
 
 **Revisit when:** Original mission failure cause is identified, or user explicitly resumes helper-lifecycle discussion.
 
@@ -16,7 +26,7 @@
 
 **Decision needed:** Choose any broader diagnostic events or correlation identifiers beyond restored native logging, implemented SR_022 action diagnostics and the planned SR_023/SR_024 browser-process/relay/container diagnostics, separately from user-facing research progress updates.
 
-**Current boundary:** Headed mode is verified. User authorizes removing Scout's blanket rewriting and accepts native diagnostic detail in the shared Hermes/proxy/firewall log volume, which browser does not mount. SR_022 focused action-phase, timing and original browser-error diagnostics are implemented and locally verified. User now requests requirements for Chromium output, child exit/signal, relay ending and pre-teardown container/OOM observations to diagnose original mission failure; SR_023/SR_024 and extended SR_003/MI_034 are saved with new tests still absent, not implemented or verified. Trusted collection must preserve no persistent browser auth/log mount, existing rotation, native redaction, best-effort behavior and normal cleanup; bounded browser output transport is in scope. Preserve fixed protection/reviewer completion metadata. Do not add reviewer-specific suppression; native DEBUG paths may retain reviewer request/evidence/provider details and native redaction is not universal content removal. No separate screenshot/transcript archive, viewer-password logging, external diagnostic service, general tracing system, helper redesign or Discord progress pipeline is included.
+**Current boundary:** Native diagnostic output and existing browser/relay/container collection remain active. Current recovery implementation preserves original action, RPC and host-repair exceptions and phase facts through the existing redacted, rotating errors.log/browser.log/proxy.log routes, including retries with no live browser and distinct writer ownership. Broader correlation identifiers, classification and dashboard design remain deferred. No separate screenshot/transcript archive, blanket rewriting, external diagnostic backend or Discord progress pipeline was added. Native redaction remains the existing best-effort behavior, not universal content removal.
 
 **Revisit when:** Focused SR_023/SR_024 verification or an authorized instrumented replay exposes another missing observation, or user starts broader diagnostics or Discord progress work. Native retention, shared-volume access and focused diagnostic scope are already decided. Later possible removal of headed mode is not authorized now.
 
@@ -83,50 +93,20 @@ reviewer contract. Prior research is informational, not approval to adopt Jev.
 
 **Source:** `daily_log/2026-09-21.md`
 
-### Hermes tool-timeout and abandoned-worker recovery
-
-**Decision needed:** Define recovery when Hermes stops waiting for a tool while
-its worker is still running, including outer tool cancellation and any retries
-or overlapping requests following that failure.
-
-**Current boundary:** User defers broader failure/recovery modeling until
-deployment data. Normal serial browsing does not need a speculative queue.
-User separately confirms that a timed-out review cannot authorize execution
-later: discard its late verdict, preserve the configured fresh technical retry,
-and stop browsing/close the owned browser when technical retries are exhausted.
-Upcoming gate must verify no browser action follows late approval. This narrow
-requirement does not settle outer Hermes tool cancellation or authorize blind
-action retries, queueing, concurrency features or generic recovery machinery.
-Existing deny, recheck, network and download protections remain unchanged.
-
-**Revisit when:** A deployed tool timeout or abandoned-worker incident supplies
-concrete evidence, or user explicitly reopens broader recovery design. If runtime
-integration cannot preserve agreed protections without that decision, stop and
-request direction instead of silently inventing behavior.
-
-**Source:** `daily_log/2026-10-12.md`
-
 ### Browser-helper reconnect and degraded-monitoring policy
 
 **Decision needed:** Decide whether Scout should limit Hermes CDP supervisor
 retries, notify the main LLM about disconnection, or stop a mission when this
 auxiliary monitoring connection fails.
 
-**Current boundary:** User explicitly postponed these choices. Do not add a
-Scout-specific reconnect/failure policy or bypass the supervisor solely to avoid
-its existing reconnect loop. Reconnecting the auxiliary connection is not browser
-replacement and is distinct from losing the action driver's control connection.
-Keep existing runtime unchanged during planning. User confirmed adapting Scout's
-existing harness and reusing Hermes's remote-browser support where possible, not
-adding an unnecessary wrapper or selecting a direct-driver bypass. Isolation coding
-brief is approved; this reconnect policy remains deferred. Browser ownership/network protections, normal teardown,
-and the agreed no-replacement rule remain required. This deferral does not promise
-healthy monitoring or automatic notice to the LLM during a disconnect.
+**Current boundary:** Action-driver CDP recovery is decided and implemented separately: configurable same-browser reconnect then owned replacement, with bounded attempts, preserved Hermes conversation and fresh references. Auxiliary native-supervisor retry limits, LLM notice and degraded-monitoring stop policy remain deferred. Initial helper policy stays intact; accepted replacements only receive the necessary generation-specific rebind. No general helper rewrite or removal is authorized.
 
 **Revisit when:** An actual crash or related connection failure occurs, or user
 explicitly reopens the topic.
 
 **Source:** `daily_log/2026-09-17.md`; `plugins/signal-scout/history.md` preserves `security/browser-action-review-plan.md` at immutable base `6f0abcacfc1a7fb5dbcd49bfb12f0b38877ed300`.
+
+**2026-11-04 completion:** Same-browser reconnect and owned browser replacement are implemented and verified for action-driver infrastructure loss. Auxiliary helper/supervisor reconnect limits and degraded-monitoring choices remain deferred; only necessary replacement-generation rebinding was added.
 
 ### Independent browser cleanup after Hermes loss
 
@@ -166,3 +146,23 @@ speculative custom messaging abstraction.
 starts the messaging integration phase.
 
 **Source:** `daily_log/2026-09-06.md`; `daily_log/2026-10-09.md`
+
+### Closed-loop mission verification setup
+
+**Decision needed:** When to set up the proposed repeatable mission verification and autonomous diagnose, delegated repair, replay, regression and measured improvement workflow.
+
+**Current boundary:** User explicitly postpones setup. Existing mission launcher, verification routes and diagnostic collection remain unchanged. Obscura feasibility research does not authorize a new mission campaign, verification harness, scheduler, automatic fixes or engine migration.
+
+**Revisit when:** User explicitly resumes closed-loop setup.
+
+**Source:** `daily_log/2026-10-30.md`; `daily_log/2026-10-31.md`
+
+### Error classifier and monitor dashboard
+
+**Decision needed:** Whether and when to add error classification and a Scout monitor dashboard, including categories and presentation.
+
+**Current boundary:** User may add classifier/dashboard later and chooses existing separate errors.log, browser.log and proxy.log files for diagnostics, superseding the earlier single-log preference. Preserve original errors, stack traces and correlation facts for later interpretation.404,CAPTCHA and ordinary page loading remain Hermes browsing decisions. Current discussion is design only and authorizes no classifier or dashboard implementation.
+
+**Revisit when:** User explicitly starts error-classifier or monitor-dashboard work.
+
+**Source:** `daily_log/2026-11-04.md`

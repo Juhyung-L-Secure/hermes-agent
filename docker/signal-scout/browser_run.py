@@ -1,5 +1,4 @@
 
-import argparse
 from dataclasses import dataclass
 import fcntl
 import importlib
@@ -7,7 +6,6 @@ import json
 import os
 from pathlib import Path
 import re
-import signal
 import stat
 import subprocess
 import sys
@@ -454,17 +452,6 @@ class BrowserRun:
             raise RuntimeError("Browser control unavailable.")
         return {"BROWSER_CDP_URL": self.endpoint}
 
-    def smoke(self, url):
-        """Run only the deterministic bounded Scout navigation/observation entrypoint."""
-        importlib.import_module("scout_runtime.network.urls").validate_url(url)
-        options = [value for key, setting in self.scout_environment().items() for value in ("-e", key + "=" + setting)]
-        result = checked(self.compose + ["run", "--rm", "--no-deps", "-T", *options, "scout", "browser-smoke", url],
-                         timeout=self.config["scout_lifecycle"]["smoke_timeout"])
-        metadata = json.loads(result)
-        if metadata != {"success": True, "sandbox": "verified", "observation": "completed"}:
-            raise RuntimeError("Unexpected Scout smoke result.")
-        return metadata
-
     def close(self):
         """Remove exact owned browser, optionally restore helpers; retain images/volumes."""
         if isinstance(self.container, _PendingCreate):
@@ -507,26 +494,3 @@ class BrowserRun:
 
     def __exit__(self, *_):
         self.close()
-
-
-def main():
-    """Expose one public-URL smoke, without a model or arbitrary-command interface."""
-    class Parser(argparse.ArgumentParser):
-        def error(self, message):
-            self.exit(2, "Invalid Scout smoke command.\n")
-    parser = Parser()
-    parser.add_argument("url")
-    args = parser.parse_args()
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        signal.signal(sig, lambda *_: (_ for _ in ()).throw(KeyboardInterrupt()))
-    with BrowserRun() as run:
-        result = run.smoke(args.url)
-    print(json.dumps(result))
-
-
-if __name__ == "__main__":
-    try:
-        main()
-    except (Exception, KeyboardInterrupt):
-        print("Scout browser run failed; inspect owned container if cleanup could not finish.", file=sys.stderr)
-        raise SystemExit(1) from None

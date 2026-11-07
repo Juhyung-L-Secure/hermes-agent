@@ -101,16 +101,19 @@ def test_BT_006_host_entry_imports_stay_lightweight(tmp_path):
     import subprocess
     import sys
     result = subprocess.run([sys.executable, '-I', '-c', '''
-import runpy, sys
+import runpy, signal, sys
 from pathlib import Path
 root = Path(sys.argv[1])
+handlers = [signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)]
+runpy.run_path(str(root / 'docker/signal-scout/browser_smoke.py'))
+assert [signal.getsignal(sig) for sig in (signal.SIGINT, signal.SIGTERM)] == handlers
 owner = runpy.run_path(str(root / 'docker/signal-scout/browser_run.py'))
 mission = runpy.run_path(str(root / 'docker/signal-scout/mission_run.py'))
 assert owner['settings'].__name__ == 'scout_runtime.settings'
 assert mission['MissionRequest']('  Research rice.  ').text == '  Research rice.  '
 assert not any(name == 'plugins.signal-scout' or name.startswith(('hermes_cli', 'run_agent', 'tools.')) for name in sys.modules)
 print('host-entry-imports-verified')
-''', str(lifecycle.ROOT)], text=True, capture_output=True, timeout=20,
+''', str(lifecycle.ROOT)], text=True, capture_output=True, timeout=20, cwd=tmp_path,
         env={'HOME': str(tmp_path), 'HERMES_HOME': str(tmp_path)})
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() == 'host-entry-imports-verified'

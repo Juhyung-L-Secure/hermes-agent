@@ -18,7 +18,7 @@ services:
     mem_limit: 2000000000
     memswap_limit: 2000000000
     # No cpus/cpu_quota/cpuset: browser has no CPU ceiling.
-    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777"]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=512m,mode=1777"]
     restart: "no"
     logging:
       driver: local
