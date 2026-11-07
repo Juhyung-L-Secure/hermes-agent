@@ -380,6 +380,8 @@ with Browser(config) as browser:
         assert case=='close' and index==2,'Required fatal stop allowed another model call'
         result=model_result([m for m in kwargs['messages'] if m.get('role')=='tool'][-1])
         assert result['status']=='incomplete' and result['data']['failure']['phase']=='cleanup',result
+        assert result['data']['triage']['browser_use']=='closed',result
+        assert result['data']['triage']['allowed_operations']==[],result
         assert parked.is_set() and not release.is_set()
         return response([tool({'action':'snapshot','args':{}},call_id='must-reject')],content='')
     try:
