@@ -404,17 +404,26 @@ class BrowserSession:
         was_terminal = self._terminal
         if previous is None:
             self._authority = RequestAuthority('direct-session')
-        result = None
         try:
-            request, rejected = self._prepare(request)
-            result = rejected if rejected is not None else self._dispatch(request)
-        except RequestRevoked:
-            result = self._fatal('Browser action interrupted.', self._authority.started)
+            try:
+                request, rejected = self._prepare(request)
+                result = rejected if rejected is not None else self._dispatch(request)
+            except RequestRevoked:
+                result = self._fatal('Browser action interrupted.', self._authority.started)
+            if previous is None and self._terminal and not was_terminal:
+                self._authority.phase = 'cleanup'
+                try:
+                    self._browser.close()
+                except Exception:
+                    logger.exception('Browser direct owner cleanup failed')
+                    failure = self._failure('unknown', 'cleanup', result['execution_started'], capture=False)
+                    failure['data']['cleanup'] = {'state': 'failed'}
+                    if result['status'] == 'fatal':
+                        failure.update(status=result['status'], reason=result['reason'])
+                    result = failure
+            return result
         finally:
             self._authority = previous
-        if previous is None and result['status'] == 'fatal' and not was_terminal:
-            self._browser.close()
-        return result
 
 
     def _dispatch(self, request):

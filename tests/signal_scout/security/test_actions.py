@@ -351,3 +351,63 @@ def test_AG_006_direct_owner_close_retains_session_control_reason(monkeypatch):
     assert session.dispatch({'action': 'snapshot', 'args': {}}) == {
         'status': 'fatal', 'reason': 'Browser control unavailable.', 'execution_started': False, 'data': {}}
     assert events == [('disconnect', False, False), ('scout', 'closed'), ('scout', 'closed')]
+
+
+@pytest.mark.parametrize('terminal', ['close', 'interrupted'])
+@pytest.mark.parametrize('cleanup_fails', [False, True])
+def test_AG_005_AG_006_direct_terminal_dispatch_closes_owner_once(boundary, monkeypatch, terminal, cleanup_fails):
+    gate = boundary.session
+    native_close = boundary.browser.close
+    closed = []
+    def close():
+        closed.append('owned-browser')
+        native_close()
+        if cleanup_fails:
+            raise OSError('private cleanup poison')
+    monkeypatch.setattr(boundary.browser, 'close', close)
+    del gate._execute
+    if terminal == 'interrupted':
+        set_interrupt(True)
+    result = gate.dispatch({'action': 'close' if terminal == 'close' else 'snapshot', 'args': {}})
+    assert closed == ['owned-browser']
+    assert boundary.closed == [True] and boundary.browser.failed and not boundary.browser.ready
+    assert gate._authority is None and gate._terminal
+    assert result['execution_started'] is (terminal == 'close')
+    if terminal == 'interrupted':
+        assert result['status'] == 'fatal' and result['reason'] == 'Browser action interrupted.'
+    elif cleanup_fails:
+        assert result['status'] == 'incomplete'
+        assert result['reason'] == 'Unknown browser failure; operation completion is uncertain.'
+    else:
+        assert result == {'status': 'success', 'reason': None, 'execution_started': True,
+                          'data': {'closed': True}}
+    if cleanup_fails:
+        assert result['data']['failure']['kind'] == 'unknown'
+        assert result['data']['failure']['phase'] == 'cleanup'
+        assert result['data']['capture'] == {'state': 'unavailable'}
+        assert result['data']['cleanup'] == {'state': 'failed'}
+        assert 'poison' not in repr(result)
+    for action in ('snapshot', 'close'):
+        repeated = gate.dispatch({'action': action, 'args': {}})
+        assert repeated['status'] == 'fatal' and repeated['execution_started'] is False
+    gate.close()
+    assert closed == ['owned-browser'] and boundary.effects == [] and gate._authority is None
+
+
+def test_BR_003_AG_005_AG_006_private_dispatch_defers_owned_cleanup(boundary):
+    lifetime = importlib.import_module('plugins.signal-scout.scout_runtime.browser.lifetime')
+    gate = boundary.session
+    del gate._execute
+    manager = gate._requests = lifetime.BrowserRequests(gate)
+    authority = lifetime.RequestAuthority('private-close', generation=boundary.browser.generation)
+    private = manager._fork(gate, authority)
+    result = private.dispatch({'action': 'close', 'args': {}})
+    assert result == {'status': 'success', 'reason': None, 'execution_started': True,
+                      'data': {'closed': True}}
+    assert private._authority is authority and private._terminal
+    assert not gate._terminal and boundary.browser.ready and boundary.closed == []
+    result = gate.request({'action': 'close', 'args': {}})
+    assert result['status'] == 'success' and result['data']['closed'] is True
+    assert result['data']['triage']['allowed_operations'] == []
+    assert boundary.closed == [True] and boundary.browser.failed and not boundary.browser.ready
+    assert boundary.effects == [] and gate._authority is None

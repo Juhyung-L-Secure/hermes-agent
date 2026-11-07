@@ -175,6 +175,11 @@
           "layer": "e2e",
           "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
           "test": "test_BR_003_AG_005_AG_006_MI_035_native_completed_close_allows_final_answer"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_BR_003_AG_005_AG_006_private_dispatch_defers_owned_cleanup"
         }
       ],
       "otherCoverage": [],
@@ -800,6 +805,16 @@
           "layer": "e2e",
           "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
           "test": "test_BR_003_AG_006_real_owner_cleanup_is_bounded_and_stop_precedes_cleanup"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_005_AG_006_direct_terminal_dispatch_closes_owner_once"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_BR_003_AG_005_AG_006_private_dispatch_defers_owned_cleanup"
         }
       ],
       "otherCoverage": [],
@@ -969,6 +984,16 @@
           "layer": "e2e",
           "file": "tests/signal_scout/browser_tools/test_recovery_integration.py",
           "test": "test_BR_003_AG_005_AG_006_MI_035_native_completed_close_allows_final_answer"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_AG_005_AG_006_direct_terminal_dispatch_closes_owner_once"
+        },
+        {
+          "layer": "unit",
+          "file": "tests/signal_scout/security/test_actions.py",
+          "test": "test_BR_003_AG_005_AG_006_private_dispatch_defers_owned_cleanup"
         }
       ],
       "otherCoverage": [],
